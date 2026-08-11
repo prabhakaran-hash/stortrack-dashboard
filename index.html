@@ -225,7 +225,20 @@ function findCells(grid, matchFn) {
   return out;
 }
 function exact(label) { return (v) => v === label; }
-function colOccurrences(grid, label) { return findCells(grid, exact(label)).sort((a, b) => a.c - b.c); }
+// Same rationale as colOccurrences below: pick the first occurrence of `label`
+// whose neighboring cell (at c+offset) is actually a number, so a header cell
+// that happens to reuse the same label text elsewhere doesn't get matched instead.
+function firstDataRow(grid, label, offset) {
+  offset = offset == null ? 1 : offset;
+  return findCells(grid, exact(label)).find((m) => numOf(cell(grid, m.r, m.c + offset)) != null) || null;
+}
+function colOccurrences(grid, label) {
+  // Some sheets repeat operator/region names as column headers in an unrelated
+  // summary table. Every real caller of this helper expects a numeric value
+  // immediately to the right (a store count or a price count), so drop any match
+  // where that's not true — that's a header label, not a data row.
+  return findCells(grid, exact(label)).filter((m) => numOf(cell(grid, m.r, m.c + 1)) != null).sort((a, b) => a.c - b.c);
+}
 function firstNumberRightOf(grid, r, c, maxSpan) {
   maxSpan = maxSpan || 6;
   for (let i = 1; i <= maxSpan; i++) { const n = numOf(cell(grid, r, c + i)); if (n != null) return n; }
@@ -259,7 +272,7 @@ const CA_FACILITY_CATEGORY = {
 function parseCanada(grid) {
   const opRows = {};
   ["Large Operator", "Medium Operator", "Single Operator"].forEach((label) => {
-    const hit = findCells(grid, exact(label))[0];
+    const hit = firstDataRow(grid, label, 1);
     if (!hit) return;
     opRows[label] = {
       r: hit.r, c: hit.c,
@@ -329,7 +342,9 @@ function parseUK(grid) {
   });
   const facilityOperatorNrsf = [], facilityType = {};
   UK_FACILITIES.forEach((facLabel) => {
-    const hit = findCells(grid, exact(facLabel))[0];
+    // Real data row: next cell is an operator name (text), the one after is a
+    // store count (number) — distinguishes this from any header reusing the label.
+    const hit = findCells(grid, exact(facLabel)).find((m) => cell(grid, m.r, m.c + 1) !== "" && numOf(cell(grid, m.r, m.c + 2)) != null);
     if (!hit) return;
     const shortName = facLabel.startsWith("Hybrid") ? "Hybrid" : facLabel;
     let catTotal = 0;
@@ -352,7 +367,7 @@ const AU_OPERATORS = ["REIT", "Large Operator", "Medium Operator", "Single Opera
 const AU_STATES = ["Australian Capital Territory", "New South Wales", "Northern Territory", "Queensland", "South Australia", "Tasmania", "Victoria", "Western Australia"];
 function parseAustralia(grid) {
   const operatorType = AU_OPERATORS.map((label) => {
-    const hit = findCells(grid, exact(label))[0];
+    const hit = firstDataRow(grid, label, 1);
     if (!hit) return { label, stores: null, yes: null, no: null };
     return { label, stores: numOf(cell(grid, hit.r, hit.c + 1)), yes: numOf(cell(grid, hit.r, hit.c + 4)), no: numOf(cell(grid, hit.r, hit.c + 5)) };
   });
