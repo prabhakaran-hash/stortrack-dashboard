@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stortrack — Self-Storage Regional Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+  .viz-root {
+    color-scheme: dark;
+    --surface-1:      #111a2e;
+    --page:           #0a1120;
+    --text-primary:   #f2f5fb;
+    --text-secondary: #a9b3c9;
+    --text-muted:     #7c869c;
+    --gridline:       #23304a;
+    --baseline:       #374563;
+    --border:         rgba(255,255,255,0.08);
+    --good:           #16c172;
+    --bad:            #e5605f;
+    --navy:           #0f1c36;
+    --navy-2:         #1d3f6e;
+    --accent:         #3987e5;
+    --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500;
+    background: var(--page); color: var(--text-primary); display: block; min-height: 100vh;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin:0; padding:0; background: #0a1120; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 0 24px 60px; }
+
+  header.top {
+    background: linear-gradient(120deg, var(--navy) 0%, var(--navy-2) 100%);
+    margin: 0 0 24px; padding: 22px 0 20px;
+  }
+  header.top .header-inner {
+    max-width: 1240px; margin: 0 auto; padding: 0 24px;
+    display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;
+  }
+  header.top::after {
+    content:""; display:block; height:4px; margin-top:18px;
+    background: linear-gradient(90deg, var(--series-1) 0 25%, var(--series-2) 25% 50%, var(--series-3) 50% 75%, var(--series-4) 75% 100%);
+  }
+  .brand { display:flex; flex-direction:column; gap:2px; }
+  .brand .name { font-size:12.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color: #9fc2ea; }
+  .brand h1 { margin:0; font-size:23px; font-weight:800; color:#ffffff; letter-spacing:-.01em; }
+  .status-cluster { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .status-pill { display:flex; align-items:center; gap:8px; font-size:13px; color: #eef4fb; background: rgba(255,255,255,0.10); border:1px solid rgba(255,255,255,0.18); border-radius:999px; padding:6px 14px; backdrop-filter: blur(2px); }
+  .dot { width:8px; height:8px; border-radius:50%; background: #35d07f; flex:none; }
+  .dot.stale { background: #aab4c8; }
+  .dot.error { background: #ff6a6a; }
+  .dot.live { animation: pulse 1.8s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
+  select#intervalSelect, button#refreshNow {
+    font: inherit; font-size:13px; font-weight:600; color: #f2f6fb; background: rgba(255,255,255,0.10);
+    border:1px solid rgba(255,255,255,0.22); border-radius:8px; padding:7px 12px; cursor:pointer;
+  }
+  select#intervalSelect option { color: #10182c; }
+  button#refreshNow:hover { background: rgba(255,255,255,0.2); }
+
+  .banner { background:#132a45; border:1px solid #2a4a70; color:#cfe4fb; border-radius:10px; padding:12px 16px; font-size:13.5px; margin-bottom:16px; line-height:1.55; }
+  .banner strong { color:#ffffff; }
+  .banner.warn { background:#3a2e10; border-color:#5c4a1a; color:#f0d98c; }
+  .banner.warn strong { color:#ffe9a8; }
+
+  .region-picker { display:flex; align-items:center; gap:10px; margin-bottom:18px; }
+  .region-picker label { font-size:13px; font-weight:700; color: var(--text-primary); }
+  .region-picker select {
+    font: inherit; font-size:14px; font-weight:700; color: var(--text-primary);
+    background: var(--surface-1); border:1px solid var(--border); border-radius:8px;
+    padding:9px 14px; cursor:pointer; min-width:220px; box-shadow: 0 1px 2px rgba(0,0,0,0.35);
+  }
+
+  .region-strip { display:grid; grid-template-columns: repeat(4, 1fr); gap:12px; margin-bottom:28px; }
+  .region-card {
+    background: var(--surface-1); border:1px solid var(--border); border-top:4px solid var(--accent-color, var(--accent));
+    border-radius:10px; padding:14px 16px; cursor:pointer;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.35);
+    transition: box-shadow .15s ease, transform .15s ease;
+  }
+  .region-card:hover { box-shadow: 0 4px 14px rgba(0,0,0,0.45); transform: translateY(-1px); }
+  .region-card.selected { box-shadow: 0 0 0 2px var(--accent-color, var(--accent)), 0 4px 14px rgba(0,0,0,0.45); }
+  .region-card.err { background: #2a1414; }
+  .region-card .rc-top { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:4px; }
+  .region-card .rc-name { font-weight:700; font-size:14px; color: var(--text-primary); }
+  .region-card .rc-badge { font-size:11px; padding:2px 8px; border-radius:999px; font-weight:600; }
+  .region-card .rc-badge.live { background:rgba(22,193,114,0.18); color:#3fe0a0; }
+  .region-card .rc-badge.pend { background:rgba(255,255,255,0.08); color: var(--text-muted); }
+  .region-card .rc-badge.err { background:rgba(229,96,95,0.18); color: var(--bad); }
+  .region-card .rc-value { font-size:25px; font-weight:800; color: var(--text-primary); }
+  .region-card .rc-sub { font-size:12px; color: var(--text-muted); margin-top:2px; }
+
+  .region-block { margin-bottom:44px; }
+  .region-head {
+    display:flex; align-items:center; gap:12px; margin-bottom:16px; padding:12px 18px;
+    background: linear-gradient(90deg, var(--accent-color, var(--navy)) 0%, var(--navy) 130%);
+    border-radius:10px;
+  }
+  .region-head h2 { margin:0; font-size:20px; font-weight:800; color:#ffffff; }
+  .region-head .rh-sub { font-size:12.5px; color: rgba(255,255,255,0.85); }
+
+  .kpi-row { display:grid; grid-template-columns: repeat(4, 1fr); gap:14px; margin-bottom:16px; }
+  .kpi-tile {
+    background: var(--surface-1); border:1px solid var(--border); border-left:4px solid var(--kpi-accent, var(--accent));
+    border-radius:10px; padding:16px 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  }
+  .kpi-tile .label { font-size:12.5px; color: var(--text-secondary); margin-bottom:8px; font-weight:600; }
+  .kpi-tile .value { font-size:25px; font-weight:800; line-height:1; color: var(--text-primary); }
+  .kpi-tile .sub { font-size:12px; color: var(--text-muted); margin-top:6px; }
+
+  .chart-row { display:grid; grid-template-columns: 1fr 1fr; gap:14px; margin-bottom:14px; }
+  .card { background: var(--surface-1); border:1px solid var(--border); border-radius:10px; padding:18px 20px 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+  .card h3 { margin:0 0 2px; font-size:14.5px; font-weight:700; color: var(--text-primary); }
+  .card .card-sub { font-size:12px; color: var(--text-muted); margin-bottom:10px; }
+  .card.empty { display:flex; align-items:center; justify-content:center; color: var(--text-muted); font-size:13px; text-align:center; padding:30px 16px; }
+
+  .bar-row { display:flex; align-items:center; gap:10px; margin:9px 0; }
+  .bar-row .bar-label { width:150px; flex:none; font-size:12.5px; color: var(--text-secondary); text-align:right; }
+  .bar-track { flex:1; border-bottom:1px solid var(--gridline); position:relative; }
+  .bar-fill { height:13px; margin-top:2px; border-radius:4px; position:relative; transition:width .4s ease; }
+  .bar-value { position:absolute; left:calc(100% + 8px); top:50%; transform:translateY(-50%); font-size:12px; font-weight:600; white-space:nowrap; }
+
+  .stack-track { flex:1; height:15px; border-radius:4px; margin-top:2px; overflow:hidden; display:flex; background: var(--gridline); }
+  .stack-seg { height:100%; transition: width .4s ease; }
+  .stack-label { font-size:12px; margin-left:10px; color: var(--text-secondary); white-space:nowrap; }
+
+  .donut-wrap { display:flex; align-items:center; gap:16px; flex-wrap:wrap; justify-content:center; }
+  .donut-center-value { font-size:18px; font-weight:700; fill: var(--text-primary); }
+  .donut-center-label { font-size:11px; fill: var(--text-muted); }
+  .legend { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:7px; }
+  .legend li { display:flex; align-items:center; gap:8px; font-size:12px; color: var(--text-secondary); }
+  .legend .swatch { width:10px; height:10px; border-radius:3px; flex:none; }
+  .legend .lv { margin-left:auto; font-weight:700; color: var(--text-primary); padding-left:12px; }
+
+  .legend-row { display:flex; gap:16px; flex-wrap:wrap; margin-bottom:10px; font-size:12px; color: var(--text-secondary); }
+  .legend-row .swatch { width:10px; height:10px; border-radius:3px; display:inline-block; margin-right:5px; vertical-align:-1px; }
+
+  table.data-table { width:100%; border-collapse:collapse; font-size:12.5px; }
+  table.data-table th, table.data-table td { text-align:left; padding:7px 9px; border-bottom:1px solid var(--gridline); }
+  table.data-table th { color: var(--text-secondary); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.03em; }
+  table.data-table td.num { text-align:right; font-variant-numeric: tabular-nums; }
+  table.data-table tr.total-row td { font-weight:700; border-top:1.5px solid var(--baseline); }
+
+  .foot-note { font-size:11.5px; color: var(--text-muted); margin-top:8px; line-height:1.5; }
+  footer.foot { margin-top:22px; font-size:12px; color: var(--text-muted); text-align:center; }
+
+  @media (max-width: 900px) {
+    .region-strip, .kpi-row { grid-template-columns: repeat(2, 1fr); }
+    .chart-row { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="viz-root">
+
+  <header class="top">
+    <div class="header-inner">
+      <div class="brand">
+        <span class="name">Stortrack · Research &amp; Data</span>
+        <h1>Self-Storage Regional Dashboard</h1>
+      </div>
+      <div class="status-cluster">
+        <span class="status-pill"><span class="dot live" id="syncDot"></span><span id="syncText">Connecting…</span></span>
+        <select id="intervalSelect" title="Auto-refresh interval">
+          <option value="15000">Refresh: 15s</option>
+          <option value="30000" selected>Refresh: 30s</option>
+          <option value="60000">Refresh: 60s</option>
+          <option value="300000">Refresh: 5 min</option>
+        </select>
+        <button id="refreshNow">Refresh now</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="wrap">
+  <div class="banner">
+    <strong>Live from your Google Sheets — no manual updates needed.</strong> Each region below polls its own
+    "Regional Summary" tab directly on the interval above; edit a cell in the sheet and it appears here on the next
+    sync. Nothing is combined across regions.
+  </div>
+  <div class="banner warn" id="corsWarning" style="display:none;">
+    <strong>Live sync is blocked for one or more sheets.</strong> Your browser refused the request, so those regions
+    are showing the last snapshot taken instead of updating live. Let's sort this out together rather than guessing —
+    ping me with what you're seeing and we'll fix the sync without making the sheet more public than it already is.
+  </div>
+
+  <div class="region-picker">
+    <label for="regionSelect">Region</label>
+    <select id="regionSelect"></select>
+  </div>
+
+  <section class="region-strip" id="regionStrip"></section>
+
+  <div id="regionBlocks"></div>
+
+  <footer class="foot" id="footNote">Sources: live Google Sheets, polled client-side. Loading…</footer>
+  </div>
+</div>
+
+<script>
+/* =====================================================================================
+   PARSERS — label-anchored, not fixed-column. Verified against real exports of the
+   Canada / UK / Australia / New Zealand "Regional Summary" tabs before shipping.
+   ===================================================================================== */
+function numOf(s) {
+  if (s == null) return null;
+  s = String(s).trim();
+  if (s === "") return null;
+  const n = Number(s.replace(/,/g, ""));
+  return isNaN(n) ? null : n;
+}
+function cell(grid, r, c) {
+  if (r == null || r < 0 || !grid[r]) return "";
+  const v = grid[r][c];
+  return v == null ? "" : String(v).trim().replace(/\s+/g, " ");
+}
+function findCells(grid, matchFn) {
+  const out = [];
+  for (let r = 0; r < grid.length; r++) {
+    const row = grid[r] || [];
+    for (let c = 0; c < row.length; c++) {
+      const v = cell(grid, r, c);
+      if (v && matchFn(v)) out.push({ r, c, v });
+    }
+  }
+  return out;
+}
+function exact(label) { return (v) => v === label; }
+function colOccurrences(grid, label) { return findCells(grid, exact(label)).sort((a, b) => a.c - b.c); }
+function firstNumberRightOf(grid, r, c, maxSpan) {
+  maxSpan = maxSpan || 6;
+  for (let i = 1; i <= maxSpan; i++) { const n = numOf(cell(grid, r, c + i)); if (n != null) return n; }
+  return null;
+}
+function startsWithMatch(grid, prefix) {
+  const hits = findCells(grid, (v) => v.toLowerCase().indexOf(prefix.toLowerCase()) === 0);
+  return hits[0] || null;
+}
+function parseUnitsSummary(grid) {
+  const actualHit = startsWithMatch(grid, "1. Actual");
+  const estHit = startsWithMatch(grid, "2. Estimated");
+  const naHit = startsWithMatch(grid, "No. of Units not available");
+  const totalHit = startsWithMatch(grid, "Total Stores");
+  return {
+    actual: actualHit ? firstNumberRightOf(grid, actualHit.r, actualHit.c) : null,
+    estimated: estHit ? firstNumberRightOf(grid, estHit.r, estHit.c) : null,
+    notAvailable: naHit ? firstNumberRightOf(grid, naHit.r, naHit.c) : null,
+    totalStoresInUnitsTab: totalHit ? firstNumberRightOf(grid, totalHit.r, totalHit.c) : null
+  };
+}
+
+const CA_PROVINCES = ["AB","BC","MB","NB","NL","NS","NT","ON","PE","QC","SK","YT"];
+const CA_FACILITY_CATEGORY = {
+  "Container": "Self-Storage", "Self Storage": "Self-Storage",
+  "Self Storage and Container": "Self-Storage", "Wine Storage": "Self-Storage",
+  "Container and Parking": "Hybrid", "Self Storage and Parking": "Hybrid",
+  "Self Storage, Container and Parking": "Hybrid",
+  "Parking": "Parking", "RV and Boat Storage": "Parking"
+};
+function parseCanada(grid) {
+  const opRows = {};
+  ["Large Operator", "Medium Operator", "Single Operator"].forEach((label) => {
+    const hit = findCells(grid, exact(label))[0];
+    if (!hit) return;
+    opRows[label] = {
+      r: hit.r, c: hit.c,
+      stores: numOf(cell(grid, hit.r, hit.c + 1)),
+      yes: numOf(cell(grid, hit.r, hit.c + 4)),
+      no: numOf(cell(grid, hit.r, hit.c + 5))
+    };
+  });
+  const singleRow = opRows["Single Operator"];
+  let pricing = { yes: null, no: null };
+  if (singleRow) {
+    const gtR = singleRow.r + 1, gtC = singleRow.c;
+    pricing = { yes: numOf(cell(grid, gtR, gtC + 4)), no: numOf(cell(grid, gtR, gtC + 5)) };
+  }
+  const totalStores = (opRows["Large Operator"]?.stores || 0) + (opRows["Medium Operator"]?.stores || 0) + (opRows["Single Operator"]?.stores || 0);
+  const abHits = colOccurrences(grid, "AB");
+  const table1Col = abHits[0] ? abHits[0].c : null, table2Col = abHits[1] ? abHits[1].c : null;
+  const regionSplit = CA_PROVINCES.map((code) => {
+    const m1 = findCells(grid, exact(code)).find((m) => m.c === table1Col);
+    const m2 = findCells(grid, exact(code)).find((m) => m.c === table2Col);
+    return {
+      label: code,
+      large: m1 ? numOf(cell(grid, m1.r, m1.c + 1)) : null,
+      medium: m1 ? numOf(cell(grid, m1.r, m1.c + 2)) : null,
+      single: m1 ? numOf(cell(grid, m1.r, m1.c + 3)) : null,
+      total: m1 ? numOf(cell(grid, m1.r, m1.c + 4)) : null,
+      priceNo: m2 ? numOf(cell(grid, m2.r, m2.c + 1)) : null,
+      priceYes: m2 ? numOf(cell(grid, m2.r, m2.c + 2)) : null
+    };
+  }).filter((s) => s.total != null);
+  const facilityDetail = Object.keys(CA_FACILITY_CATEGORY).map((type) => {
+    const hit = findCells(grid, exact(type)).find((m) => {
+      const c1 = cell(grid, m.r, m.c + 1);
+      return (c1 === "" || numOf(c1) != null) && numOf(cell(grid, m.r, m.c + 2)) != null && numOf(cell(grid, m.r, m.c + 3)) != null;
+    });
+    if (!hit) return null;
+    return { category: CA_FACILITY_CATEGORY[type], type, yes: numOf(cell(grid, hit.r, hit.c + 1)), no: numOf(cell(grid, hit.r, hit.c + 2)), total: numOf(cell(grid, hit.r, hit.c + 3)) };
+  }).filter(Boolean);
+  const facilityType = {};
+  facilityDetail.forEach((d) => { facilityType[d.category] = (facilityType[d.category] || 0) + (d.total || 0); });
+  return { totalStores, pricing,
+    operatorType: ["Large Operator", "Medium Operator", "Single Operator"].map((label) => ({ label, stores: opRows[label]?.stores ?? null, yes: opRows[label]?.yes ?? null, no: opRows[label]?.no ?? null })),
+    regionSplit, facilityType, facilityDetail, facilityOperatorNrsf: null, units: parseUnitsSummary(grid), sqftTotal: null, regionLabel: "Province" };
+}
+
+const UK_OPERATORS = ["Large Operator", "Medium Operator", "Small Operator", "Single Operator"];
+const UK_REGIONS = ["England", "Northern Ireland", "Scotland", "Wales"];
+const UK_FACILITIES = ["Self Storage", "Container", "Hybrid (Self Storage, Container & Parking)", "Parking"];
+function parseUK(grid) {
+  const operatorType = UK_OPERATORS.map((label) => {
+    const hits = colOccurrences(grid, label);
+    const storeHit = hits[0], priceHit = hits[1];
+    return { label, stores: storeHit ? numOf(cell(grid, storeHit.r, storeHit.c + 1)) : null, yes: priceHit ? numOf(cell(grid, priceHit.r, priceHit.c + 1)) : null, no: priceHit ? numOf(cell(grid, priceHit.r, priceHit.c + 2)) : null };
+  });
+  const totalStores = operatorType.reduce((s, o) => s + (o.stores || 0), 0);
+  const pricing = { yes: operatorType.reduce((s, o) => s + (o.yes || 0), 0), no: operatorType.reduce((s, o) => s + (o.no || 0), 0) };
+  const regionKeyOrder = ["large", "medium", "small", "single"];
+  const regionSplit = UK_REGIONS.map((label) => {
+    const hits = colOccurrences(grid, label);
+    const storeHit = hits[0], priceHit = hits[1];
+    const row = { label };
+    regionKeyOrder.forEach((k, i) => { row[k] = storeHit ? numOf(cell(grid, storeHit.r, storeHit.c + 1 + i)) : null; });
+    row.total = storeHit ? numOf(cell(grid, storeHit.r, storeHit.c + 5)) : null;
+    row.priceNo = priceHit ? numOf(cell(grid, priceHit.r, priceHit.c + 1)) : null;
+    row.priceYes = priceHit ? numOf(cell(grid, priceHit.r, priceHit.c + 2)) : null;
+    return row;
+  });
+  const facilityOperatorNrsf = [], facilityType = {};
+  UK_FACILITIES.forEach((facLabel) => {
+    const hit = findCells(grid, exact(facLabel))[0];
+    if (!hit) return;
+    const shortName = facLabel.startsWith("Hybrid") ? "Hybrid" : facLabel;
+    let catTotal = 0;
+    for (let i = 0; i < 4; i++) {
+      const r = hit.r + i;
+      const opLabel = cell(grid, r, hit.c + 1);
+      if (!opLabel) continue;
+      const stores = numOf(cell(grid, r, hit.c + 2)) || 0;
+      const nrsf = numOf(cell(grid, r, hit.c + 4));
+      facilityOperatorNrsf.push({ facility: shortName, operator: opLabel, stores, nrsf });
+      catTotal += stores;
+    }
+    facilityType[shortName] = catTotal;
+  });
+  const sqftTotal = facilityOperatorNrsf.reduce((s, d) => s + (d.nrsf || 0), 0);
+  return { totalStores, pricing, operatorType, regionSplit, facilityType, facilityOperatorNrsf, facilityDetail: null, units: parseUnitsSummary(grid), sqftTotal, regionLabel: "Region" };
+}
+
+const AU_OPERATORS = ["REIT", "Large Operator", "Medium Operator", "Single Operator"];
+const AU_STATES = ["Australian Capital Territory", "New South Wales", "Northern Territory", "Queensland", "South Australia", "Tasmania", "Victoria", "Western Australia"];
+function parseAustralia(grid) {
+  const operatorType = AU_OPERATORS.map((label) => {
+    const hit = findCells(grid, exact(label))[0];
+    if (!hit) return { label, stores: null, yes: null, no: null };
+    return { label, stores: numOf(cell(grid, hit.r, hit.c + 1)), yes: numOf(cell(grid, hit.r, hit.c + 4)), no: numOf(cell(grid, hit.r, hit.c + 5)) };
+  });
+  const totalStores = operatorType.reduce((s, o) => s + (o.stores || 0), 0);
+  const pricing = { yes: operatorType.reduce((s, o) => s + (o.yes || 0), 0), no: operatorType.reduce((s, o) => s + (o.no || 0), 0) };
+  const stateHits = colOccurrences(grid, AU_STATES[0]);
+  const table1Col = stateHits[0] ? stateHits[0].c : null, table2Col = stateHits[1] ? stateHits[1].c : null;
+  const regionSplit = AU_STATES.map((label) => {
+    const m1 = findCells(grid, exact(label)).find((m) => m.c === table1Col);
+    const m2 = findCells(grid, exact(label)).find((m) => m.c === table2Col);
+    return {
+      label,
+      reit: m1 ? numOf(cell(grid, m1.r, m1.c + 1)) : null,
+      large: m1 ? numOf(cell(grid, m1.r, m1.c + 2)) : null,
+      medium: m1 ? numOf(cell(grid, m1.r, m1.c + 3)) : null,
+      single: m1 ? numOf(cell(grid, m1.r, m1.c + 4)) : null,
+      total: m1 ? numOf(cell(grid, m1.r, m1.c + 5)) : null,
+      priceNo: m2 ? numOf(cell(grid, m2.r, m2.c + 1)) : null,
+      priceYes: m2 ? numOf(cell(grid, m2.r, m2.c + 2)) : null
+    };
+  }).filter((s) => s.total != null);
+  return { totalStores, pricing, operatorType, regionSplit, facilityType: null, facilityDetail: null, facilityOperatorNrsf: null, units: parseUnitsSummary(grid), sqftTotal: null, regionLabel: "State" };
+}
+
+const NZ_OPERATORS = ["Large Operator", "Medium Operator", "Single Operator"];
+function parseNewZealand(grid) {
+  const operatorType = NZ_OPERATORS.map((label) => {
+    const hits = colOccurrences(grid, label);
+    const storeHit = hits[0], priceHit = hits[1];
+    return { label, stores: storeHit ? numOf(cell(grid, storeHit.r, storeHit.c + 1)) : null, yes: priceHit ? numOf(cell(grid, priceHit.r, priceHit.c + 1)) : null, no: priceHit ? numOf(cell(grid, priceHit.r, priceHit.c + 2)) : null };
+  });
+  const totalStores = operatorType.reduce((s, o) => s + (o.stores || 0), 0);
+  const pricing = { yes: operatorType.reduce((s, o) => s + (o.yes || 0), 0), no: operatorType.reduce((s, o) => s + (o.no || 0), 0) };
+  return { totalStores, pricing, operatorType, regionSplit: null, facilityType: null, facilityDetail: null, facilityOperatorNrsf: null, units: parseUnitsSummary(grid), sqftTotal: null, regionLabel: null };
+}
+
+/* =====================================================================================
+   CONFIG — one entry per region. sheetId/gid come straight from the "Regional Summary"
+   (or "Summary") tab of each Google Sheet. All four sheets must stay shared as at least
+   "Anyone with the link can view" for the browser fetch below to succeed without login.
+   ===================================================================================== */
+// Paste the /exec URL from your Apps Script deployment here once you have it
+// (see AppsScript_Code.gs). Until it's set, the dashboard falls back to
+// Google's public CSV export, which requires the sheet to stay link-shared.
+const APPS_SCRIPT_URL = "";
+
+const SHEETS = {
+  "Canada":          { id: "1wepd7BQDsAXTB_v8HvCEn5MHyL7N9fvrEZIegteWb3I", gid: "1316439995", key: "canada",     parser: parseCanada },
+  "United Kingdom":  { id: "1MB7K63fS9GVds1qa4sZMU9vSvEsyke7bmL9-IZqkM9w", gid: "1158791534", key: "uk",         parser: parseUK },
+  "Australia":       { id: "1vnRv51HsAZob78xNLR6stQFL_AeDYLtxFrB2YuLlMP4", gid: "0",          key: "australia",  parser: parseAustralia },
+  "New Zealand":     { id: "16mg64rbztm5I3cbqd2WSZoxjkxLp0Glk-H6c38Zl6FM", gid: "0",          key: "newzealand", parser: parseNewZealand }
+};
+let REFRESH_MS = 30000;
+
+/* ------------------------------------------------------------------------
+   FALLBACK SNAPSHOTS — last known-good read of each sheet (taken manually,
+   cross-checked cell-by-cell before shipping). Shown immediately on page
+   load and instantly replaced the moment the first live sync succeeds, so
+   the dashboard is never blank while waiting on the network, and never
+   goes blank if a later poll fails either.
+   ------------------------------------------------------------------------ */
+const FALLBACK_SNAPSHOTS = {
+  "Canada": { "totalStores":3806,"pricing":{"yes":2428,"no":1378},"operatorType":[{"label":"Large Operator","stores":932,"yes":881,"no":51},{"label":"Medium Operator","stores":632,"yes":444,"no":188},{"label":"Single Operator","stores":2242,"yes":1103,"no":1139}],"regionSplit":[{"label":"AB","large":133,"medium":82,"single":370,"total":585,"priceNo":186,"priceYes":399},{"label":"BC","large":108,"medium":141,"single":426,"total":675,"priceNo":269,"priceYes":406},{"label":"MB","large":27,"medium":20,"single":73,"total":120,"priceNo":37,"priceYes":83},{"label":"NB","large":21,"medium":22,"single":73,"total":116,"priceNo":48,"priceYes":68},{"label":"NL","large":6,"medium":null,"single":32,"total":38,"priceNo":24,"priceYes":14},{"label":"NS","large":35,"medium":27,"single":78,"total":140,"priceNo":48,"priceYes":92},{"label":"NT","large":null,"medium":null,"single":6,"total":6,"priceNo":2,"priceYes":4},{"label":"ON","large":459,"medium":220,"single":800,"total":1479,"priceNo":492,"priceYes":987},{"label":"PE","large":1,"medium":2,"single":14,"total":17,"priceNo":8,"priceYes":9},{"label":"QC","large":104,"medium":93,"single":264,"total":461,"priceNo":200,"priceYes":261},{"label":"SK","large":37,"medium":19,"single":100,"total":156,"priceNo":54,"priceYes":102},{"label":"YT","large":1,"medium":6,"single":6,"total":13,"priceNo":10,"priceYes":3}],"facilityType":{"Self-Storage":1634,"Hybrid":1970,"Parking":202},"facilityDetail":[{"category":"Self-Storage","type":"Container","yes":43,"no":36,"total":79},{"category":"Self-Storage","type":"Self Storage","yes":822,"no":585,"total":1407},{"category":"Self-Storage","type":"Self Storage and Container","yes":87,"no":60,"total":147},{"category":"Self-Storage","type":"Wine Storage","yes":null,"no":1,"total":1},{"category":"Hybrid","type":"Container and Parking","yes":98,"no":60,"total":158},{"category":"Hybrid","type":"Self Storage and Parking","yes":1029,"no":422,"total":1451},{"category":"Hybrid","type":"Self Storage, Container and Parking","yes":234,"no":127,"total":361},{"category":"Parking","type":"Parking","yes":63,"no":61,"total":124},{"category":"Parking","type":"RV and Boat Storage","yes":52,"no":26,"total":78}],"facilityOperatorNrsf":null,"units":{"actual":152,"estimated":3204,"notAvailable":693,"totalStoresInUnitsTab":4049},"sqftTotal":null,"regionLabel":"Province" },
+  "United Kingdom": { "totalStores":5559,"pricing":{"yes":3385,"no":2174},"operatorType":[{"label":"Large Operator","stores":601,"yes":594,"no":7},{"label":"Medium Operator","stores":442,"yes":385,"no":57},{"label":"Small Operator","stores":1181,"yes":874,"no":307},{"label":"Single Operator","stores":3335,"yes":1532,"no":1803}],"regionSplit":[{"label":"England","large":601,"medium":369,"small":977,"single":2799,"total":4746,"priceNo":1812,"priceYes":2934},{"label":"Northern Ireland","large":null,"medium":null,"small":13,"single":62,"total":75,"priceNo":48,"priceYes":27},{"label":"Scotland","large":null,"medium":15,"small":107,"single":258,"total":380,"priceNo":171,"priceYes":209},{"label":"Wales","large":null,"medium":58,"small":84,"single":216,"total":358,"priceNo":143,"priceYes":215}],"facilityType":{"Self Storage":2617,"Container":1667,"Hybrid":989,"Parking":286},"facilityDetail":null,"facilityOperatorNrsf":[{"facility":"Self Storage","operator":"Large Operator","stores":498,"nrsf":23288872},{"facility":"Self Storage","operator":"Medium Operator","stores":222,"nrsf":6534330},{"facility":"Self Storage","operator":"Small Operator","stores":556,"nrsf":12735011},{"facility":"Self Storage","operator":"Single Operator","stores":1341,"nrsf":24032175},{"facility":"Container","operator":"Large Operator","stores":40,"nrsf":549852},{"facility":"Container","operator":"Medium Operator","stores":138,"nrsf":1855441},{"facility":"Container","operator":"Small Operator","stores":396,"nrsf":5399383},{"facility":"Container","operator":"Single Operator","stores":1093,"nrsf":12484415},{"facility":"Hybrid","operator":"Large Operator","stores":63,"nrsf":2566183},{"facility":"Hybrid","operator":"Medium Operator","stores":82,"nrsf":2246558},{"facility":"Hybrid","operator":"Small Operator","stores":218,"nrsf":6122837},{"facility":"Hybrid","operator":"Single Operator","stores":626,"nrsf":17848721},{"facility":"Parking","operator":"Large Operator","stores":0,"nrsf":null},{"facility":"Parking","operator":"Medium Operator","stores":0,"nrsf":null},{"facility":"Parking","operator":"Small Operator","stores":11,"nrsf":247070},{"facility":"Parking","operator":"Single Operator","stores":275,"nrsf":10217861}],"units":{"actual":94,"estimated":3816,"notAvailable":1248,"totalStoresInUnitsTab":5158},"sqftTotal":126128709,"regionLabel":"Region" },
+  "Australia": { "totalStores":2846,"pricing":{"yes":1468,"no":1378},"operatorType":[{"label":"REIT","stores":274,"yes":260,"no":14},{"label":"Large Operator","stores":529,"yes":481,"no":48},{"label":"Medium Operator","stores":476,"yes":270,"no":206},{"label":"Single Operator","stores":1567,"yes":457,"no":1110}],"regionSplit":[{"label":"Australian Capital Territory","reit":4,"large":8,"medium":1,"single":3,"total":16,"priceNo":null,"priceYes":16},{"label":"New South Wales","reit":60,"large":210,"medium":158,"single":472,"total":900,"priceNo":451,"priceYes":449},{"label":"Northern Territory","reit":3,"large":null,"medium":8,"single":8,"total":19,"priceNo":10,"priceYes":9},{"label":"Queensland","reit":81,"large":152,"medium":107,"single":334,"total":674,"priceNo":312,"priceYes":362},{"label":"South Australia","reit":11,"large":16,"medium":37,"single":150,"total":214,"priceNo":120,"priceYes":94},{"label":"Tasmania","reit":6,"large":1,"medium":9,"single":77,"total":93,"priceNo":55,"priceYes":38},{"label":"Victoria","reit":66,"large":112,"medium":111,"single":397,"total":686,"priceNo":320,"priceYes":366},{"label":"Western Australia","reit":43,"large":30,"medium":45,"single":126,"total":244,"priceNo":110,"priceYes":134}],"facilityType":null,"facilityDetail":null,"facilityOperatorNrsf":null,"units":{"actual":26,"estimated":2537,"notAvailable":258,"totalStoresInUnitsTab":2821},"sqftTotal":null,"regionLabel":"State" },
+  "New Zealand": { "totalStores":873,"pricing":{"yes":460,"no":413},"operatorType":[{"label":"Large Operator","stores":259,"yes":211,"no":48},{"label":"Medium Operator","stores":146,"yes":70,"no":76},{"label":"Single Operator","stores":468,"yes":179,"no":289}],"regionSplit":null,"facilityType":null,"facilityDetail":null,"facilityOperatorNrsf":null,"units":{"actual":0,"estimated":756,"notAvailable":104,"totalStoresInUnitsTab":860},"sqftTotal":null,"regionLabel":null }
+};
+
+const REGIONS = Object.keys(SHEETS).map((name) => ({
+  name, status: "cached", lastSynced: null, error: null, data: FALLBACK_SNAPSHOTS[name] || null
+}));
+
+function fmtNum(n) { return (n == null) ? "—" : Math.round(n).toLocaleString("en-US"); }
+function fmtCompact(n) { if (n == null) return "—"; if (n >= 1e6) return (n/1e6).toFixed(1) + "M"; if (n >= 1e3) return (n/1e3).toFixed(1) + "K"; return String(Math.round(n)); }
+function pct(a, b) { return b ? Math.round(a/b*100) : 0; }
+const PALETTE_HEX = ["#3987e5","#d95926","#199e70","#c98500"];
+const YES_COLOR = "#16c172", NO_COLOR = "#d95926";
+// One fixed accent per region — used for that region's card top-border, its
+// header band, and its "count" bar charts. Pricing yes/no bars always stay
+// green/orange everywhere since that's a fixed available/unavailable meaning.
+const REGION_ACCENT = { "Canada": "#3987e5", "United Kingdom": "#d95926", "Australia": "#199e70", "New Zealand": "#c98500" };
+function accentFor(name) { return REGION_ACCENT[name] || "#3987e5"; }
+
+/* ------------------------------ Fetch + parse (live) ------------------------------ */
+async function fetchGrid(cfg) {
+  // Preferred path: your private Apps Script endpoint (sheet stays unshared).
+  if (APPS_SCRIPT_URL) {
+    const res = await fetch(`${APPS_SCRIPT_URL}?region=${cfg.key}&_ts=${Date.now()}`, { cache: "no-store" });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const json = await res.json();
+    if (json.error) throw new Error(json.error);
+    return json.grid;
+  }
+  // Fallback path: Google's public CSV export (needs "anyone with the link").
+  const url = `https://docs.google.com/spreadsheets/d/${cfg.id}/gviz/tq?tqx=out:csv&gid=${cfg.gid}&_ts=${Date.now()}`;
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  const csvText = await res.text();
+  const parsed = Papa.parse(csvText, { skipEmptyLines: false });
+  return parsed.data;
+}
+
+let anyCorsError = false;
+
+async function syncRegion(region) {
+  const cfg = SHEETS[region.name];
+  try {
+    const grid = await fetchGrid(cfg);
+    const data = cfg.parser(grid);
+    region.data = data;
+    region.status = "loaded";
+    region.error = null;
+    region.lastSynced = new Date();
+  } catch (err) {
+    // Deliberately not console.error here — some in-app browsers surface every
+    // console.error as a blocking notification, which re-appears on every retry
+    // and makes the page unusable. Failures are tracked in region.error/status
+    // and shown in the page UI instead.
+    region.status = region.data ? (region.status === "loaded" ? "stale" : "cached") : "error";
+    region.error = String((err && err.message) || err);
+    anyCorsError = true;
+  }
+}
+
+let consecutiveFailures = 0;
+
+async function syncAll() {
+  anyCorsError = false;
+  document.getElementById("syncDot").className = "dot live";
+  document.getElementById("syncText").textContent = "Syncing…";
+  try {
+    await Promise.all(REGIONS.map(syncRegion));
+  } catch (e) {
+    // syncRegion never rethrows, but guard anyway so one bad tick can't kill polling.
+  }
+  const allOk = REGIONS.every((r) => r.status === "loaded");
+  const dot = document.getElementById("syncDot");
+  const text = document.getElementById("syncText");
+  if (allOk) { dot.className = "dot live"; text.textContent = "Live — synced " + new Date().toLocaleTimeString(); consecutiveFailures = 0; }
+  else if (REGIONS.some((r) => r.status === "loaded")) { dot.className = "dot error"; text.textContent = "Partially synced — some regions failed"; consecutiveFailures++; }
+  else { dot.className = "dot error"; text.textContent = "Sync failed — check sheet sharing"; consecutiveFailures++; }
+  document.getElementById("corsWarning").style.display = anyCorsError ? "block" : "none";
+  document.getElementById("footNote").textContent = "Sources: live Google Sheets (\"Regional Summary\" tab). Last attempt " + new Date().toLocaleTimeString() + (allOk ? ", auto-refreshing every " + (REFRESH_MS/1000) + "s." : ".");
+  // Stop hammering a broken connection: after 2 straight full failures, pause
+  // auto-retry and wait for a manual "Refresh now" instead of retrying forever.
+  if (consecutiveFailures >= 2 && pollTimer) { clearInterval(pollTimer); pollTimer = null; text.textContent += " — auto-refresh paused, tap Refresh now"; }
+  render();
+}
+
+/* ------------------------------ Region strip + dropdown ------------------------------ */
+let selectedRegion = REGIONS[0].name;
+function renderRegionPicker() {
+  const sel = document.getElementById("regionSelect");
+  sel.innerHTML = REGIONS.map((r) => `<option value="${r.name}">${r.name}</option>`).join("");
+  sel.value = selectedRegion;
+  sel.onchange = () => { selectedRegion = sel.value; render(); };
+}
+const BADGE_META = {
+  loaded: { cls: "live", text: "Live" },
+  cached: { cls: "pend", text: "Cached snapshot" },
+  stale:  { cls: "err",  text: "Sync error (cached)" },
+  error:  { cls: "err",  text: "Sync error" },
+  loading:{ cls: "pend", text: "Loading…" }
+};
+function renderRegionStrip() {
+  document.getElementById("regionStrip").innerHTML = REGIONS.map((r) => {
+    const badge = BADGE_META[r.status] || BADGE_META.loading;
+    const value = r.data ? fmtNum(r.data.totalStores) : "—";
+    const sub = r.data
+      ? (r.status === "loaded" ? "stores · synced " + (r.lastSynced ? r.lastSynced.toLocaleTimeString() : "—") : r.status === "cached" ? "stores · snapshot, not yet synced live" : "stores · " + (r.error || "sync error"))
+      : (r.error || "connecting…");
+    return `<div class="region-card ${r.status === "error" ? "err" : ""} ${r.name === selectedRegion ? "selected" : ""}" data-region="${r.name}" style="--accent-color:${accentFor(r.name)}">
+      <div class="rc-top"><span class="rc-name">${r.name}</span><span class="rc-badge ${badge.cls}">${badge.text}</span></div>
+      <div class="rc-value">${value}</div><div class="rc-sub">${sub}</div>
+    </div>`;
+  }).join("");
+  document.querySelectorAll(".region-card").forEach((card) => card.addEventListener("click", () => { selectedRegion = card.dataset.region; render(); }));
+}
+
+/* ------------------------------ Generic chart builders ------------------------------ */
+function barList(items, colorFn) {
+  const max = Math.max(1, ...items.map((i) => i.value || 0));
+  return items.map((i) => `
+    <div class="bar-row"><div class="bar-label">${i.label}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${((i.value||0)/max*100).toFixed(1)}%;background:${colorFn(i)}">
+      <span class="bar-value">${i.display != null ? i.display : fmtNum(i.value)}</span></div></div>
+    </div>`).join("");
+}
+function stackedYesNoList(items) {
+  return items.map((i) => {
+    const total = (i.yes||0) + (i.no||0);
+    const yesPct = pct(i.yes, total);
+    return `<div class="bar-row"><div class="bar-label">${i.label}</div>
+      <div class="stack-track"><div class="stack-seg" style="width:${yesPct}%;background:${YES_COLOR}"></div>
+      <div class="stack-seg" style="width:${100-yesPct}%;background:${NO_COLOR}"></div></div>
+      <div class="stack-label">${fmtNum(i.yes)} yes · ${fmtNum(i.no)} no (${yesPct}%)</div></div>`;
+  }).join("");
+}
+function donutSVG(entries, centerValue, centerLabel, size) {
+  size = size || 150;
+  const total = entries.reduce((s,e) => s + (e.value||0), 0) || 1;
+  const r = size >= 150 ? 58 : 44, cx = size/2, cy = size/2, stroke = size >= 150 ? 24 : 18;
+  const circumference = 2 * Math.PI * r;
+  let acc = 0;
+  const segs = entries.map((e) => {
+    const frac = (e.value||0)/total;
+    const dash = frac*circumference, gap = circumference-dash;
+    const offset = -acc*circumference; acc += frac;
+    return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${e.color}" stroke-width="${stroke}" stroke-dasharray="${dash} ${gap}" stroke-dashoffset="${offset}" transform="rotate(-90 ${cx} ${cy})"></circle>`;
+  }).join("");
+  const legend = entries.map((e) => `<li><span class="swatch" style="background:${e.color}"></span>${e.label}<span class="lv">${Math.round((e.value||0)/total*100)}%</span></li>`).join("");
+  return `<svg width="${size}" height="${size}" role="img"><circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--gridline)" stroke-width="${stroke}"></circle>${segs}
+    <text x="${cx}" y="${cy-3}" text-anchor="middle" class="donut-center-value">${fmtCompact(centerValue)}</text>
+    <text x="${cx}" y="${cy+13}" text-anchor="middle" class="donut-center-label">${centerLabel}</text></svg><ul class="legend">${legend}</ul>`;
+}
+const emptyCard = (msg) => `<div class="card empty">${msg}</div>`;
+
+/* ------------------------------ Per-region render ------------------------------ */
+function renderRegionBlock(region) {
+  if (region.status === "error" && !region.data) {
+    return `<div class="region-block">
+      <div class="region-head"><h2>${region.name}</h2><span class="rh-sub">Sync failed</span></div>
+      <div class="card" style="padding:30px 20px;color:var(--bad);text-align:center;">
+        Couldn't reach this sheet: ${region.error || "unknown error"}.<br>Check the sheet is shared as "Anyone with the link can view", then hit Refresh now.
+      </div></div>`;
+  }
+  const d = region.data;
+  const yesTotal = d.pricing.yes, noTotal = d.pricing.no, storeTotal = d.totalStores;
+  const accent = accentFor(region.name);
+
+  const kpis = `<div class="kpi-row">
+    <div class="kpi-tile" style="--kpi-accent:${accent}"><div class="label">Total Stores</div><div class="value">${fmtNum(storeTotal)}</div><div class="sub">${region.lastSynced ? "synced " + region.lastSynced.toLocaleTimeString() : "cached snapshot"}</div></div>
+    <div class="kpi-tile" style="--kpi-accent:${YES_COLOR}"><div class="label">Price Available — Yes</div><div class="value">${fmtNum(yesTotal)}</div><div class="sub">${pct(yesTotal, yesTotal+noTotal)}% of stores</div></div>
+    <div class="kpi-tile" style="--kpi-accent:${NO_COLOR}"><div class="label">Price Available — No</div><div class="value">${fmtNum(noTotal)}</div><div class="sub">${pct(noTotal, yesTotal+noTotal)}% of stores</div></div>
+    <div class="kpi-tile" style="--kpi-accent:#eda100"><div class="label">${d.sqftTotal ? "Total NRSF" : "Units Coverage"}</div>
+      <div class="value">${d.sqftTotal ? fmtCompact(d.sqftTotal) : fmtNum((d.units.actual||0) + (d.units.estimated||0))}</div>
+      <div class="sub">${d.sqftTotal ? fmtNum(d.sqftTotal) + " sq ft" : "actual + estimated unit counts"}</div></div>
+  </div>`;
+
+  const operatorBar = barList(d.operatorType.map((o) => ({label: o.label, value: o.stores})), () => accent);
+  const operatorPricing = stackedYesNoList(d.operatorType.map((o) => ({label: o.label, yes: o.yes, no: o.no})));
+
+  let regionCharts = "";
+  if (d.regionSplit && d.regionSplit.length) {
+    const regionKeys = Object.keys(d.regionSplit[0]).filter((k) => !["label","total","priceYes","priceNo"].includes(k));
+    const rl = d.regionLabel || "Region";
+    const storeBar = barList(d.regionSplit.map((s) => ({label: s.label, value: s.total})), () => accent);
+    const pricingBar = stackedYesNoList(d.regionSplit.map((s) => ({label: s.label, yes: s.priceYes, no: s.priceNo})));
+    regionCharts = `<div class="chart-row">
+      <div class="card"><h3>Stores by ${rl}</h3><div class="card-sub">Store count</div>${storeBar}</div>
+      <div class="card"><h3>Pricing Yes/No by ${rl}</h3><div class="card-sub">Actual counts, not just a percentage</div>
+        <div class="legend-row"><span><span class="swatch" style="background:${YES_COLOR}"></span>Price available</span><span><span class="swatch" style="background:${NO_COLOR}"></span>Price not available</span></div>
+        ${pricingBar}</div></div>
+      <div class="chart-row" style="grid-template-columns:1fr;"><div class="card">
+        <h3>${rl} — full breakdown</h3><div class="card-sub">Operator type and pricing by ${rl.toLowerCase()}</div>
+        <table class="data-table"><thead><tr><th>${rl}</th>${regionKeys.map((k)=>`<th>${k[0].toUpperCase()+k.slice(1)}</th>`).join("")}<th>Total</th><th>Price Yes</th><th>Price No</th></tr></thead>
+        <tbody>${d.regionSplit.map((s) => `<tr><td>${s.label}</td>${regionKeys.map((k)=>`<td class="num">${fmtNum(s[k])}</td>`).join("")}<td class="num"><strong>${fmtNum(s.total)}</strong></td><td class="num">${fmtNum(s.priceYes)}</td><td class="num">${fmtNum(s.priceNo)}</td></tr>`).join("")}
+        <tr class="total-row"><td>Total</td>${regionKeys.map((k)=>`<td class="num">${fmtNum(d.regionSplit.reduce((sum,s)=>sum+(s[k]||0),0))}</td>`).join("")}<td class="num">${fmtNum(storeTotal)}</td><td class="num">${fmtNum(yesTotal)}</td><td class="num">${fmtNum(noTotal)}</td></tr>
+        </tbody></table></div></div>`;
+  } else {
+    regionCharts = `<div class="chart-row">${emptyCard("No province/region/state breakdown on this sheet's Summary tab.")}</div>`;
+  }
+
+  let facilitySection = "";
+  if (d.facilityType && Object.keys(d.facilityType).length) {
+    const entries = Object.entries(d.facilityType).map(([label,value],i) => ({label, value, color: PALETTE_HEX[i % 4]}));
+    facilitySection = `<div class="card"><h3>Facility Type Mix</h3><div class="card-sub">Store count share</div><div class="donut-wrap">${donutSVG(entries, storeTotal, "stores", 150)}</div></div>`;
+  } else {
+    facilitySection = emptyCard("No facility-type breakdown on this sheet's Summary tab.");
+  }
+  const unitsChart = barList([
+    {label:"Actual (from website)", value:d.units.actual},
+    {label:"Estimated", value:d.units.estimated},
+    {label:"Not available", value:d.units.notAvailable}
+  ], (i) => i.label.startsWith("Actual") ? "var(--series-3)" : i.label.startsWith("Estimated") ? "var(--series-1)" : "var(--text-muted)");
+  const unitsNote = (d.units.totalStoresInUnitsTab != null && d.units.totalStoresInUnitsTab !== storeTotal)
+    ? `<div class="foot-note">Note: the sheet's "Units Summary" section totals ${fmtNum(d.units.totalStoresInUnitsTab)} stores — this differs from the ${fmtNum(storeTotal)} total elsewhere on the tab. Shown as reported.</div>` : "";
+
+  let detailTables = "";
+  if (d.facilityDetail) {
+    detailTables += `<div class="card"><h3>Facility Type — full breakdown</h3><div class="card-sub">Every sub-type reported, with price yes/no</div>
+      <table class="data-table"><thead><tr><th>Category</th><th>Facility Type</th><th>Price — Yes</th><th>Price — No</th><th>Total</th></tr></thead>
+      <tbody>${d.facilityDetail.map((x) => `<tr><td>${x.category}</td><td>${x.type}</td><td class="num">${fmtNum(x.yes)}</td><td class="num">${fmtNum(x.no)}</td><td class="num"><strong>${fmtNum(x.total)}</strong></td></tr>`).join("")}</tbody></table></div>`;
+  }
+  if (d.facilityOperatorNrsf) {
+    detailTables += `<div class="card"><h3>Facility Type × Operator Type — NRSF</h3><div class="card-sub">Store count and net rentable sq ft per slice</div>
+      <table class="data-table"><thead><tr><th>Facility Type</th><th>Operator Type</th><th>Stores</th><th>NRSF</th></tr></thead>
+      <tbody>${d.facilityOperatorNrsf.map((x) => `<tr><td>${x.facility}</td><td>${x.operator}</td><td class="num">${fmtNum(x.stores)}</td><td class="num">${x.nrsf ? fmtNum(x.nrsf) : "—"}</td></tr>`).join("")}</tbody></table></div>`;
+  }
+
+  return `<div class="region-block">
+    <div class="region-head" style="--accent-color:${accent}"><h2>${region.name}</h2><span class="rh-sub">${
+      region.status === "loaded" ? "Live · synced " + (region.lastSynced ? region.lastSynced.toLocaleTimeString() : "—")
+      : region.status === "stale" ? "Sync error, showing last good sync — " + (region.error || "")
+      : "Cached snapshot — waiting on first live sync"
+    }</span></div>
+    ${kpis}
+    <div class="chart-row">
+      <div class="card"><h3>Stores by Operator Type</h3><div class="card-sub">Store count</div>${operatorBar}</div>
+      <div class="card"><h3>Pricing Yes/No by Operator Type</h3><div class="card-sub">Actual counts, not just a percentage</div>
+        <div class="legend-row"><span><span class="swatch" style="background:${YES_COLOR}"></span>Price available</span><span><span class="swatch" style="background:${NO_COLOR}"></span>Price not available</span></div>
+        ${operatorPricing}</div>
+    </div>
+    ${regionCharts}
+    <div class="chart-row">
+      ${facilitySection}
+      <div class="card"><h3>Units Data Coverage</h3><div class="card-sub">How unit counts were obtained</div>${unitsChart}${unitsNote}</div>
+    </div>
+    ${detailTables ? `<div class="chart-row">${detailTables}</div>` : ""}
+  </div>`;
+}
+
+function render() {
+  renderRegionPicker();
+  renderRegionStrip();
+  const region = REGIONS.find((r) => r.name === selectedRegion);
+  document.getElementById("regionBlocks").innerHTML = region.status === "loading"
+    ? `<div class="card" style="text-align:center;padding:30px;color:var(--text-muted);">Loading ${region.name}…</div>`
+    : renderRegionBlock(region);
+}
+
+document.getElementById("intervalSelect").addEventListener("change", (e) => { REFRESH_MS = Number(e.target.value); restartPolling(); });
+document.getElementById("refreshNow").addEventListener("click", () => { consecutiveFailures = 0; restartPolling(); syncAll(); });
+let pollTimer = null;
+function restartPolling() { if (pollTimer) clearInterval(pollTimer); pollTimer = setInterval(syncAll, REFRESH_MS); }
+
+render();
+syncAll();
+restartPolling();
+</script>
+</body>
+</html>
