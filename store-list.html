@@ -19,14 +19,14 @@
   }
   * { box-sizing: border-box; }
   html, body { margin:0; padding:0; background: var(--page); color: var(--text-primary); font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
-  .wrap { max-width: 1240px; margin: 0 auto; padding: 0 24px 60px; }
+  .wrap { max-width: 1400px; margin: 0 auto; padding: 0 24px 60px; }
 
   header.top {
     background: linear-gradient(120deg, var(--navy) 0%, var(--navy-2) 100%);
     margin: 0 0 24px; padding: 22px 0 20px;
   }
   header.top .header-inner {
-    max-width: 1240px; margin: 0 auto; padding: 0 24px;
+    max-width: 1400px; margin: 0 auto; padding: 0 24px;
     display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;
   }
   header.top::after {
@@ -46,9 +46,10 @@
   .region-title h2 { margin:0; font-size:19px; font-weight:800; color:#fff; }
   .region-title .rt-sub { font-size:12.5px; color: rgba(255,255,255,0.85); }
 
-  table { width:100%; border-collapse: collapse; background: var(--surface-1); border:1px solid var(--border); border-radius:10px; overflow:hidden; font-size:13.5px; }
-  th, td { padding:10px 14px; text-align:left; border-bottom:1px solid var(--gridline); }
-  th { background: rgba(255,255,255,0.04); color: var(--text-secondary); font-weight:700; font-size:12px; text-transform:uppercase; letter-spacing:.03em; }
+  .table-scroll { overflow-x:auto; border:1px solid var(--border); border-radius:10px; background: var(--surface-1); }
+  table { width:100%; border-collapse: collapse; font-size:13px; white-space:nowrap; }
+  th, td { padding:9px 12px; text-align:left; border-bottom:1px solid var(--gridline); }
+  th { background: rgba(255,255,255,0.04); color: var(--text-secondary); font-weight:700; font-size:11.5px; text-transform:uppercase; letter-spacing:.03em; position:sticky; top:0; }
   tr:last-child td { border-bottom:none; }
   tr:hover td { background: rgba(255,255,255,0.03); }
   .muted { color: var(--text-muted); font-size:12.5px; margin: -6px 0 16px; }
@@ -68,10 +69,15 @@
 
   <div class="banner">
     <strong>Preview — sample data only.</strong> This page shows how the store list will
-    look and work. Once a "Store List" tab is added to each region's Google Sheet (one
-    row per store — name, address, city, state/province, sqft, units, year built,
-    source), this page will read that tab and show your real stores automatically,
-    the same way the main dashboard reads the Regional Summary tab.
+    look and work, using all the real column headers from your "Store List" sheet
+    (Master ID, Store ID, Store Name, URL, Address, City, State, Zipcode, Phone Number,
+    Company Name, Latitude, Longitude, both Self Storage and Parking sqft fields,
+    Square Footage, Rentable Sqft, Sqft Flag, Year Built, Company Type, Operator Type,
+    Owned By, Class Type, Container Flag, Created Date, Stores Count, County, Micro SA,
+    Metro SA, Country ID, Region ID, and Price Status). Scroll right to see every
+    column. Once that tab is connected per region, this page will read it and show your
+    real stores automatically — the same way the main dashboard reads the Regional
+    Summary tab.
   </div>
 
   <div class="region-title" id="regionTitle" style="--accent-color:#3987e5">
@@ -82,48 +88,662 @@
   </div>
   <p class="muted" id="rowCount"></p>
 
-  <table>
-    <thead>
-      <tr>
-        <th>Store Name</th><th>Address</th><th>City</th><th>State / Province</th>
-        <th>Sqft (NRSF)</th><th>Units</th><th>Year Built</th><th>Source</th>
-      </tr>
-    </thead>
-    <tbody id="tableBody"></tbody>
-  </table>
+  <div class="table-scroll">
+    <table>
+      <thead><tr id="headRow"></tr></thead>
+      <tbody id="tableBody"></tbody>
+    </table>
+  </div>
 </div>
 
 <script>
 const ACCENTS = { canada: "#3987e5", uk: "#d95926", australia: "#199e70", newzealand: "#c98500" };
 const NAMES = { canada: "Canada", uk: "United Kingdom", australia: "Australia", newzealand: "New Zealand" };
 
-// Sample/demo rows only — replace with a real "Store List" tab per region later.
+// COLUMNS: [fieldKey, displayLabel] pairs, matching the exact headers from your real
+// "Store List" sheet. Once that tab is connected per region, each SAMPLE_DATA row
+// below becomes one real row read from that tab, matched by these same field keys.
+const COLUMNS = [["Masterid", "Master ID"], ["Storeid", "Store ID"], ["Storename", "Store Name"], ["Url", "URL"], ["Address", "Address"], ["City", "City"], ["State", "State"], ["Zipcode", "Zipcode"], ["Phonenumber", "Phone Number"], ["Companyname", "Company Name"], ["Latitude", "Latitude"], ["Longitude", "Longitude"], ["Selfstoragetotalsquarefootage", "Self Storage Total Sqft"], ["Selfstoragerentablesquarefootage", "Self Storage Rentable Sqft"], ["Parkingtotalsquarefootage", "Parking Total Sqft"], ["Parkingrentablesquarefootage", "Parking Rentable Sqft"], ["Squarefootage", "Square Footage"], ["Rentablesqft", "Rentable Sqft"], ["Sqftflag", "Sqft Flag"], ["Yearbuild", "Year Built"], ["Companytype", "Company Type"], ["Operatortype", "Operator Type"], ["Ownedby", "Owned By"], ["Classtype", "Class Type"], ["Containerflag", "Container Flag"], ["Createddate", "Created Date"], ["Storescount", "Stores Count"], ["County", "County"], ["Microsa", "Micro SA"], ["Metrosa", "Metro SA"], ["Countryid", "Country ID"], ["Regionid", "Region ID"], ["Pricestatus", "Price Status"]];
+
+// Sample/demo rows only.
 const SAMPLE_DATA = {
-  canada: [
-    ["Stortrack Self Storage", "482 King St W", "Toronto", "ON", "68,500", "612", "2005", "Website"],
-    ["Maple Storage Co.", "1150 Rue Sainte-Catherine", "Montreal", "QC", "54,200", "480", "2011", "Assessor"],
-    ["Prairie Self Storage", "220 8th Ave SW", "Calgary", "AB", "41,000", "365", "1998", "Website"],
-    ["Coastal Storage Depot", "900 Douglas St", "Victoria", "BC", "37,800", "310", "2016", "Permit"],
-    ["Northern Vault Storage", "77 Portage Ave", "Winnipeg", "MB", "29,500", "260", "2003", "Website"]
+  "canada": [
+    {
+      "Masterid": "CA-0001",
+      "Storeid": "CA-S-482",
+      "Storename": "Stortrack Self Storage",
+      "Url": "#",
+      "Address": "482 King St W",
+      "City": "Toronto",
+      "State": "ON",
+      "Zipcode": "M5V 1K4",
+      "Phonenumber": "(416) 555-0142",
+      "Companyname": "Stortrack Group",
+      "Latitude": "43.6448",
+      "Longitude": "-79.3957",
+      "Selfstoragetotalsquarefootage": "68500",
+      "Selfstoragerentablesquarefootage": "62000",
+      "Parkingtotalsquarefootage": "0",
+      "Parkingrentablesquarefootage": "0",
+      "Squarefootage": "68500",
+      "Rentablesqft": "62000",
+      "Sqftflag": "Actual",
+      "Yearbuild": "2005",
+      "Companytype": "Public",
+      "Operatortype": "Large Operator",
+      "Ownedby": "Public REIT",
+      "Classtype": "Class A",
+      "Containerflag": "No",
+      "Createddate": "2019-03-11",
+      "Storescount": "1",
+      "County": "Toronto",
+      "Microsa": "Toronto Micro",
+      "Metrosa": "Toronto Metro",
+      "Countryid": "CA",
+      "Regionid": "ON-01",
+      "Pricestatus": "Available"
+    },
+    {
+      "Masterid": "CA-0002",
+      "Storeid": "CA-S-115",
+      "Storename": "Maple Storage Co.",
+      "Url": "#",
+      "Address": "1150 Rue Sainte-Catherine",
+      "City": "Montreal",
+      "State": "QC",
+      "Zipcode": "H3B 1E1",
+      "Phonenumber": "(514) 555-0198",
+      "Companyname": "Maple Storage",
+      "Latitude": "45.5017",
+      "Longitude": "-73.5673",
+      "Selfstoragetotalsquarefootage": "54200",
+      "Selfstoragerentablesquarefootage": "49800",
+      "Parkingtotalsquarefootage": "0",
+      "Parkingrentablesquarefootage": "0",
+      "Squarefootage": "54200",
+      "Rentablesqft": "49800",
+      "Sqftflag": "Estimated",
+      "Yearbuild": "2011",
+      "Companytype": "Private",
+      "Operatortype": "Medium Operator",
+      "Ownedby": "Private",
+      "Classtype": "Class B",
+      "Containerflag": "No",
+      "Createddate": "2020-07-02",
+      "Storescount": "1",
+      "County": "Montreal",
+      "Microsa": "Montreal Micro",
+      "Metrosa": "Montreal Metro",
+      "Countryid": "CA",
+      "Regionid": "QC-01",
+      "Pricestatus": "Available"
+    },
+    {
+      "Masterid": "CA-0003",
+      "Storeid": "CA-S-220",
+      "Storename": "Prairie Self Storage",
+      "Url": "#",
+      "Address": "220 8th Ave SW",
+      "City": "Calgary",
+      "State": "AB",
+      "Zipcode": "T2P 1B8",
+      "Phonenumber": "(403) 555-0176",
+      "Companyname": "Prairie Storage Inc.",
+      "Latitude": "51.0447",
+      "Longitude": "-114.0719",
+      "Selfstoragetotalsquarefootage": "41000",
+      "Selfstoragerentablesquarefootage": "37500",
+      "Parkingtotalsquarefootage": "0",
+      "Parkingrentablesquarefootage": "0",
+      "Squarefootage": "41000",
+      "Rentablesqft": "37500",
+      "Sqftflag": "Estimated",
+      "Yearbuild": "1998",
+      "Companytype": "Private",
+      "Operatortype": "Single Operator",
+      "Ownedby": "Private",
+      "Classtype": "Class B",
+      "Containerflag": "No",
+      "Createddate": "2018-11-20",
+      "Storescount": "1",
+      "County": "Calgary",
+      "Microsa": "Calgary Micro",
+      "Metrosa": "Calgary Metro",
+      "Countryid": "CA",
+      "Regionid": "AB-01",
+      "Pricestatus": "Not Available"
+    },
+    {
+      "Masterid": "CA-0004",
+      "Storeid": "CA-S-900",
+      "Storename": "Coastal Storage Depot",
+      "Url": "#",
+      "Address": "900 Douglas St",
+      "City": "Victoria",
+      "State": "BC",
+      "Zipcode": "V8W 2C5",
+      "Phonenumber": "(250) 555-0133",
+      "Companyname": "Coastal Storage",
+      "Latitude": "48.4284",
+      "Longitude": "-123.3656",
+      "Selfstoragetotalsquarefootage": "37800",
+      "Selfstoragerentablesquarefootage": "34900",
+      "Parkingtotalsquarefootage": "0",
+      "Parkingrentablesquarefootage": "0",
+      "Squarefootage": "37800",
+      "Rentablesqft": "34900",
+      "Sqftflag": "Actual",
+      "Yearbuild": "2016",
+      "Companytype": "Private",
+      "Operatortype": "Single Operator",
+      "Ownedby": "Private",
+      "Classtype": "Class A",
+      "Containerflag": "No",
+      "Createddate": "2021-05-14",
+      "Storescount": "1",
+      "County": "Victoria",
+      "Microsa": "Victoria Micro",
+      "Metrosa": "Victoria Metro",
+      "Countryid": "CA",
+      "Regionid": "BC-01",
+      "Pricestatus": "Available"
+    },
+    {
+      "Masterid": "CA-0005",
+      "Storeid": "CA-S-077",
+      "Storename": "Northern Vault Storage",
+      "Url": "#",
+      "Address": "77 Portage Ave",
+      "City": "Winnipeg",
+      "State": "MB",
+      "Zipcode": "R3B 3A9",
+      "Phonenumber": "(204) 555-0119",
+      "Companyname": "Northern Vault",
+      "Latitude": "49.8951",
+      "Longitude": "-97.1384",
+      "Selfstoragetotalsquarefootage": "29500",
+      "Selfstoragerentablesquarefootage": "27000",
+      "Parkingtotalsquarefootage": "0",
+      "Parkingrentablesquarefootage": "0",
+      "Squarefootage": "29500",
+      "Rentablesqft": "27000",
+      "Sqftflag": "Estimated",
+      "Yearbuild": "2003",
+      "Companytype": "Private",
+      "Operatortype": "Medium Operator",
+      "Ownedby": "Private",
+      "Classtype": "Class C",
+      "Containerflag": "No",
+      "Createddate": "2019-09-08",
+      "Storescount": "1",
+      "County": "Winnipeg",
+      "Microsa": "Winnipeg Micro",
+      "Metrosa": "Winnipeg Metro",
+      "Countryid": "CA",
+      "Regionid": "MB-01",
+      "Pricestatus": "Not Available"
+    }
   ],
-  uk: [
-    ["Big Yellow Self Storage", "45 High Rd", "London", "England", "72,300", "690", "2007", "Website"],
-    ["Access Self Storage", "12 Deansgate", "Manchester", "England", "58,900", "540", "2014", "Assessor"],
-    ["Safestore Bristol", "3 Victoria St", "Bristol", "England", "44,100", "410", "1999", "Website"],
-    ["Storage King Cardiff", "88 Queen St", "Cardiff", "Wales", "36,700", "330", "2018", "Permit"],
-    ["Shurgard Edinburgh", "21 Princes St", "Edinburgh", "Scotland", "49,200", "455", "2009", "Website"]
+  "uk": [
+    {
+      "Masterid": "UK-0001",
+      "Storeid": "UK-S-045",
+      "Storename": "Big Yellow Self Storage",
+      "Url": "#",
+      "Address": "45 High Rd",
+      "City": "London",
+      "State": "England",
+      "Zipcode": "N22 6BG",
+      "Phonenumber": "020 7946 0958",
+      "Companyname": "Big Yellow Group",
+      "Latitude": "51.5074",
+      "Longitude": "-0.1278",
+      "Selfstoragetotalsquarefootage": "72300",
+      "Selfstoragerentablesquarefootage": "66000",
+      "Parkingtotalsquarefootage": "0",
+      "Parkingrentablesquarefootage": "0",
+      "Squarefootage": "72300",
+      "Rentablesqft": "66000",
+      "Sqftflag": "Actual",
+      "Yearbuild": "2007",
+      "Companytype": "Public",
+      "Operatortype": "Large Operator",
+      "Ownedby": "Public REIT",
+      "Classtype": "Class A",
+      "Containerflag": "No",
+      "Createddate": "2018-02-19",
+      "Storescount": "1",
+      "County": "Greater London",
+      "Microsa": "London Micro",
+      "Metrosa": "London Metro",
+      "Countryid": "UK",
+      "Regionid": "ENG-01",
+      "Pricestatus": "Available"
+    },
+    {
+      "Masterid": "UK-0002",
+      "Storeid": "UK-S-012",
+      "Storename": "Access Self Storage",
+      "Url": "#",
+      "Address": "12 Deansgate",
+      "City": "Manchester",
+      "State": "England",
+      "Zipcode": "M3 2BW",
+      "Phonenumber": "0161 496 0101",
+      "Companyname": "Access Storage",
+      "Latitude": "53.4808",
+      "Longitude": "-2.2426",
+      "Selfstoragetotalsquarefootage": "58900",
+      "Selfstoragerentablesquarefootage": "54000",
+      "Parkingtotalsquarefootage": "0",
+      "Parkingrentablesquarefootage": "0",
+      "Squarefootage": "58900",
+      "Rentablesqft": "54000",
+      "Sqftflag": "Estimated",
+      "Yearbuild": "2014",
+      "Companytype": "Private",
+      "Operatortype": "Medium Operator",
+      "Ownedby": "Private",
+      "Classtype": "Class B",
+      "Containerflag": "No",
+      "Createddate": "2020-01-30",
+      "Storescount": "1",
+      "County": "Greater Manchester",
+      "Microsa": "Manchester Micro",
+      "Metrosa": "Manchester Metro",
+      "Countryid": "UK",
+      "Regionid": "ENG-02",
+      "Pricestatus": "Available"
+    },
+    {
+      "Masterid": "UK-0003",
+      "Storeid": "UK-S-003",
+      "Storename": "Safestore Bristol",
+      "Url": "#",
+      "Address": "3 Victoria St",
+      "City": "Bristol",
+      "State": "England",
+      "Zipcode": "BS1 6AA",
+      "Phonenumber": "0117 496 0177",
+      "Companyname": "Safestore",
+      "Latitude": "51.4545",
+      "Longitude": "-2.5879",
+      "Selfstoragetotalsquarefootage": "44100",
+      "Selfstoragerentablesquarefootage": "40500",
+      "Parkingtotalsquarefootage": "0",
+      "Parkingrentablesquarefootage": "0",
+      "Squarefootage": "44100",
+      "Rentablesqft": "40500",
+      "Sqftflag": "Estimated",
+      "Yearbuild": "1999",
+      "Companytype": "Public",
+      "Operatortype": "Small Operator",
+      "Ownedby": "Public",
+      "Classtype": "Class B",
+      "Containerflag": "No",
+      "Createddate": "2017-06-22",
+      "Storescount": "1",
+      "County": "Bristol",
+      "Microsa": "Bristol Micro",
+      "Metrosa": "Bristol Metro",
+      "Countryid": "UK",
+      "Regionid": "ENG-03",
+      "Pricestatus": "Not Available"
+    },
+    {
+      "Masterid": "UK-0004",
+      "Storeid": "UK-S-088",
+      "Storename": "Storage King Cardiff",
+      "Url": "#",
+      "Address": "88 Queen St",
+      "City": "Cardiff",
+      "State": "Wales",
+      "Zipcode": "CF10 2BW",
+      "Phonenumber": "029 2018 0144",
+      "Companyname": "Storage King",
+      "Latitude": "51.4816",
+      "Longitude": "-3.1791",
+      "Selfstoragetotalsquarefootage": "36700",
+      "Selfstoragerentablesquarefootage": "33800",
+      "Parkingtotalsquarefootage": "0",
+      "Parkingrentablesquarefootage": "0",
+      "Squarefootage": "36700",
+      "Rentablesqft": "33800",
+      "Sqftflag": "Actual",
+      "Yearbuild": "2018",
+      "Companytype": "Private",
+      "Operatortype": "Single Operator",
+      "Ownedby": "Private",
+      "Classtype": "Class A",
+      "Containerflag": "No",
+      "Createddate": "2021-08-04",
+      "Storescount": "1",
+      "County": "Cardiff",
+      "Microsa": "Cardiff Micro",
+      "Metrosa": "Cardiff Metro",
+      "Countryid": "UK",
+      "Regionid": "WLS-01",
+      "Pricestatus": "Available"
+    },
+    {
+      "Masterid": "UK-0005",
+      "Storeid": "UK-S-021",
+      "Storename": "Shurgard Edinburgh",
+      "Url": "#",
+      "Address": "21 Princes St",
+      "City": "Edinburgh",
+      "State": "Scotland",
+      "Zipcode": "EH2 2AN",
+      "Phonenumber": "0131 496 0188",
+      "Companyname": "Shurgard",
+      "Latitude": "55.9533",
+      "Longitude": "-3.1883",
+      "Selfstoragetotalsquarefootage": "49200",
+      "Selfstoragerentablesquarefootage": "45000",
+      "Parkingtotalsquarefootage": "0",
+      "Parkingrentablesquarefootage": "0",
+      "Squarefootage": "49200",
+      "Rentablesqft": "45000",
+      "Sqftflag": "Estimated",
+      "Yearbuild": "2009",
+      "Companytype": "Public",
+      "Operatortype": "Large Operator",
+      "Ownedby": "Public",
+      "Classtype": "Class A",
+      "Containerflag": "No",
+      "Createddate": "2019-04-17",
+      "Storescount": "1",
+      "County": "Edinburgh",
+      "Microsa": "Edinburgh Micro",
+      "Metrosa": "Edinburgh Metro",
+      "Countryid": "UK",
+      "Regionid": "SCT-01",
+      "Pricestatus": "Available"
+    }
   ],
-  australia: [
-    ["National Storage Sydney", "5 George St", "Sydney", "NSW", "61,000", "580", "2006", "Website"],
-    ["Kennards Self Storage", "150 Elizabeth St", "Melbourne", "VIC", "55,400", "520", "2012", "Assessor"],
-    ["Storage King Brisbane", "22 Adelaide St", "Brisbane", "QLD", "38,600", "350", "2001", "Website"],
-    ["Rent-A-Space Perth", "9 Hay St", "Perth", "WA", "31,200", "290", "2015", "Permit"],
-    ["Fort Knox Storage", "40 Rundle St", "Adelaide", "SA", "27,900", "250", "1997", "Website"]
+  "australia": [
+    {
+      "Masterid": "AU-0001",
+      "Storeid": "AU-S-005",
+      "Storename": "National Storage Sydney",
+      "Url": "#",
+      "Address": "5 George St",
+      "City": "Sydney",
+      "State": "NSW",
+      "Zipcode": "2000",
+      "Phonenumber": "(02) 9046 0100",
+      "Companyname": "National Storage REIT",
+      "Latitude": "-33.8688",
+      "Longitude": "151.2093",
+      "Selfstoragetotalsquarefootage": "61000",
+      "Selfstoragerentablesquarefootage": "56000",
+      "Parkingtotalsquarefootage": "0",
+      "Parkingrentablesquarefootage": "0",
+      "Squarefootage": "61000",
+      "Rentablesqft": "56000",
+      "Sqftflag": "Actual",
+      "Yearbuild": "2006",
+      "Companytype": "Public",
+      "Operatortype": "REIT",
+      "Ownedby": "Public REIT",
+      "Classtype": "Class A",
+      "Containerflag": "No",
+      "Createddate": "2018-10-12",
+      "Storescount": "1",
+      "County": "Sydney",
+      "Microsa": "Sydney Micro",
+      "Metrosa": "Sydney Metro",
+      "Countryid": "AU",
+      "Regionid": "NSW-01",
+      "Pricestatus": "Available"
+    },
+    {
+      "Masterid": "AU-0002",
+      "Storeid": "AU-S-150",
+      "Storename": "Kennards Self Storage",
+      "Url": "#",
+      "Address": "150 Elizabeth St",
+      "City": "Melbourne",
+      "State": "VIC",
+      "Zipcode": "3000",
+      "Phonenumber": "(03) 9046 0111",
+      "Companyname": "Kennards",
+      "Latitude": "-37.8136",
+      "Longitude": "144.9631",
+      "Selfstoragetotalsquarefootage": "55400",
+      "Selfstoragerentablesquarefootage": "50800",
+      "Parkingtotalsquarefootage": "0",
+      "Parkingrentablesquarefootage": "0",
+      "Squarefootage": "55400",
+      "Rentablesqft": "50800",
+      "Sqftflag": "Estimated",
+      "Yearbuild": "2012",
+      "Companytype": "Private",
+      "Operatortype": "Large Operator",
+      "Ownedby": "Private",
+      "Classtype": "Class A",
+      "Containerflag": "No",
+      "Createddate": "2020-03-25",
+      "Storescount": "1",
+      "County": "Melbourne",
+      "Microsa": "Melbourne Micro",
+      "Metrosa": "Melbourne Metro",
+      "Countryid": "AU",
+      "Regionid": "VIC-01",
+      "Pricestatus": "Available"
+    },
+    {
+      "Masterid": "AU-0003",
+      "Storeid": "AU-S-022",
+      "Storename": "Storage King Brisbane",
+      "Url": "#",
+      "Address": "22 Adelaide St",
+      "City": "Brisbane",
+      "State": "QLD",
+      "Zipcode": "4000",
+      "Phonenumber": "(07) 3046 0122",
+      "Companyname": "Storage King",
+      "Latitude": "-27.4698",
+      "Longitude": "153.0251",
+      "Selfstoragetotalsquarefootage": "38600",
+      "Selfstoragerentablesquarefootage": "35400",
+      "Parkingtotalsquarefootage": "0",
+      "Parkingrentablesquarefootage": "0",
+      "Squarefootage": "38600",
+      "Rentablesqft": "35400",
+      "Sqftflag": "Estimated",
+      "Yearbuild": "2001",
+      "Companytype": "Private",
+      "Operatortype": "Medium Operator",
+      "Ownedby": "Private",
+      "Classtype": "Class B",
+      "Containerflag": "No",
+      "Createddate": "2017-12-05",
+      "Storescount": "1",
+      "County": "Brisbane",
+      "Microsa": "Brisbane Micro",
+      "Metrosa": "Brisbane Metro",
+      "Countryid": "AU",
+      "Regionid": "QLD-01",
+      "Pricestatus": "Not Available"
+    },
+    {
+      "Masterid": "AU-0004",
+      "Storeid": "AU-S-009",
+      "Storename": "Rent-A-Space Perth",
+      "Url": "#",
+      "Address": "9 Hay St",
+      "City": "Perth",
+      "State": "WA",
+      "Zipcode": "6000",
+      "Phonenumber": "(08) 9046 0133",
+      "Companyname": "Rent-A-Space",
+      "Latitude": "-31.9505",
+      "Longitude": "115.8605",
+      "Selfstoragetotalsquarefootage": "31200",
+      "Selfstoragerentablesquarefootage": "28700",
+      "Parkingtotalsquarefootage": "0",
+      "Parkingrentablesquarefootage": "0",
+      "Squarefootage": "31200",
+      "Rentablesqft": "28700",
+      "Sqftflag": "Actual",
+      "Yearbuild": "2015",
+      "Companytype": "Private",
+      "Operatortype": "Single Operator",
+      "Ownedby": "Private",
+      "Classtype": "Class B",
+      "Containerflag": "No",
+      "Createddate": "2021-01-09",
+      "Storescount": "1",
+      "County": "Perth",
+      "Microsa": "Perth Micro",
+      "Metrosa": "Perth Metro",
+      "Countryid": "AU",
+      "Regionid": "WA-01",
+      "Pricestatus": "Available"
+    },
+    {
+      "Masterid": "AU-0005",
+      "Storeid": "AU-S-040",
+      "Storename": "Fort Knox Storage",
+      "Url": "#",
+      "Address": "40 Rundle St",
+      "City": "Adelaide",
+      "State": "SA",
+      "Zipcode": "5000",
+      "Phonenumber": "(08) 8046 0144",
+      "Companyname": "Fort Knox",
+      "Latitude": "-34.9285",
+      "Longitude": "138.6007",
+      "Selfstoragetotalsquarefootage": "27900",
+      "Selfstoragerentablesquarefootage": "25600",
+      "Parkingtotalsquarefootage": "0",
+      "Parkingrentablesquarefootage": "0",
+      "Squarefootage": "27900",
+      "Rentablesqft": "25600",
+      "Sqftflag": "Estimated",
+      "Yearbuild": "1997",
+      "Companytype": "Private",
+      "Operatortype": "Medium Operator",
+      "Ownedby": "Private",
+      "Classtype": "Class C",
+      "Containerflag": "No",
+      "Createddate": "2019-06-30",
+      "Storescount": "1",
+      "County": "Adelaide",
+      "Microsa": "Adelaide Micro",
+      "Metrosa": "Adelaide Metro",
+      "Countryid": "AU",
+      "Regionid": "SA-01",
+      "Pricestatus": "Not Available"
+    }
   ],
-  newzealand: [
-    ["StorageMart Auckland", "18 Queen St", "Auckland", "Auckland", "34,500", "320", "2010", "Website"],
-    ["Kiwi Self Storage", "60 Cashel St", "Christchurch", "Canterbury", "28,700", "260", "2004", "Assessor"],
-    ["Wellington Storage Co.", "5 Lambton Quay", "Wellington", "Wellington", "22,300", "205", "2013", "Website"]
+  "newzealand": [
+    {
+      "Masterid": "NZ-0001",
+      "Storeid": "NZ-S-018",
+      "Storename": "StorageMart Auckland",
+      "Url": "#",
+      "Address": "18 Queen St",
+      "City": "Auckland",
+      "State": "Auckland",
+      "Zipcode": "1010",
+      "Phonenumber": "09 496 0155",
+      "Companyname": "StorageMart",
+      "Latitude": "-36.8485",
+      "Longitude": "174.7633",
+      "Selfstoragetotalsquarefootage": "34500",
+      "Selfstoragerentablesquarefootage": "31700",
+      "Parkingtotalsquarefootage": "0",
+      "Parkingrentablesquarefootage": "0",
+      "Squarefootage": "34500",
+      "Rentablesqft": "31700",
+      "Sqftflag": "Actual",
+      "Yearbuild": "2010",
+      "Companytype": "Private",
+      "Operatortype": "Large Operator",
+      "Ownedby": "Private",
+      "Classtype": "Class A",
+      "Containerflag": "No",
+      "Createddate": "2020-05-11",
+      "Storescount": "1",
+      "County": "Auckland",
+      "Microsa": "Auckland Micro",
+      "Metrosa": "Auckland Metro",
+      "Countryid": "NZ",
+      "Regionid": "AKL-01",
+      "Pricestatus": "Available"
+    },
+    {
+      "Masterid": "NZ-0002",
+      "Storeid": "NZ-S-060",
+      "Storename": "Kiwi Self Storage",
+      "Url": "#",
+      "Address": "60 Cashel St",
+      "City": "Christchurch",
+      "State": "Canterbury",
+      "Zipcode": "8011",
+      "Phonenumber": "03 496 0166",
+      "Companyname": "Kiwi Storage",
+      "Latitude": "-43.5321",
+      "Longitude": "172.6362",
+      "Selfstoragetotalsquarefootage": "28700",
+      "Selfstoragerentablesquarefootage": "26400",
+      "Parkingtotalsquarefootage": "0",
+      "Parkingrentablesquarefootage": "0",
+      "Squarefootage": "28700",
+      "Rentablesqft": "26400",
+      "Sqftflag": "Estimated",
+      "Yearbuild": "2004",
+      "Companytype": "Private",
+      "Operatortype": "Medium Operator",
+      "Ownedby": "Private",
+      "Classtype": "Class B",
+      "Containerflag": "No",
+      "Createddate": "2018-08-27",
+      "Storescount": "1",
+      "County": "Christchurch",
+      "Microsa": "Christchurch Micro",
+      "Metrosa": "Christchurch Metro",
+      "Countryid": "NZ",
+      "Regionid": "CAN-01",
+      "Pricestatus": "Not Available"
+    },
+    {
+      "Masterid": "NZ-0003",
+      "Storeid": "NZ-S-005",
+      "Storename": "Wellington Storage Co.",
+      "Url": "#",
+      "Address": "5 Lambton Quay",
+      "City": "Wellington",
+      "State": "Wellington",
+      "Zipcode": "6011",
+      "Phonenumber": "04 496 0177",
+      "Companyname": "Wellington Storage",
+      "Latitude": "-41.2865",
+      "Longitude": "174.7762",
+      "Selfstoragetotalsquarefootage": "22300",
+      "Selfstoragerentablesquarefootage": "20500",
+      "Parkingtotalsquarefootage": "0",
+      "Parkingrentablesquarefootage": "0",
+      "Squarefootage": "22300",
+      "Rentablesqft": "20500",
+      "Sqftflag": "Estimated",
+      "Yearbuild": "2013",
+      "Companytype": "Private",
+      "Operatortype": "Single Operator",
+      "Ownedby": "Private",
+      "Classtype": "Class B",
+      "Containerflag": "No",
+      "Createddate": "2021-02-14",
+      "Storescount": "1",
+      "County": "Wellington",
+      "Microsa": "Wellington Micro",
+      "Metrosa": "Wellington Metro",
+      "Countryid": "NZ",
+      "Regionid": "WGN-01",
+      "Pricestatus": "Available"
+    }
   ]
 };
 
@@ -134,9 +754,18 @@ const rows = SAMPLE_DATA[region] || [];
 
 document.getElementById("regionTitle").style.setProperty("--accent-color", ACCENTS[region] || "#3987e5");
 document.getElementById("regionName").textContent = name;
-document.getElementById("regionSub").textContent = "Full store list — sample preview";
-document.getElementById("rowCount").textContent = rows.length + " sample stores shown (this will show every store once the real Store List tab is connected)";
-document.getElementById("tableBody").innerHTML = rows.map(r => "<tr>" + r.map(c => "<td>" + c + "</td>").join("") + "</tr>").join("");
+document.getElementById("regionSub").textContent = "Full store list — sample preview, all columns";
+document.getElementById("rowCount").textContent = rows.length + " sample stores shown, " + COLUMNS.length + " columns (every store and column will show once the real Store List tab is connected)";
+document.getElementById("headRow").innerHTML = COLUMNS.map(c => `<th>${c[1]}</th>`).join("");
+document.getElementById("tableBody").innerHTML = rows.map(row => {
+  const cells = COLUMNS.map(c => {
+    const key = c[0];
+    if (key === "Storename") return `<td><a href="${row.Url || '#'}" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;">${row.Storename}</a></td>`;
+    if (key === "Url") return "<td></td>";
+    return `<td>${row[key] != null ? row[key] : ""}</td>`;
+  }).join("");
+  return "<tr>" + cells + "</tr>";
+}).join("");
 </script>
 </body>
 </html>

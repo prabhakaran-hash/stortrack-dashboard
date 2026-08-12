@@ -88,8 +88,12 @@
   .region-card .rc-badge.pend { background:rgba(255,255,255,0.08); color: var(--text-muted); }
   .region-card .rc-badge.err { background:rgba(229,96,95,0.18); color: var(--bad); }
   .region-card .rc-value { font-size:25px; font-weight:800; color: var(--text-primary); }
-  .region-card .rc-value-link { color: inherit; text-decoration: none; border-bottom: 1px dashed transparent; }
-  .region-card .rc-value-link:hover { border-bottom-color: var(--accent-color, var(--accent)); color: var(--accent-color, var(--accent)); }
+  .region-card .rc-store-list-btn {
+    display:inline-block; margin-top:10px; font-size:12.5px; font-weight:700; color: var(--accent-color, var(--accent));
+    text-decoration:none; padding:6px 10px; border-radius:6px; background: rgba(255,255,255,0.06);
+    border:1px solid var(--border);
+  }
+  .region-card .rc-store-list-btn:hover { background: rgba(255,255,255,0.14); }
   .region-card .rc-sub { font-size:12px; color: var(--text-muted); margin-top:2px; }
 
   .region-block { margin-bottom:44px; }
@@ -545,11 +549,14 @@ function renderRegionStrip() {
     const key = (SHEETS[r.name] && SHEETS[r.name].key) || "";
     return `<div class="region-card ${r.status === "error" ? "err" : ""} ${r.name === selectedRegion ? "selected" : ""}" data-region="${r.name}" style="--accent-color:${accentFor(r.name)}">
       <div class="rc-top"><span class="rc-name">${r.name}</span><span class="rc-badge ${badge.cls}">${badge.text}</span></div>
-      <div class="rc-value"><a class="rc-value-link" href="store-list.html?region=${key}&name=${encodeURIComponent(r.name)}" title="View full store list for ${r.name}" onclick="event.stopPropagation()">${value}</a></div>
+      <div class="rc-value">${value}</div>
       <div class="rc-sub">${sub}</div>
+      <a class="rc-store-list-btn" href="store-list.html?region=${key}&name=${encodeURIComponent(r.name)}" title="View full store list for ${r.name}">View Store List →</a>
     </div>`;
   }).join("");
-  document.querySelectorAll(".region-card").forEach((card) => card.addEventListener("click", () => { selectedRegion = card.dataset.region; render(); }));
+  document.querySelectorAll(".region-card").forEach((card) => {
+    card.addEventListener("click", (e) => { if (e.target.closest(".rc-store-list-btn")) return; selectedRegion = card.dataset.region; render(); });
+  });
 }
 
 /* ------------------------------ Generic chart builders ------------------------------ */
