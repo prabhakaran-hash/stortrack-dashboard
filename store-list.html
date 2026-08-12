@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stortrack — Store List</title>
+<style>
+  :root {
+    --surface-1:      #111a2e;
+    --page:           #0a1120;
+    --text-primary:   #f2f5fb;
+    --text-secondary: #a9b3c9;
+    --text-muted:     #7c869c;
+    --gridline:       #23304a;
+    --border:         rgba(255,255,255,0.08);
+    --navy:           #0f1c36;
+    --navy-2:         #1d3f6e;
+    --accent:         #3987e5;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin:0; padding:0; background: var(--page); color: var(--text-primary); font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 0 24px 60px; }
+
+  header.top {
+    background: linear-gradient(120deg, var(--navy) 0%, var(--navy-2) 100%);
+    margin: 0 0 24px; padding: 22px 0 20px;
+  }
+  header.top .header-inner {
+    max-width: 1240px; margin: 0 auto; padding: 0 24px;
+    display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;
+  }
+  header.top::after {
+    content:""; display:block; height:4px; margin-top:18px;
+    background: linear-gradient(90deg, #3987e5 0 25%, #d95926 25% 50%, #199e70 50% 75%, #c98500 75% 100%);
+  }
+  .brand { display:flex; flex-direction:column; gap:2px; }
+  .brand .name { font-size:12.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color: #9fc2ea; }
+  .brand h1 { margin:0; font-size:22px; font-weight:800; color:#ffffff; letter-spacing:-.01em; }
+  .back-link { font-size:13px; font-weight:600; color:#eef4fb; background: rgba(255,255,255,0.10); border:1px solid rgba(255,255,255,0.22); border-radius:8px; padding:8px 14px; text-decoration:none; }
+  .back-link:hover { background: rgba(255,255,255,0.2); }
+
+  .banner { background:#3a2e10; border:1px solid #5c4a1a; color:#f0d98c; border-radius:10px; padding:14px 16px; font-size:13.5px; margin-bottom:22px; line-height:1.6; }
+  .banner strong { color:#ffe9a8; }
+
+  .region-title { display:flex; align-items:center; gap:12px; margin-bottom:16px; padding:12px 18px; background: linear-gradient(90deg, var(--accent-color, var(--accent)) 0%, var(--navy) 130%); border-radius:10px; }
+  .region-title h2 { margin:0; font-size:19px; font-weight:800; color:#fff; }
+  .region-title .rt-sub { font-size:12.5px; color: rgba(255,255,255,0.85); }
+
+  table { width:100%; border-collapse: collapse; background: var(--surface-1); border:1px solid var(--border); border-radius:10px; overflow:hidden; font-size:13.5px; }
+  th, td { padding:10px 14px; text-align:left; border-bottom:1px solid var(--gridline); }
+  th { background: rgba(255,255,255,0.04); color: var(--text-secondary); font-weight:700; font-size:12px; text-transform:uppercase; letter-spacing:.03em; }
+  tr:last-child td { border-bottom:none; }
+  tr:hover td { background: rgba(255,255,255,0.03); }
+  .muted { color: var(--text-muted); font-size:12.5px; margin: -6px 0 16px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="header-inner">
+      <div class="brand">
+        <span class="name">Stortrack · Research &amp; Data</span>
+        <h1>Store List</h1>
+      </div>
+      <a class="back-link" href="index.html">← Back to Dashboard</a>
+    </div>
+  </header>
+
+  <div class="banner">
+    <strong>Preview — sample data only.</strong> This page shows how the store list will
+    look and work. Once a "Store List" tab is added to each region's Google Sheet (one
+    row per store — name, address, city, state/province, sqft, units, year built,
+    source), this page will read that tab and show your real stores automatically,
+    the same way the main dashboard reads the Regional Summary tab.
+  </div>
+
+  <div class="region-title" id="regionTitle" style="--accent-color:#3987e5">
+    <div>
+      <h2 id="regionName">Region</h2>
+      <div class="rt-sub" id="regionSub">Full store list</div>
+    </div>
+  </div>
+  <p class="muted" id="rowCount"></p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Store Name</th><th>Address</th><th>City</th><th>State / Province</th>
+        <th>Sqft (NRSF)</th><th>Units</th><th>Year Built</th><th>Source</th>
+      </tr>
+    </thead>
+    <tbody id="tableBody"></tbody>
+  </table>
+</div>
+
+<script>
+const ACCENTS = { canada: "#3987e5", uk: "#d95926", australia: "#199e70", newzealand: "#c98500" };
+const NAMES = { canada: "Canada", uk: "United Kingdom", australia: "Australia", newzealand: "New Zealand" };
+
+// Sample/demo rows only — replace with a real "Store List" tab per region later.
+const SAMPLE_DATA = {
+  canada: [
+    ["Stortrack Self Storage", "482 King St W", "Toronto", "ON", "68,500", "612", "2005", "Website"],
+    ["Maple Storage Co.", "1150 Rue Sainte-Catherine", "Montreal", "QC", "54,200", "480", "2011", "Assessor"],
+    ["Prairie Self Storage", "220 8th Ave SW", "Calgary", "AB", "41,000", "365", "1998", "Website"],
+    ["Coastal Storage Depot", "900 Douglas St", "Victoria", "BC", "37,800", "310", "2016", "Permit"],
+    ["Northern Vault Storage", "77 Portage Ave", "Winnipeg", "MB", "29,500", "260", "2003", "Website"]
+  ],
+  uk: [
+    ["Big Yellow Self Storage", "45 High Rd", "London", "England", "72,300", "690", "2007", "Website"],
+    ["Access Self Storage", "12 Deansgate", "Manchester", "England", "58,900", "540", "2014", "Assessor"],
+    ["Safestore Bristol", "3 Victoria St", "Bristol", "England", "44,100", "410", "1999", "Website"],
+    ["Storage King Cardiff", "88 Queen St", "Cardiff", "Wales", "36,700", "330", "2018", "Permit"],
+    ["Shurgard Edinburgh", "21 Princes St", "Edinburgh", "Scotland", "49,200", "455", "2009", "Website"]
+  ],
+  australia: [
+    ["National Storage Sydney", "5 George St", "Sydney", "NSW", "61,000", "580", "2006", "Website"],
+    ["Kennards Self Storage", "150 Elizabeth St", "Melbourne", "VIC", "55,400", "520", "2012", "Assessor"],
+    ["Storage King Brisbane", "22 Adelaide St", "Brisbane", "QLD", "38,600", "350", "2001", "Website"],
+    ["Rent-A-Space Perth", "9 Hay St", "Perth", "WA", "31,200", "290", "2015", "Permit"],
+    ["Fort Knox Storage", "40 Rundle St", "Adelaide", "SA", "27,900", "250", "1997", "Website"]
+  ],
+  newzealand: [
+    ["StorageMart Auckland", "18 Queen St", "Auckland", "Auckland", "34,500", "320", "2010", "Website"],
+    ["Kiwi Self Storage", "60 Cashel St", "Christchurch", "Canterbury", "28,700", "260", "2004", "Assessor"],
+    ["Wellington Storage Co.", "5 Lambton Quay", "Wellington", "Wellington", "22,300", "205", "2013", "Website"]
+  ]
+};
+
+const params = new URLSearchParams(window.location.search);
+const region = (params.get("region") || "canada").toLowerCase();
+const name = params.get("name") || NAMES[region] || "Region";
+const rows = SAMPLE_DATA[region] || [];
+
+document.getElementById("regionTitle").style.setProperty("--accent-color", ACCENTS[region] || "#3987e5");
+document.getElementById("regionName").textContent = name;
+document.getElementById("regionSub").textContent = "Full store list — sample preview";
+document.getElementById("rowCount").textContent = rows.length + " sample stores shown (this will show every store once the real Store List tab is connected)";
+document.getElementById("tableBody").innerHTML = rows.map(r => "<tr>" + r.map(c => "<td>" + c + "</td>").join("") + "</tr>").join("");
+</script>
+</body>
+</html>
