@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Stortrack — Store List</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
   :root {
     --surface-1:      #111a2e;
@@ -38,6 +39,13 @@
   .brand h1 { margin:0; font-size:22px; font-weight:800; color:#ffffff; letter-spacing:-.01em; }
   .back-link { font-size:13px; font-weight:600; color:#eef4fb; background: rgba(255,255,255,0.10); border:1px solid rgba(255,255,255,0.22); border-radius:8px; padding:8px 14px; text-decoration:none; }
   .back-link:hover { background: rgba(255,255,255,0.2); }
+  .toolbar { display:flex; gap:8px; }
+  .dl-btn {
+    font: inherit; font-size:13px; font-weight:600; color:#eef4fb; background: rgba(255,255,255,0.10);
+    border:1px solid rgba(255,255,255,0.22); border-radius:8px; padding:8px 14px; cursor:pointer;
+    display:inline-flex; align-items:center; gap:6px;
+  }
+  .dl-btn:hover { background: rgba(255,255,255,0.2); }
 
   .banner { background:#3a2e10; border:1px solid #5c4a1a; color:#f0d98c; border-radius:10px; padding:14px 16px; font-size:13.5px; margin-bottom:22px; line-height:1.6; }
   .banner strong { color:#ffe9a8; }
@@ -63,7 +71,11 @@
         <span class="name">Stortrack · Research &amp; Data</span>
         <h1>Store List</h1>
       </div>
-      <a class="back-link" href="index.html">← Back to Dashboard</a>
+      <div class="toolbar">
+        <button class="dl-btn" id="downloadCsvBtn">⬇ Download CSV</button>
+        <button class="dl-btn" id="downloadXlsxBtn">⬇ Download Excel (.xlsx)</button>
+        <a class="back-link" href="index.html">← Back to Dashboard</a>
+      </div>
     </div>
   </header>
 
@@ -753,6 +765,40 @@ document.getElementById("tableBody").innerHTML = rows.map(row => {
   }).join("");
   return "<tr>" + cells + "</tr>";
 }).join("");
+
+/* ------------------------------ Downloads (real CSV / real .xlsx) ------------------------------
+   Exports whatever is currently loaded into `rows` above — sample data now, and your
+   real store rows automatically once the live Store List tab is connected, since both
+   the table and these exports read from the same `rows` + `COLUMNS` source. */
+function fileSafeName(ext) {
+  const stamp = new Date().toISOString().slice(0, 10);
+  return `stortrack-${region}-store-list-${stamp}.${ext}`;
+}
+function triggerDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+function csvEscape(v) {
+  const s = v == null ? "" : String(v);
+  return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+document.getElementById("downloadCsvBtn").addEventListener("click", () => {
+  const header = COLUMNS.map(c => csvEscape(c[1])).join(",");
+  const lines = rows.map(row => COLUMNS.map(c => csvEscape(row[c[0]])).join(","));
+  const csv = [header, ...lines].join("\r\n");
+  triggerDownload(new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" }), fileSafeName("csv"));
+});
+document.getElementById("downloadXlsxBtn").addEventListener("click", () => {
+  const aoa = [COLUMNS.map(c => c[1]), ...rows.map(row => COLUMNS.map(c => row[c[0]] != null ? row[c[0]] : ""))];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws["!cols"] = COLUMNS.map(() => ({ wch: 16 }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, name.slice(0, 31) || "Store List");
+  XLSX.writeFile(wb, fileSafeName("xlsx"));
+});
 </script>
 </body>
 </html>
