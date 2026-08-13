@@ -480,25 +480,30 @@ function parseOwnersContacts(grid) {
   return (ownerCompany || contacts) ? { ownerCompany, contacts } : null;
 }
 function parseDevelopments(grid) {
-  const hit = findCells(grid, exact("Region / Stage"))[0];
-  if (!hit) return null;
-  const headerRow = grid[hit.r] || [];
-  let totalIdx = -1;
-  for (let i = hit.c + 1; i < headerRow.length; i++) { if (cell(grid, hit.r, i).toLowerCase() === "total") { totalIdx = i; break; } }
-  const stageCols = [];
-  for (let cc = hit.c + 1; cc < (totalIdx > -1 ? totalIdx : headerRow.length); cc++) {
-    const label = cell(grid, hit.r, cc);
-    if (label) stageCols.push({ col: cc, label });
-  }
-  const rows = [];
-  for (let r = hit.r + 1; r < grid.length; r++) {
-    const region = cell(grid, r, hit.c);
-    if (!region) continue;
-    const stages = stageCols.map((s) => ({ label: s.label, value: numOf(cell(grid, r, s.col)) }));
-    const total = totalIdx > -1 ? numOf(cell(grid, r, totalIdx)) : null;
-    rows.push({ region, stages, total });
-  }
-  return rows.length ? rows : null;
+  const hits = findCells(grid, exact("Region / Stage"));
+  if (!hits.length) return null;
+  const sections = hits.map((hit) => {
+    const titleRaw = hit.r > 0 ? cell(grid, hit.r - 1, hit.c) : "";
+    const title = titleRaw && titleRaw.trim() ? titleRaw.trim() : null;
+    const headerRow = grid[hit.r] || [];
+    let totalIdx = -1;
+    for (let i = hit.c + 1; i < headerRow.length; i++) { if (cell(grid, hit.r, i).toLowerCase() === "total") { totalIdx = i; break; } }
+    const stageCols = [];
+    for (let cc = hit.c + 1; cc < (totalIdx > -1 ? totalIdx : headerRow.length); cc++) {
+      const label = cell(grid, hit.r, cc);
+      if (label) stageCols.push({ col: cc, label });
+    }
+    const rows = [];
+    for (let r = hit.r + 1; r < grid.length; r++) {
+      const region = cell(grid, r, hit.c);
+      if (!region) break;
+      const stages = stageCols.map((s) => ({ label: s.label, value: numOf(cell(grid, r, s.col)) }));
+      const total = totalIdx > -1 ? numOf(cell(grid, r, totalIdx)) : null;
+      rows.push({ region, stages, total });
+    }
+    return { title, rows };
+  }).filter((s) => s.rows.length);
+  return sections.length ? sections : null;
 }
 
 /* =====================================================================================
@@ -523,7 +528,8 @@ const SHEETS = {
 // exact tab names are confirmed.
 const EXTRA_TABS = {
   "New Zealand": { sqft: "SQM", sqftLabel: "SQM", profile: "Store Profile creation", owners: "Owners Company and Contacts", developments: "Known Developments" },
-  "Australia": { sqft: "SQM", sqftLabel: "SQM", profile: "Store Profile Creation", owners: "Owner& Contacts", developments: "Known Developments" }
+  "Australia": { sqft: "SQM", sqftLabel: "SQM", profile: "Store Profile Creation", owners: "Owner& Contacts", developments: "Known Developments" },
+  "Canada": { sqft: "Square Footage", sqftLabel: "Sqft", profile: "Store Profile Creation", owners: "Owners Company and Contacts", developments: "Known Developments" }
 };
 let REFRESH_MS = 30000;
 
@@ -823,11 +829,14 @@ function renderRegionBlock(region) {
       ${d.owners.contacts ? `<div class="card-sub" style="margin-top:14px;"><strong>Contacts</strong></div>${ownersTable(d.owners.contacts)}` : ""}
     </div>`;
   }
-  if (d.developments && d.developments.length) {
-    const stageLabels = d.developments[0].stages.map((s) => s.label);
-    detailTables += `<div class="card"><h3>Known Developments</h3><div class="card-sub">Pipeline stage counts</div>
-      <table class="data-table"><thead><tr><th>${d.regionLabel || "Region"}</th>${stageLabels.map((l) => `<th class="num">${l}</th>`).join("")}<th class="num">Total</th></tr></thead>
-      <tbody>${d.developments.map((row) => `<tr><td>${row.region}</td>${row.stages.map((s) => `<td class="num">${fmtNum(s.value)}</td>`).join("")}<td class="num"><strong>${fmtNum(row.total)}</strong></td></tr>`).join("")}</tbody></table></div>`;
+    if (d.developments && d.developments.length) {
+    const devTables = d.developments.map((section) => {
+      const stageLabels = section.rows[0].stages.map((s) => s.label);
+      const subtitle = section.title ? `<div class="card-sub" style="margin-top:14px;"><strong>${section.title}</strong></div>` : "";
+      return subtitle + `<table class="data-table"><thead><tr><th>${d.regionLabel || "Region"}</th>${stageLabels.map((l) => `<th class="num">${l}</th>`).join("")}<th class="num">Total</th></tr></thead>
+      <tbody>${section.rows.map((row) => `<tr><td>${row.region}</td>${row.stages.map((s) => `<td class="num">${fmtNum(s.value)}</td>`).join("")}<td class="num"><strong>${fmtNum(row.total)}</strong></td></tr>`).join("")}</tbody></table>`;
+    }).join("");
+    detailTables += `<div class="card"><h3>Known Developments</h3><div class="card-sub">Pipeline stage counts</div>${devTables}</div>`;
   }
 
   return `<div class="region-block">
