@@ -408,6 +408,96 @@ function parseNewZealand(grid) {
   return { totalStores, pricing, operatorType, regionSplit: null, facilityType: null, facilityDetail: null, facilityOperatorNrsf: null, units: parseUnitsSummary(grid), sqftTotal: null, regionLabel: null };
 }
 
+function parseSourceCoverage(grid, unitLabel) {
+  const hit = findCells(grid, exact("Source")).find((m) => cell(grid, m.r, m.c + 1) !== "");
+  if (!hit) return null;
+  const rows = [];
+  let total = null;
+  for (let r = hit.r + 1; r < grid.length; r++) {
+    const label = cell(grid, r, hit.c);
+    if (!label) break;
+    const count = numOf(cell(grid, r, hit.c + 1));
+    const pctVal = numOf(cell(grid, r, hit.c + 2));
+    if (label.toLowerCase() === "total") { total = { label, count }; break; }
+    rows.push({ label, count, pct: pctVal });
+  }
+  return { unitLabel: unitLabel || "Size", rows, total };
+}
+function parseStoreProfile(grid) {
+  const statusHit = findCells(grid, exact("Region")).find((m) => cell(grid, m.r, m.c + 1) === "Total Stores");
+  let status = null;
+  if (statusHit) {
+    const r = statusHit.r + 1;
+    status = {
+      region: cell(grid, r, statusHit.c),
+      total: numOf(cell(grid, r, statusHit.c + 1)),
+      completed: numOf(cell(grid, r, statusHit.c + 2)),
+      pending: numOf(cell(grid, r, statusHit.c + 3)),
+      completedPct: numOf(cell(grid, r, statusHit.c + 4))
+    };
+  }
+  const attrHit = findCells(grid, exact("Attribute Group")).find((m) => cell(grid, m.r, m.c + 1) === "Attribute Name");
+  const attributes = [];
+  if (attrHit) {
+    let lastGroup = "";
+    for (let r = attrHit.r + 1; r < grid.length; r++) {
+      const name = cell(grid, r, attrHit.c + 1);
+      if (!name) break;
+      const group = cell(grid, r, attrHit.c) || lastGroup;
+      lastGroup = group;
+      attributes.push({ group, name, count: numOf(cell(grid, r, attrHit.c + 2)), pct: numOf(cell(grid, r, attrHit.c + 3)) });
+    }
+  }
+  return { status, attributes };
+}
+function parseOwnersSection(grid, sectionLabel) {
+  const hit = findCells(grid, exact(sectionLabel))[0];
+  if (!hit) return null;
+  const c = hit.c;
+  const rows = [];
+  for (let r = hit.r + 2; r < grid.length; r++) {
+    const label = cell(grid, r, c);
+    if (!label) break;
+    rows.push({
+      label,
+      storeCount: numOf(cell(grid, r, c + 1)),
+      updated: numOf(cell(grid, r, c + 2)),
+      updatedPct: numOf(cell(grid, r, c + 3)),
+      notFound: numOf(cell(grid, r, c + 4)),
+      notFoundPct: numOf(cell(grid, r, c + 5)),
+      pending: numOf(cell(grid, r, c + 6)),
+      completedPct: numOf(cell(grid, r, c + 7))
+    });
+  }
+  return rows.length ? rows : null;
+}
+function parseOwnersContacts(grid) {
+  const ownerCompany = parseOwnersSection(grid, "Owner Company Summary*") || parseOwnersSection(grid, "Owner Company Summary");
+  const contacts = parseOwnersSection(grid, "Contacts Summary");
+  return (ownerCompany || contacts) ? { ownerCompany, contacts } : null;
+}
+function parseDevelopments(grid) {
+  const hit = findCells(grid, exact("Region / Stage"))[0];
+  if (!hit) return null;
+  const headerRow = grid[hit.r] || [];
+  let totalIdx = -1;
+  for (let i = hit.c + 1; i < headerRow.length; i++) { if (cell(grid, hit.r, i).toLowerCase() === "total") { totalIdx = i; break; } }
+  const stageCols = [];
+  for (let cc = hit.c + 1; cc < (totalIdx > -1 ? totalIdx : headerRow.length); cc++) {
+    const label = cell(grid, hit.r, cc);
+    if (label) stageCols.push({ col: cc, label });
+  }
+  const rows = [];
+  for (let r = hit.r + 1; r < grid.length; r++) {
+    const region = cell(grid, r, hit.c);
+    if (!region) continue;
+    const stages = stageCols.map((s) => ({ label: s.label, value: numOf(cell(grid, r, s.col)) }));
+    const total = totalIdx > -1 ? numOf(cell(grid, r, totalIdx)) : null;
+    rows.push({ region, stages, total });
+  }
+  return rows.length ? rows : null;
+}
+
 /* =====================================================================================
    CONFIG — one entry per region. sheetId/gid come straight from the "Regional Summary"
    (or "Summary") tab of each Google Sheet. All four sheets must stay shared as at least
@@ -423,6 +513,13 @@ const SHEETS = {
   "United Kingdom":  { id: "1MB7K63fS9GVds1qa4sZMU9vSvEsyke7bmL9-IZqkM9w", gid: "1158791534", key: "uk",         parser: parseUK },
   "Australia":       { id: "1vnRv51HsAZob78xNLR6stQFL_AeDYLtxFrB2YuLlMP4", gid: "0",          key: "australia",  parser: parseAustralia },
   "New Zealand":     { id: "16mg64rbztm5I3cbqd2WSZoxjkxLp0Glk-H6c38Zl6FM", gid: "0",          key: "newzealand", parser: parseNewZealand }
+};
+// Extra per-region sheet tabs beyond the Summary tab, wired in region by region.
+// Only regions listed here get the extra Square Footage/Store Profile/Owners/Known
+// Developments sections below the main charts — add an entry once a region's
+// exact tab names are confirmed.
+const EXTRA_TABS = {
+  "New Zealand": { sqft: "SQM", sqftLabel: "SQM", profile: "Store Profile creation", owners: "Owners Company and Contacts", developments: "Known Developments" }
 };
 let REFRESH_MS = 30000;
 
@@ -474,6 +571,17 @@ async function fetchGrid(cfg) {
   return parsed.data;
 }
 
+async function fetchExtraTab(cfg, tabName) {
+  if (!APPS_SCRIPT_URL || !tabName) return null;
+  try {
+    const res = await fetch(`${APPS_SCRIPT_URL}?region=${cfg.key}&tab=${encodeURIComponent(tabName)}&_ts=${Date.now()}`, { cache: "no-store" });
+    if (!res.ok) return null;
+    const json = await res.json();
+    if (json.error) return null;
+    return json.grid;
+  } catch (err) { return null; }
+}
+
 let anyCorsError = false;
 
 async function syncRegion(region) {
@@ -481,6 +589,19 @@ async function syncRegion(region) {
   try {
     const grid = await fetchGrid(cfg);
     const data = cfg.parser(grid);
+    const extra = EXTRA_TABS[region.name];
+    if (extra) {
+      const [sqftGrid, profileGrid, ownersGrid, devGrid] = await Promise.all([
+        fetchExtraTab(cfg, extra.sqft),
+        fetchExtraTab(cfg, extra.profile),
+        fetchExtraTab(cfg, extra.owners),
+        fetchExtraTab(cfg, extra.developments)
+      ]);
+      data.sourceCoverage = sqftGrid ? parseSourceCoverage(sqftGrid, extra.sqftLabel) : null;
+      data.storeProfile = profileGrid ? parseStoreProfile(profileGrid) : null;
+      data.owners = ownersGrid ? parseOwnersContacts(ownersGrid) : null;
+      data.developments = devGrid ? parseDevelopments(devGrid) : null;
+    }
     region.data = data;
     region.status = "loaded";
     region.error = null;
@@ -665,6 +786,44 @@ function renderRegionBlock(region) {
     detailTables += `<div class="card"><h3>Facility Type × Operator Type — NRSF</h3><div class="card-sub">Store count and net rentable sq ft per slice</div>
       <table class="data-table"><thead><tr><th>Facility Type</th><th>Operator Type</th><th>Stores</th><th>NRSF</th></tr></thead>
       <tbody>${d.facilityOperatorNrsf.map((x) => `<tr><td>${x.facility}</td><td>${x.operator}</td><td class="num">${fmtNum(x.stores)}</td><td class="num">${x.nrsf ? fmtNum(x.nrsf) : "—"}</td></tr>`).join("")}</tbody></table></div>`;
+  }
+
+  if (d.sourceCoverage && d.sourceCoverage.rows.length) {
+    const sc = d.sourceCoverage;
+    detailTables += `<div class="card"><h3>${sc.unitLabel} Research Coverage</h3><div class="card-sub">How ${sc.unitLabel.toLowerCase()} data was obtained</div>
+      <table class="data-table"><thead><tr><th>Source</th><th>Store Count</th><th>% of Stores</th></tr></thead>
+      <tbody>${sc.rows.map((x) => `<tr><td>${x.label}</td><td class="num">${fmtNum(x.count)}</td><td class="num">${x.pct != null ? Math.round(x.pct * 100) + "%" : "—"}</td></tr>`).join("")}
+      ${sc.total ? `<tr class="total-row"><td>${sc.total.label}</td><td class="num"><strong>${fmtNum(sc.total.count)}</strong></td><td class="num">—</td></tr>` : ""}
+      </tbody></table></div>`;
+  }
+  if (d.storeProfile && (d.storeProfile.status || (d.storeProfile.attributes && d.storeProfile.attributes.length))) {
+    const sp = d.storeProfile;
+    let spBlock = `<div class="card"><h3>Store Profile Research Status</h3><div class="card-sub">${sp.status ? sp.status.region : ""}</div>`;
+    if (sp.status) {
+      spBlock += `<table class="data-table"><thead><tr><th>Total Stores</th><th>Research Completed</th><th>Research Pending</th><th>Completed %</th></tr></thead>
+        <tbody><tr><td class="num">${fmtNum(sp.status.total)}</td><td class="num">${fmtNum(sp.status.completed)}</td><td class="num">${fmtNum(sp.status.pending)}</td><td class="num">${sp.status.completedPct != null ? Math.round(sp.status.completedPct * 100) + "%" : "—"}</td></tr></tbody></table>`;
+    }
+    if (sp.attributes && sp.attributes.length) {
+      spBlock += `<h3 style="margin-top:18px;">Attribute Population</h3><div class="card-sub">How many stores have each field researched</div>
+        <table class="data-table"><thead><tr><th>Group</th><th>Attribute</th><th>Population Count</th><th>Population %</th></tr></thead>
+        <tbody>${sp.attributes.map((a) => `<tr><td>${a.group}</td><td>${a.name}</td><td class="num">${fmtNum(a.count)}</td><td class="num">${a.pct != null ? Math.round(a.pct * 100) + "%" : "—"}</td></tr>`).join("")}</tbody></table>`;
+    }
+    spBlock += `</div>`;
+    detailTables += spBlock;
+  }
+  if (d.owners && (d.owners.ownerCompany || d.owners.contacts)) {
+    const ownersTable = (rows) => rows ? `<table class="data-table"><thead><tr><th>Operator Type</th><th>Store Count</th><th>Updated</th><th>Updated %</th><th>Info Not Found</th><th>Not Found %</th><th>Yet to Research</th><th>Completed %</th></tr></thead>
+      <tbody>${rows.map((r) => `<tr><td>${r.label}</td><td class="num">${fmtNum(r.storeCount)}</td><td class="num">${fmtNum(r.updated)}</td><td class="num">${r.updatedPct != null ? Math.round(r.updatedPct * 100) + "%" : "—"}</td><td class="num">${fmtNum(r.notFound)}</td><td class="num">${r.notFoundPct != null ? Math.round(r.notFoundPct * 100) + "%" : "—"}</td><td class="num">${fmtNum(r.pending)}</td><td class="num">${r.completedPct != null ? Math.round(r.completedPct * 100) + "%" : "—"}</td></tr>`).join("")}</tbody></table>` : "";
+    detailTables += `<div class="card"><h3>Owners and Contacts Research Coverage</h3><div class="card-sub">By operator type</div>
+      ${d.owners.ownerCompany ? `<div class="card-sub" style="margin-top:4px;"><strong>Owner Company</strong></div>${ownersTable(d.owners.ownerCompany)}` : ""}
+      ${d.owners.contacts ? `<div class="card-sub" style="margin-top:14px;"><strong>Contacts</strong></div>${ownersTable(d.owners.contacts)}` : ""}
+    </div>`;
+  }
+  if (d.developments && d.developments.length) {
+    const stageLabels = d.developments[0].stages.map((s) => s.label);
+    detailTables += `<div class="card"><h3>Known Developments</h3><div class="card-sub">Pipeline stage counts</div>
+      <table class="data-table"><thead><tr><th>${d.regionLabel || "Region"}</th>${stageLabels.map((l) => `<th>${l}</th>`).join("")}<th>Total</th></tr></thead>
+      <tbody>${d.developments.map((row) => `<tr><td>${row.region}</td>${row.stages.map((s) => `<td class="num">${fmtNum(s.value)}</td>`).join("")}<td class="num"><strong>${fmtNum(row.total)}</strong></td></tr>`).join("")}</tbody></table></div>`;
   }
 
   return `<div class="region-block">
