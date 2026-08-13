@@ -787,10 +787,29 @@ function renderRegionBlock(region) {
     ? `<div class="foot-note">Note: the sheet's "Units Summary" section totals ${fmtNum(d.units.totalStoresInUnitsTab)} stores — this differs from the ${fmtNum(storeTotal)} total elsewhere on the tab. Shown as reported.</div>` : "";
 
   let detailTables = "";
-  if (d.facilityDetail) {
-    detailTables += `<div class="card"><h3>Facility Type — full breakdown</h3><div class="card-sub">Every sub-type reported, with price yes/no</div>
-      <table class="data-table"><thead><tr><th>Category</th><th>Facility Type</th><th class="num">Price — Yes</th><th class="num">Price — No</th><th class="num">Total</th></tr></thead>
-      <tbody>${d.facilityDetail.map((x) => `<tr><td>${x.category}</td><td>${x.type}</td><td class="num">${fmtNum(x.yes)}</td><td class="num">${fmtNum(x.no)}</td><td class="num"><strong>${fmtNum(x.total)}</strong></td></tr>`).join("")}</tbody></table></div>`;
+    if (d.facilityDetail) {
+    const fdGroups = [];
+    d.facilityDetail.forEach((x) => {
+      let g = fdGroups.find((g) => g.category === x.category);
+      if (!g) { g = { category: x.category, rows: [] }; fdGroups.push(g); }
+      g.rows.push(x);
+    });
+    const fdYesAll = d.facilityDetail.reduce((s, x) => s + (x.yes || 0), 0);
+    const fdNoAll = d.facilityDetail.reduce((s, x) => s + (x.no || 0), 0);
+    const fdGrandAll = d.facilityDetail.reduce((s, x) => s + (x.total || 0), 0);
+    const fdBody = fdGroups.map((g) => {
+      const groupTotal = g.rows.reduce((s, x) => s + (x.total || 0), 0);
+      return g.rows.map((x, i) => {
+        const catCell = i === 0 ? `<td rowspan="${g.rows.length}">${g.category}</td>` : "";
+        const gtCell = i === 0 ? `<td class="num" rowspan="${g.rows.length}"><strong>${fmtNum(groupTotal)}</strong></td>` : "";
+        return `<tr>${catCell}<td>${x.type}</td><td class="num">${fmtNum(x.yes)}</td><td class="num">${fmtNum(x.no)}</td><td class="num"><strong>${fmtNum(x.total)}</strong></td>${gtCell}</tr>`;
+      }).join("");
+    }).join("");
+    detailTables += `<div class="card"><h3>Facility Type â full breakdown</h3><div class="card-sub">Every sub-type reported, with price yes/no</div>
+      <table class="data-table"><thead><tr><th>Category</th><th>Facility Type</th><th class="num">Price â Yes</th><th class="num">Price â No</th><th class="num">Total</th><th class="num">Grand Total</th></tr></thead>
+      <tbody>${fdBody}
+      <tr class="total-row"><td colspan="2">Total</td><td class="num">${fmtNum(fdYesAll)}</td><td class="num">${fmtNum(fdNoAll)}</td><td class="num">â</td><td class="num"><strong>${fmtNum(fdGrandAll)}</strong></td></tr>
+      </tbody></table></div>`;
   }
   if (d.facilityOperatorNrsf) {
     detailTables += `<div class="card"><h3>Facility Type × Operator Type — NRSF</h3><div class="card-sub">Store count and net rentable sq ft per slice</div>
