@@ -144,7 +144,7 @@
   table.data-table { width:100%; border-collapse:collapse; font-size:12.5px; }
   table.data-table th, table.data-table td { text-align:left; padding:7px 9px; border-bottom:1px solid var(--gridline); }
   table.data-table th { color: var(--text-secondary); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.03em; }
-  table.data-table td.num { text-align:right; font-variant-numeric: tabular-nums; }
+  table.data-table th.num, table.data-table td.num { text-align:right; font-variant-numeric: tabular-nums; }
   .scroll-table { max-height:360px; overflow-y:auto; border:1px solid var(--gridline); border-radius:6px; }
   .scroll-table table.data-table { border-collapse:separate; }
   .scroll-table thead th { position:sticky; top:0; background: var(--surface-1); z-index:1; }
@@ -696,7 +696,7 @@ function stackedYesNoList(items) {
     return `<div class="bar-row"><div class="bar-label">${i.label}</div>
       <div class="stack-track"><div class="stack-seg" style="width:${yesPct}%;background:${YES_COLOR}"></div>
       <div class="stack-seg" style="width:${100-yesPct}%;background:${NO_COLOR}"></div></div>
-      <div class="stack-label">${fmtNum(i.yes)} yes · ${fmtNum(i.no)} no (${yesPct}%)</div></div>`;
+      <div class="stack-label">${fmtNum(i.yes)} yes · ${fmtNum(i.no)} no · ${fmtNum(total)} total</div></div>`;
   }).join("");
 }
 function donutSVG(entries, centerValue, centerLabel, size) {
@@ -756,7 +756,7 @@ function renderRegionBlock(region) {
         ${pricingBar}</div></div>
       <div class="chart-row" style="grid-template-columns:1fr;"><div class="card">
         <h3>${rl} — full breakdown</h3><div class="card-sub">Operator type and pricing by ${rl.toLowerCase()}</div>
-        <table class="data-table"><thead><tr><th>${rl}</th>${regionKeys.map((k)=>`<th>${k[0].toUpperCase()+k.slice(1)}</th>`).join("")}<th>Total</th><th>Price Yes</th><th>Price No</th></tr></thead>
+        <table class="data-table"><thead><tr><th>${rl}</th>${regionKeys.map((k)=>`<th class="num">${k[0].toUpperCase()+k.slice(1)}</th>`).join("")}<th class="num">Total</th><th class="num">Price Yes</th><th class="num">Price No</th></tr></thead>
         <tbody>${d.regionSplit.map((s) => `<tr><td>${s.label}</td>${regionKeys.map((k)=>`<td class="num">${fmtNum(s[k])}</td>`).join("")}<td class="num"><strong>${fmtNum(s.total)}</strong></td><td class="num">${fmtNum(s.priceYes)}</td><td class="num">${fmtNum(s.priceNo)}</td></tr>`).join("")}
         <tr class="total-row"><td>Total</td>${regionKeys.map((k)=>`<td class="num">${fmtNum(d.regionSplit.reduce((sum,s)=>sum+(s[k]||0),0))}</td>`).join("")}<td class="num">${fmtNum(storeTotal)}</td><td class="num">${fmtNum(yesTotal)}</td><td class="num">${fmtNum(noTotal)}</td></tr>
         </tbody></table></div></div>`;
@@ -782,19 +782,19 @@ function renderRegionBlock(region) {
   let detailTables = "";
   if (d.facilityDetail) {
     detailTables += `<div class="card"><h3>Facility Type — full breakdown</h3><div class="card-sub">Every sub-type reported, with price yes/no</div>
-      <table class="data-table"><thead><tr><th>Category</th><th>Facility Type</th><th>Price — Yes</th><th>Price — No</th><th>Total</th></tr></thead>
+      <table class="data-table"><thead><tr><th>Category</th><th>Facility Type</th><th class="num">Price — Yes</th><th class="num">Price — No</th><th class="num">Total</th></tr></thead>
       <tbody>${d.facilityDetail.map((x) => `<tr><td>${x.category}</td><td>${x.type}</td><td class="num">${fmtNum(x.yes)}</td><td class="num">${fmtNum(x.no)}</td><td class="num"><strong>${fmtNum(x.total)}</strong></td></tr>`).join("")}</tbody></table></div>`;
   }
   if (d.facilityOperatorNrsf) {
     detailTables += `<div class="card"><h3>Facility Type × Operator Type — NRSF</h3><div class="card-sub">Store count and net rentable sq ft per slice</div>
-      <table class="data-table"><thead><tr><th>Facility Type</th><th>Operator Type</th><th>Stores</th><th>NRSF</th></tr></thead>
+      <table class="data-table"><thead><tr><th>Facility Type</th><th>Operator Type</th><th class="num">Stores</th><th class="num">NRSF</th></tr></thead>
       <tbody>${d.facilityOperatorNrsf.map((x) => `<tr><td>${x.facility}</td><td>${x.operator}</td><td class="num">${fmtNum(x.stores)}</td><td class="num">${x.nrsf ? fmtNum(x.nrsf) : "—"}</td></tr>`).join("")}</tbody></table></div>`;
   }
 
   if (d.sourceCoverage && d.sourceCoverage.rows.length) {
     const sc = d.sourceCoverage;
     detailTables += `<div class="card"><h3>${sc.unitLabel} Research Coverage</h3><div class="card-sub">How ${sc.unitLabel.toLowerCase()} data was obtained</div>
-      <table class="data-table"><thead><tr><th>Source</th><th>Store Count</th><th>% of Stores</th></tr></thead>
+      <table class="data-table"><thead><tr><th>Source</th><th class="num">Store Count</th><th class="num">% of Stores</th></tr></thead>
       <tbody>${sc.rows.map((x) => `<tr><td>${x.label}</td><td class="num">${fmtNum(x.count)}</td><td class="num">${x.pct != null ? Math.round(x.pct * 100) + "%" : "—"}</td></tr>`).join("")}
       ${sc.total ? `<tr class="total-row"><td>${sc.total.label}</td><td class="num"><strong>${fmtNum(sc.total.count)}</strong></td><td class="num">—</td></tr>` : ""}
       </tbody></table></div>`;
@@ -808,14 +808,14 @@ function renderRegionBlock(region) {
     }
     if (sp.attributes && sp.attributes.length) {
       spBlock += `<h3 style="margin-top:18px;">Attribute Population</h3><div class="card-sub">How many stores have each field researched</div>
-        <div class="scroll-table"><table class="data-table"><thead><tr><th>Group</th><th>Attribute</th><th>Population Count</th><th>Population %</th></tr></thead>
+        <div class="scroll-table"><table class="data-table"><thead><tr><th>Group</th><th>Attribute</th><th class="num">Population Count</th><th class="num">Population %</th></tr></thead>
         <tbody>${sp.attributes.map((a) => `<tr><td>${a.group}</td><td>${a.name}</td><td class="num">${fmtNum(a.count)}</td><td class="num">${a.pct != null ? Math.round(a.pct * 100) + "%" : "—"}</td></tr>`).join("")}</tbody></table></div>`;
     }
     spBlock += `</div>`;
     detailTables += spBlock;
   }
   if (d.owners && (d.owners.ownerCompany || d.owners.contacts)) {
-    const ownersTable = (rows) => rows ? `<table class="data-table"><thead><tr><th>Operator Type</th><th>Store Count</th><th>Updated</th><th>Updated %</th><th>Info Not Found</th><th>Not Found %</th><th>Yet to Research</th><th>Completed %</th></tr></thead>
+    const ownersTable = (rows) => rows ? `<table class="data-table"><thead><tr><th>Operator Type</th><th class="num">Store Count</th><th class="num">Updated</th><th class="num">Updated %</th><th class="num">Info Not Found</th><th class="num">Not Found %</th><th class="num">Yet to Research</th><th class="num">Completed %</th></tr></thead>
       <tbody>${rows.map((r) => `<tr><td>${r.label}</td><td class="num">${fmtNum(r.storeCount)}</td><td class="num">${fmtNum(r.updated)}</td><td class="num">${r.updatedPct != null ? Math.round(r.updatedPct * 100) + "%" : "—"}</td><td class="num">${fmtNum(r.notFound)}</td><td class="num">${r.notFoundPct != null ? Math.round(r.notFoundPct * 100) + "%" : "—"}</td><td class="num">${fmtNum(r.pending)}</td><td class="num">${r.completedPct != null ? Math.round(r.completedPct * 100) + "%" : "—"}</td></tr>`).join("")}</tbody></table>` : "";
     detailTables += `<div class="card"><h3>Owners and Contacts Research Coverage</h3><div class="card-sub">By operator type</div>
       ${d.owners.ownerCompany ? `<div class="card-sub" style="margin-top:4px;"><strong>Owner Company</strong></div>${ownersTable(d.owners.ownerCompany)}` : ""}
@@ -825,7 +825,7 @@ function renderRegionBlock(region) {
   if (d.developments && d.developments.length) {
     const stageLabels = d.developments[0].stages.map((s) => s.label);
     detailTables += `<div class="card"><h3>Known Developments</h3><div class="card-sub">Pipeline stage counts</div>
-      <table class="data-table"><thead><tr><th>${d.regionLabel || "Region"}</th>${stageLabels.map((l) => `<th>${l}</th>`).join("")}<th>Total</th></tr></thead>
+      <table class="data-table"><thead><tr><th>${d.regionLabel || "Region"}</th>${stageLabels.map((l) => `<th class="num">${l}</th>`).join("")}<th class="num">Total</th></tr></thead>
       <tbody>${d.developments.map((row) => `<tr><td>${row.region}</td>${row.stages.map((s) => `<td class="num">${fmtNum(s.value)}</td>`).join("")}<td class="num"><strong>${fmtNum(row.total)}</strong></td></tr>`).join("")}</tbody></table></div>`;
   }
 
