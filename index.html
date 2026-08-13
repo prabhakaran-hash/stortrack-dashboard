@@ -761,7 +761,7 @@ function renderRegionBlock(region) {
         <tr class="total-row"><td>Total</td>${regionKeys.map((k)=>`<td class="num">${fmtNum(d.regionSplit.reduce((sum,s)=>sum+(s[k]||0),0))}</td>`).join("")}<td class="num">${fmtNum(storeTotal)}</td><td class="num">${fmtNum(yesTotal)}</td><td class="num">${fmtNum(noTotal)}</td></tr>
         </tbody></table></div></div>`;
   } else {
-    regionCharts = `<div class="chart-row">${emptyCard("No province/region/state breakdown on this sheet's Summary tab.")}</div>`;
+    regionCharts = "";
   }
 
   let facilitySection = "";
@@ -769,7 +769,7 @@ function renderRegionBlock(region) {
     const entries = Object.entries(d.facilityType).map(([label,value],i) => ({label, value, color: PALETTE_HEX[i % 4]}));
     facilitySection = `<div class="card"><h3>Facility Type Mix</h3><div class="card-sub">Store count share</div><div class="donut-wrap">${donutSVG(entries, storeTotal, "stores", 150)}</div></div>`;
   } else {
-    facilitySection = emptyCard("No facility-type breakdown on this sheet's Summary tab.");
+    facilitySection = "";
   }
   const unitsChart = barList([
     {label:"Actual (from website)", value:d.units.actual},
@@ -803,7 +803,7 @@ function renderRegionBlock(region) {
     const sp = d.storeProfile;
     let spBlock = `<div class="card"><h3>Store Profile Research Status</h3><div class="card-sub">${sp.status ? sp.status.region : ""}</div>`;
     if (sp.status) {
-      spBlock += `<table class="data-table"><thead><tr><th>Total Stores</th><th>Research Completed</th><th>Research Pending</th><th>Completed %</th></tr></thead>
+      spBlock += `<table class="data-table"><thead><tr><th class="num">Total Stores</th><th class="num">Research Completed</th><th class="num">Research Pending</th><th class="num">Completed %</th></tr></thead>
         <tbody><tr><td class="num">${fmtNum(sp.status.total)}</td><td class="num">${fmtNum(sp.status.completed)}</td><td class="num">${fmtNum(sp.status.pending)}</td><td class="num">${sp.status.completedPct != null ? Math.round(sp.status.completedPct * 100) + "%" : "—"}</td></tr></tbody></table>`;
     }
     if (sp.attributes && sp.attributes.length) {
