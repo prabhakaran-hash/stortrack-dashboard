@@ -507,7 +507,7 @@ function parseDevelopments(grid) {
 }
 
 function parsePricingHistory(grid) {
-  const hits = findCells(grid, exact("Category")).filter((m) => cell(grid, m.r, m.c + 1) === "Available");
+  const hits = findCells(grid, exact("Category")).filter((m) => cell(grid, m.r, m.c + 1) === "Available" && /history/i.test(cell(grid, m.r, m.c + 4)));
   if (!hits.length) return null;
   const hit = hits[0];
   const rows = [];
