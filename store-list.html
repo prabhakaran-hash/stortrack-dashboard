@@ -749,22 +749,67 @@ const SAMPLE_DATA = {
 const params = new URLSearchParams(window.location.search);
 const region = (params.get("region") || "canada").toLowerCase();
 const name = params.get("name") || NAMES[region] || "Region";
-const rows = SAMPLE_DATA[region] || [];
+
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx4PtXmZMAE6AIyRcy7QSfHfEFR9mNDuyaJlWDqvOYbNlk95jMu1PAcn8Jfyhp4CyK4/exec";
+const LIVE_STORE_LIST_TABS = { "newzealand": "Store List", "australia": "Stores List" };
+const isLive = !!LIVE_STORE_LIST_TABS[region];
+let rows = [];
 
 document.getElementById("regionTitle").style.setProperty("--accent-color", ACCENTS[region] || "#3987e5");
 document.getElementById("regionName").textContent = name;
-document.getElementById("regionSub").textContent = "Full store list — sample preview, all columns";
-document.getElementById("rowCount").textContent = rows.length + " sample stores shown, " + COLUMNS.length + " columns (every store and column will show once the real Store List tab is connected)";
 document.getElementById("headRow").innerHTML = COLUMNS.map(c => `<th>${c[1]}</th>`).join("");
-document.getElementById("tableBody").innerHTML = rows.map(row => {
-  const cells = COLUMNS.map(c => {
-    const key = c[0];
-    if (key === "Storename") return `<td><a href="${row.Url || '#'}" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;">${row.Storename}</a></td>`;
-    if (key === "Url") return "<td></td>";
-    return `<td>${row[key] != null ? row[key] : ""}</td>`;
-  }).join("");
-  return "<tr>" + cells + "</tr>";
-}).join("");
+
+function renderTable() {
+  document.getElementById("tableBody").innerHTML = rows.length ? rows.map(row => {
+    const cells = COLUMNS.map(c => {
+      const key = c[0];
+      if (key === "Storename") return `<td><a href="${row.Url || '#'}" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;">${row.Storename || ""}</a></td>`;
+      if (key === "Url") return "<td></td>";
+      return `<td>${row[key] != null ? row[key] : ""}</td>`;
+    }).join("");
+    return "<tr>" + cells + "</tr>";
+  }).join("") : (isLive ? `<tr><td colspan="${COLUMNS.length}" style="text-align:center;color:var(--text-muted);padding:24px;">No stores currently in the live Store List sheet for this region.</td></tr>` : "");
+}
+
+function updateStatusText() {
+  if (isLive) {
+    document.getElementById("regionSub").textContent = "Full store list â live sync";
+    const storeWord = rows.length === 1 ? "store" : "stores";
+    document.getElementById("rowCount").textContent = rows.length + " " + storeWord + " â live synced with the Store List sheet Â· last checked " + new Date().toLocaleTimeString();
+  } else {
+    document.getElementById("regionSub").textContent = "Full store list â sample preview, all columns";
+    document.getElementById("rowCount").textContent = rows.length + " sample stores shown, " + COLUMNS.length + " columns (every store and column will show once the real Store List tab is connected)";
+  }
+}
+
+async function fetchLiveRows() {
+  const tabName = LIVE_STORE_LIST_TABS[region];
+  try {
+    const res = await fetch(`${APPS_SCRIPT_URL}?region=${region}&tab=${encodeURIComponent(tabName)}&_ts=${Date.now()}`, { cache: "no-store" });
+    const j = await res.json();
+    if (j.error || !j.grid || !j.grid.length) return [];
+    const header = j.grid[0].map(h => String(h || "").trim());
+    const dataRows = j.grid.slice(1).filter(r => r.some(v => String(v == null ? "" : v).trim() !== ""));
+    return dataRows.map(r => {
+      const obj = {};
+      header.forEach((h, i) => { if (h) obj[h] = r[i]; });
+      return obj;
+    });
+  } catch (err) { return []; }
+}
+
+async function loadAndRender() {
+  if (isLive) {
+    rows = await fetchLiveRows();
+  } else {
+    rows = SAMPLE_DATA[region] || [];
+  }
+  renderTable();
+  updateStatusText();
+}
+
+loadAndRender();
+if (isLive) setInterval(loadAndRender, 30000);
 
 /* ------------------------------ Downloads (real CSV / real .xlsx) ------------------------------
    Exports whatever is currently loaded into `rows` above — sample data now, and your
