@@ -751,7 +751,7 @@ const region = (params.get("region") || "canada").toLowerCase();
 const name = params.get("name") || NAMES[region] || "Region";
 
 const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx4PtXmZMAE6AIyRcy7QSfHfEFR9mNDuyaJlWDqvOYbNlk95jMu1PAcn8Jfyhp4CyK4/exec";
-const LIVE_STORE_LIST_TABS = { "newzealand": "Store List", "australia": "Stores List", "canada": "Store List" };
+const LIVE_STORE_LIST_TABS = { "newzealand": "Store List", "australia": "Stores List", "canada": "Store List", "uk": "Store List" };
 const isLive = !!LIVE_STORE_LIST_TABS[region];
 let rows = [];
 
