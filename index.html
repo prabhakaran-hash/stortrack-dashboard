@@ -805,10 +805,10 @@ function renderRegionBlock(region) {
         return `<tr>${catCell}<td>${x.type}</td><td class="num">${fmtNum(x.yes)}</td><td class="num">${fmtNum(x.no)}</td><td class="num"><strong>${fmtNum(x.total)}</strong></td>${gtCell}</tr>`;
       }).join("");
     }).join("");
-    detailTables += `<div class="card"><h3>Facility Type â full breakdown</h3><div class="card-sub">Every sub-type reported, with price yes/no</div>
-      <table class="data-table"><thead><tr><th>Category</th><th>Facility Type</th><th class="num">Price â Yes</th><th class="num">Price â No</th><th class="num">Total</th><th class="num">Grand Total</th></tr></thead>
+    detailTables += `<div class="card"><h3>Facility Type — full breakdown</h3><div class="card-sub">Every sub-type reported, with price yes/no</div>
+      <table class="data-table"><thead><tr><th>Category</th><th>Facility Type</th><th class="num">Price — Yes</th><th class="num">Price — No</th><th class="num">Total</th><th class="num">Grand Total</th></tr></thead>
       <tbody>${fdBody}
-      <tr class="total-row"><td colspan="2">Total</td><td class="num">${fmtNum(fdYesAll)}</td><td class="num">${fmtNum(fdNoAll)}</td><td class="num">â</td><td class="num"><strong>${fmtNum(fdGrandAll)}</strong></td></tr>
+      <tr class="total-row"><td colspan="2">Total</td><td class="num">${fmtNum(fdYesAll)}</td><td class="num">${fmtNum(fdNoAll)}</td><td class="num">—</td><td class="num"><strong>${fmtNum(fdGrandAll)}</strong></td></tr>
       </tbody></table></div>`;
   }
   if (d.facilityOperatorNrsf) {
