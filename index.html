@@ -145,6 +145,9 @@
   table.data-table th, table.data-table td { text-align:left; padding:7px 9px; border-bottom:1px solid var(--gridline); }
   table.data-table th { color: var(--text-secondary); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.03em; }
   table.data-table td.num { text-align:right; font-variant-numeric: tabular-nums; }
+  .scroll-table { max-height:360px; overflow-y:auto; border:1px solid var(--gridline); border-radius:6px; }
+  .scroll-table table.data-table { border-collapse:separate; }
+  .scroll-table thead th { position:sticky; top:0; background: var(--surface-1); z-index:1; }
   table.data-table tr.total-row td { font-weight:700; border-top:1.5px solid var(--baseline); }
 
   .foot-note { font-size:11.5px; color: var(--text-muted); margin-top:8px; line-height:1.5; }
@@ -805,8 +808,8 @@ function renderRegionBlock(region) {
     }
     if (sp.attributes && sp.attributes.length) {
       spBlock += `<h3 style="margin-top:18px;">Attribute Population</h3><div class="card-sub">How many stores have each field researched</div>
-        <table class="data-table"><thead><tr><th>Group</th><th>Attribute</th><th>Population Count</th><th>Population %</th></tr></thead>
-        <tbody>${sp.attributes.map((a) => `<tr><td>${a.group}</td><td>${a.name}</td><td class="num">${fmtNum(a.count)}</td><td class="num">${a.pct != null ? Math.round(a.pct * 100) + "%" : "—"}</td></tr>`).join("")}</tbody></table>`;
+        <div class="scroll-table"><table class="data-table"><thead><tr><th>Group</th><th>Attribute</th><th>Population Count</th><th>Population %</th></tr></thead>
+        <tbody>${sp.attributes.map((a) => `<tr><td>${a.group}</td><td>${a.name}</td><td class="num">${fmtNum(a.count)}</td><td class="num">${a.pct != null ? Math.round(a.pct * 100) + "%" : "—"}</td></tr>`).join("")}</tbody></table></div>`;
     }
     spBlock += `</div>`;
     detailTables += spBlock;
