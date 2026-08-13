@@ -332,17 +332,19 @@ function parseUK(grid) {
   const totalStores = operatorType.reduce((s, o) => s + (o.stores || 0), 0);
   const pricing = { yes: operatorType.reduce((s, o) => s + (o.yes || 0), 0), no: operatorType.reduce((s, o) => s + (o.no || 0), 0) };
   const regionKeyOrder = ["large", "medium", "small", "single"];
-  const regionSplit = UK_REGIONS.map((label) => {
-    const hits = colOccurrences(grid, label);
-    const storeHit = hits[0], priceHit = hits[1];
-    const row = { label };
-    regionKeyOrder.forEach((k, i) => { row[k] = storeHit ? numOf(cell(grid, storeHit.r, storeHit.c + 1 + i)) : null; });
-    row.total = storeHit ? numOf(cell(grid, storeHit.r, storeHit.c + 5)) : null;
-    row.priceNo = priceHit ? numOf(cell(grid, priceHit.r, priceHit.c + 1)) : null;
-    row.priceYes = priceHit ? numOf(cell(grid, priceHit.r, priceHit.c + 2)) : null;
-    return row;
-  });
-  const facilityOperatorNrsf = [], facilityType = {};
+  const ukRegionHits = colOccurrences(grid, UK_REGIONS[0]);
+const table1Col = ukRegionHits[0] ? ukRegionHits[0].c : null, table2Col = ukRegionHits[1] ? ukRegionHits[1].c : null;
+const regionSplit = UK_REGIONS.map((label) => {
+  const m1 = findCells(grid, exact(label)).find((m) => m.c === table1Col);
+  const m2 = findCells(grid, exact(label)).find((m) => m.c === table2Col);
+  const row = { label };
+  regionKeyOrder.forEach((k, i) => { row[k] = m1 ? numOf(cell(grid, m1.r, m1.c + 1 + i)) : null; });
+  row.total = m1 ? numOf(cell(grid, m1.r, m1.c + 5)) : null;
+  row.priceNo = m2 ? numOf(cell(grid, m2.r, m2.c + 1)) : null;
+  row.priceYes = m2 ? numOf(cell(grid, m2.r, m2.c + 2)) : null;
+  return row;
+});
+const facilityOperatorNrsf = [], facilityType = {};
   UK_FACILITIES.forEach((facLabel) => {
     // Real data row: next cell is an operator name (text), the one after is a
     // store count (number) — distinguishes this from any header reusing the label.
