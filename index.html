@@ -320,7 +320,7 @@ function parseCanada(grid) {
   facilityDetail.forEach((d) => { facilityType[d.category] = (facilityType[d.category] || 0) + (d.total || 0); });
   return { totalStores, pricing,
     operatorType: ["Large Operator", "Medium Operator", "Single Operator"].map((label) => ({ label, stores: opRows[label]?.stores ?? null, yes: opRows[label]?.yes ?? null, no: opRows[label]?.no ?? null })),
-    regionSplit, facilityType, facilityDetail, facilityOperatorNrsf: null, units: parseUnitsSummary(grid), sqftTotal: null, regionLabel: "Province" };
+    regionSplit, facilityType, pricingHistory: parsePricingHistory(grid), facilityDetail, facilityOperatorNrsf: null, units: parseUnitsSummary(grid), sqftTotal: null, regionLabel: "Province" };
 }
 
 const UK_OPERATORS = ["Large Operator", "Medium Operator", "Small Operator", "Single Operator"];
@@ -367,7 +367,7 @@ const facilityOperatorNrsf = [], facilityType = {};
     facilityType[shortName] = catTotal;
   });
   const sqftTotal = facilityOperatorNrsf.reduce((s, d) => s + (d.nrsf || 0), 0);
-  return { totalStores, pricing, operatorType, regionSplit, facilityType, facilityOperatorNrsf, facilityDetail: null, units: parseUnitsSummary(grid), sqftTotal, regionLabel: "Region" };
+  return { totalStores, pricing, operatorType, regionSplit, facilityType, facilityOperatorNrsf, pricingHistory: parsePricingHistory(grid), facilityDetail: null, units: parseUnitsSummary(grid), sqftTotal, regionLabel: "Region" };
 }
 
 const AU_OPERATORS = ["REIT", "Large Operator", "Medium Operator", "Single Operator"];
@@ -396,7 +396,7 @@ function parseAustralia(grid) {
       priceYes: m2 ? numOf(cell(grid, m2.r, m2.c + 2)) : null
     };
   }).filter((s) => s.total != null);
-  return { totalStores, pricing, operatorType, regionSplit, facilityType: null, facilityDetail: null, facilityOperatorNrsf: null, units: parseUnitsSummary(grid), sqftTotal: null, regionLabel: "State" };
+  return { totalStores, pricing, operatorType, regionSplit, facilityType: null, pricingHistory: parsePricingHistory(grid), facilityDetail: null, facilityOperatorNrsf: null, units: parseUnitsSummary(grid), sqftTotal: null, regionLabel: "State" };
 }
 
 const NZ_OPERATORS = ["Large Operator", "Medium Operator", "Single Operator"];
@@ -408,7 +408,7 @@ function parseNewZealand(grid) {
   });
   const totalStores = operatorType.reduce((s, o) => s + (o.stores || 0), 0);
   const pricing = { yes: operatorType.reduce((s, o) => s + (o.yes || 0), 0), no: operatorType.reduce((s, o) => s + (o.no || 0), 0) };
-  return { totalStores, pricing, operatorType, regionSplit: null, facilityType: null, facilityDetail: null, facilityOperatorNrsf: null, units: parseUnitsSummary(grid), sqftTotal: null, regionLabel: null };
+  return { totalStores, pricing, operatorType, regionSplit: null, facilityType: null, pricingHistory: parsePricingHistory(grid), facilityDetail: null, facilityOperatorNrsf: null, units: parseUnitsSummary(grid), sqftTotal: null, regionLabel: null };
 }
 
 function parseSourceCoverage(grid, unitLabel) {
@@ -505,6 +505,27 @@ function parseDevelopments(grid) {
   }).filter((s) => s.rows.length);
   return sections.length ? sections : null;
 }
+
+function parsePricingHistory(grid) {
+  const hits = findCells(grid, exact("Category")).filter((m) => cell(grid, m.r, m.c + 1) === "Available");
+  if (!hits.length) return null;
+  const hit = hits[0];
+  const rows = [];
+  for (let r = hit.r + 1; r < grid.length; r++) {
+    const label = cell(grid, r, hit.c);
+    if (!label) break;
+    rows.push({
+      label,
+      available: numOf(cell(grid, r, hit.c + 1)),
+      notAvailable: numOf(cell(grid, r, hit.c + 2)),
+      total: numOf(cell(grid, r, hit.c + 3)),
+      withHistory: numOf(cell(grid, r, hit.c + 4))
+    });
+    if (label.toLowerCase() === "grand total") break;
+  }
+  return rows.length ? rows : null;
+}
+
 
 /* =====================================================================================
    CONFIG — one entry per region. sheetId/gid come straight from the "Regional Summary"
@@ -787,7 +808,13 @@ function renderRegionBlock(region) {
     ? `<div class="foot-note">Note: the sheet's "Units Summary" section totals ${fmtNum(d.units.totalStoresInUnitsTab)} stores — this differs from the ${fmtNum(storeTotal)} total elsewhere on the tab. Shown as reported.</div>` : "";
 
   let detailTables = "";
-    if (d.facilityDetail) {
+      if (d.pricingHistory && d.pricingHistory.length) {
+    detailTables += `<div class="card"><h3>Pricing Availability - 3+ Year History Coverage</h3><div class="card-sub">Stores with at least 3 years of pricing history, by operator type</div>
+      <table class="data-table"><thead><tr><th>Operator Type</th><th class="num">Available</th><th class="num">Not Available</th><th class="num">Total</th><th class="num">With 3+ Yrs History</th></tr></thead>
+      <tbody>${d.pricingHistory.map((x) => `<tr><td>${x.label}</td><td class="num">${fmtNum(x.available)}</td><td class="num">${fmtNum(x.notAvailable)}</td><td class="num">${fmtNum(x.total)}</td><td class="num"><strong>${fmtNum(x.withHistory)}</strong></td></tr>`).join("")}</tbody></table></div>`;
+  }
+
+  if (d.facilityDetail) {
     const fdGroups = [];
     d.facilityDetail.forEach((x) => {
       let g = fdGroups.find((g) => g.category === x.category);
