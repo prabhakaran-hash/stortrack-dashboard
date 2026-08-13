@@ -773,11 +773,11 @@ function renderTable() {
 
 function updateStatusText() {
   if (isLive) {
-    document.getElementById("regionSub").textContent = "Full store list â live sync";
+    document.getElementById("regionSub").textContent = "Full store list — live sync";
     const storeWord = rows.length === 1 ? "store" : "stores";
-    document.getElementById("rowCount").textContent = rows.length + " " + storeWord + " â live synced with the Store List sheet Â· last checked " + new Date().toLocaleTimeString();
+    document.getElementById("rowCount").textContent = rows.length + " " + storeWord + " — live synced with the Store List sheet · last checked " + new Date().toLocaleTimeString();
   } else {
-    document.getElementById("regionSub").textContent = "Full store list â sample preview, all columns";
+    document.getElementById("regionSub").textContent = "Full store list — sample preview, all columns";
     document.getElementById("rowCount").textContent = rows.length + " sample stores shown, " + COLUMNS.length + " columns (every store and column will show once the real Store List tab is connected)";
   }
 }
