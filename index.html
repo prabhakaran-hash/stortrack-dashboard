@@ -267,13 +267,6 @@ function parseUnitsSummary(grid) {
 }
 
 const CA_PROVINCES = ["AB","BC","MB","NB","NL","NS","NT","ON","PE","QC","SK","YT"];
-const CA_FACILITY_CATEGORY = {
-  "Container": "Self-Storage", "Self Storage": "Self-Storage",
-  "Self Storage and Container": "Self-Storage", "Wine Storage": "Self-Storage",
-  "Container and Parking": "Hybrid", "Self Storage and Parking": "Hybrid",
-  "Self Storage, Container and Parking": "Hybrid",
-  "Parking": "Parking", "RV and Boat Storage": "Parking"
-};
 function parseRegionBlocks(grid) {
   const candidates = ["State", "Province", "Region", "Country"];
   let label = null, hits = null;
@@ -327,88 +320,95 @@ function buildRegionPriceSplit(rb) {
   return rb.blockB.rows.map((r) => ({ label: r.label, ...r.values, total: r.total }));
 }
 
-function parseCanada(grid) {
-  const opRows = {};
-  ["Large Operator", "Medium Operator", "Single Operator"].forEach((label) => {
-    const hit = firstDataRow(grid, label, 1);
-    if (!hit) return;
-    opRows[label] = {
-      r: hit.r, c: hit.c,
-      stores: numOf(cell(grid, hit.r, hit.c + 1)),
-      yes: numOf(cell(grid, hit.r, hit.c + 4)),
-      no: numOf(cell(grid, hit.r, hit.c + 5))
-    };
-  });
-  const singleRow = opRows["Single Operator"];
-  let pricing = { yes: null, no: null };
-  if (singleRow) {
-    const gtR = singleRow.r + 1, gtC = singleRow.c;
-    pricing = { yes: numOf(cell(grid, gtR, gtC + 4)), no: numOf(cell(grid, gtR, gtC + 5)) };
+function parseOperatorBlocks(grid) {
+  const catHits = findCells(grid, exact("Category"));
+  const blockAHit = catHits.find((h) => cell(grid, h.r, h.c + 1) === "Store Count");
+  const blockBHit = catHits.find((h) => cell(grid, h.r, h.c + 1) === "Available");
+  if (!blockAHit) return null;
+  const rows = [];
+  for (let r = blockAHit.r + 1; r < grid.length; r++) {
+    const label = cell(grid, r, blockAHit.c);
+    if (!label) break;
+    if (/^(grand )?total$/i.test(label)) break;
+    rows.push({ label, stores: numOf(cell(grid, r, blockAHit.c + 1)) });
   }
-  const totalStores = (opRows["Large Operator"]?.stores || 0) + (opRows["Medium Operator"]?.stores || 0) + (opRows["Single Operator"]?.stores || 0);
-  const rb = parseRegionBlocks(grid);
-  const regionSplit = buildRegionSplit(rb);
-  const regionPriceSplit = buildRegionPriceSplit(rb);
-  const facilityDetail = Object.keys(CA_FACILITY_CATEGORY).map((type) => {
-    const hit = findCells(grid, exact(type)).find((m) => {
-      const c1 = cell(grid, m.r, m.c + 1);
-      return (c1 === "" || numOf(c1) != null) && numOf(cell(grid, m.r, m.c + 2)) != null && numOf(cell(grid, m.r, m.c + 3)) != null;
-    });
-    if (!hit) return null;
-    return { category: CA_FACILITY_CATEGORY[type], type, yes: numOf(cell(grid, hit.r, hit.c + 1)), no: numOf(cell(grid, hit.r, hit.c + 2)), total: numOf(cell(grid, hit.r, hit.c + 3)) };
-  }).filter(Boolean);
-  const facilityType = {};
-  facilityDetail.forEach((d) => { facilityType[d.category] = (facilityType[d.category] || 0) + (d.total || 0); });
-  return { totalStores, pricing,
-    operatorType: ["Large Operator", "Medium Operator", "Single Operator"].map((label) => ({ label, stores: opRows[label]?.stores ?? null, yes: opRows[label]?.yes ?? null, no: opRows[label]?.no ?? null })),
-    regionSplit, regionPriceSplit, facilityType, pricingHistory: parsePricingHistory(grid), facilityDetail, facilityOperatorNrsf: null, units: parseUnitsSummary(grid), sqftTotal: null, regionLabel: "Province" };
+  const priceByLabel = {};
+  if (blockBHit) {
+    for (let r = blockBHit.r + 1; r < grid.length; r++) {
+      const label = cell(grid, r, blockBHit.c);
+      if (!label) break;
+      if (/^(grand )?total$/i.test(label)) break;
+      priceByLabel[label] = { yes: numOf(cell(grid, r, blockBHit.c + 1)), no: numOf(cell(grid, r, blockBHit.c + 2)) };
+    }
+  }
+  return rows.map((r) => ({ label: r.label, stores: r.stores, yes: priceByLabel[r.label] ? priceByLabel[r.label].yes : null, no: priceByLabel[r.label] ? priceByLabel[r.label].no : null }));
 }
 
-const UK_OPERATORS = ["Large Operator", "Medium Operator", "Small Operator", "Single Operator"];
-const UK_REGIONS = ["England", "Northern Ireland", "Scotland", "Wales"];
-const UK_FACILITIES = ["Self Storage", "Container", "Hybrid (Self Storage, Container & Parking)", "Parking"];
-function parseUK(grid) {
-  const operatorType = UK_OPERATORS.map((label) => {
-    const hits = colOccurrences(grid, label);
-    const storeHit = hits[0], priceHit = hits[1];
-    return { label, stores: storeHit ? numOf(cell(grid, storeHit.r, storeHit.c + 1)) : null, yes: priceHit ? numOf(cell(grid, priceHit.r, priceHit.c + 1)) : null, no: priceHit ? numOf(cell(grid, priceHit.r, priceHit.c + 2)) : null };
-  });
+function parseFacilityDetail(grid) {
+  const hit = findCells(grid, exact("Category")).find((m) => cell(grid, m.r, m.c + 1) === "Facility Type");
+  if (!hit) return null;
+  const rows = [];
+  let lastCategory = "";
+  for (let r = hit.r + 1; r < grid.length; r++) {
+    const rawCat = cell(grid, r, hit.c);
+    const facType = cell(grid, r, hit.c + 1);
+    if (!facType) break;
+    const category = rawCat || lastCategory;
+    lastCategory = category;
+    rows.push({ category, type: facType, yes: numOf(cell(grid, r, hit.c + 2)), no: numOf(cell(grid, r, hit.c + 3)), total: numOf(cell(grid, r, hit.c + 4)) });
+  }
+  return rows.length ? rows : null;
+}
+
+function parseFacilityOperatorNrsf(grid) {
+  const hit = findCells(grid, exact("Facility Type")).find((m) => cell(grid, m.r, m.c + 1) === "Category" && cell(grid, m.r, m.c + 2) === "Store Count");
+  if (!hit) return null;
+  const rows = [];
+  let lastFacility = "";
+  for (let r = hit.r + 1; r < grid.length; r++) {
+    const rawFac = cell(grid, r, hit.c);
+    const opLabel = cell(grid, r, hit.c + 1);
+    if (!opLabel) break;
+    const facility = rawFac || lastFacility;
+    lastFacility = facility;
+    rows.push({ facility, operator: opLabel, stores: numOf(cell(grid, r, hit.c + 2)) || 0, nrsf: numOf(cell(grid, r, hit.c + 4)) });
+  }
+  return rows.length ? rows : null;
+}
+
+function parseCanada(grid) {
+  const operatorType = parseOperatorBlocks(grid) || [];
   const totalStores = operatorType.reduce((s, o) => s + (o.stores || 0), 0);
   const pricing = { yes: operatorType.reduce((s, o) => s + (o.yes || 0), 0), no: operatorType.reduce((s, o) => s + (o.no || 0), 0) };
   const rb = parseRegionBlocks(grid);
   const regionSplit = buildRegionSplit(rb);
   const regionPriceSplit = buildRegionPriceSplit(rb);
-const facilityOperatorNrsf = [], facilityType = {};
-  UK_FACILITIES.forEach((facLabel) => {
-    // Real data row: next cell is an operator name (text), the one after is a
-    // store count (number) — distinguishes this from any header reusing the label.
-    const hit = findCells(grid, exact(facLabel)).find((m) => cell(grid, m.r, m.c + 1) !== "" && numOf(cell(grid, m.r, m.c + 2)) != null);
-    if (!hit) return;
-    const shortName = facLabel.startsWith("Hybrid") ? "Hybrid" : facLabel;
-    let catTotal = 0;
-    for (let i = 0; i < 4; i++) {
-      const r = hit.r + i;
-      const opLabel = cell(grid, r, hit.c + 1);
-      if (!opLabel) continue;
-      const stores = numOf(cell(grid, r, hit.c + 2)) || 0;
-      const nrsf = numOf(cell(grid, r, hit.c + 4));
-      facilityOperatorNrsf.push({ facility: shortName, operator: opLabel, stores, nrsf });
-      catTotal += stores;
-    }
-    facilityType[shortName] = catTotal;
-  });
+  const facilityDetail = parseFacilityDetail(grid);
+  const facilityType = {};
+  (facilityDetail || []).forEach((d) => { facilityType[d.category] = (facilityType[d.category] || 0) + (d.total || 0); });
+  return { totalStores, pricing, operatorType,
+    regionSplit, regionPriceSplit, facilityType, pricingHistory: parsePricingHistory(grid), facilityDetail, facilityOperatorNrsf: null, units: parseUnitsSummary(grid), sqftTotal: null, regionLabel: "Province" };
+}
+
+const UK_REGIONS = ["England", "Northern Ireland", "Scotland", "Wales"];
+function parseUK(grid) {
+  const operatorType = parseOperatorBlocks(grid) || [];
+  const totalStores = operatorType.reduce((s, o) => s + (o.stores || 0), 0);
+  const pricing = { yes: operatorType.reduce((s, o) => s + (o.yes || 0), 0), no: operatorType.reduce((s, o) => s + (o.no || 0), 0) };
+  const rb = parseRegionBlocks(grid);
+  const regionSplit = buildRegionSplit(rb);
+  const regionPriceSplit = buildRegionPriceSplit(rb);
+  const nrsfRows = parseFacilityOperatorNrsf(grid);
+  const facilityOperatorNrsf = (nrsfRows || []).map((r) => ({ facility: r.facility.startsWith("Hybrid") ? "Hybrid" : r.facility, operator: r.operator, stores: r.stores, nrsf: r.nrsf }));
+  const facilityType = {};
+  facilityOperatorNrsf.forEach((d) => { facilityType[d.facility] = (facilityType[d.facility] || 0) + (d.stores || 0); });
   const sqftTotal = facilityOperatorNrsf.reduce((s, d) => s + (d.nrsf || 0), 0);
   return { totalStores, pricing, operatorType, regionSplit, regionPriceSplit, facilityType, facilityOperatorNrsf, pricingHistory: parsePricingHistory(grid), facilityDetail: null, units: parseUnitsSummary(grid), sqftTotal, regionLabel: "Region" };
 }
 
-const AU_OPERATORS = ["REIT", "Large Operator", "Medium Operator", "Single Operator"];
 const AU_STATES = ["Australian Capital Territory", "New South Wales", "Northern Territory", "Queensland", "South Australia", "Tasmania", "Victoria", "Western Australia"];
 function parseAustralia(grid) {
-  const operatorType = AU_OPERATORS.map((label) => {
-    const hit = firstDataRow(grid, label, 1);
-    if (!hit) return { label, stores: null, yes: null, no: null };
-    return { label, stores: numOf(cell(grid, hit.r, hit.c + 1)), yes: numOf(cell(grid, hit.r, hit.c + 4)), no: numOf(cell(grid, hit.r, hit.c + 5)) };
-  });
+  const operatorType = parseOperatorBlocks(grid) || [];
   const totalStores = operatorType.reduce((s, o) => s + (o.stores || 0), 0);
   const pricing = { yes: operatorType.reduce((s, o) => s + (o.yes || 0), 0), no: operatorType.reduce((s, o) => s + (o.no || 0), 0) };
   const rb = parseRegionBlocks(grid);
@@ -417,13 +417,8 @@ function parseAustralia(grid) {
   return { totalStores, pricing, operatorType, regionSplit, regionPriceSplit, facilityType: null, pricingHistory: parsePricingHistory(grid), facilityDetail: null, facilityOperatorNrsf: null, units: parseUnitsSummary(grid), sqftTotal: null, regionLabel: "State" };
 }
 
-const NZ_OPERATORS = ["Large Operator", "Medium Operator", "Single Operator"];
 function parseNewZealand(grid) {
-  const operatorType = NZ_OPERATORS.map((label) => {
-    const hits = colOccurrences(grid, label);
-    const storeHit = hits[0], priceHit = hits[1];
-    return { label, stores: storeHit ? numOf(cell(grid, storeHit.r, storeHit.c + 1)) : null, yes: priceHit ? numOf(cell(grid, priceHit.r, priceHit.c + 1)) : null, no: priceHit ? numOf(cell(grid, priceHit.r, priceHit.c + 2)) : null };
-  });
+  const operatorType = parseOperatorBlocks(grid) || [];
   const totalStores = operatorType.reduce((s, o) => s + (o.stores || 0), 0);
   const pricing = { yes: operatorType.reduce((s, o) => s + (o.yes || 0), 0), no: operatorType.reduce((s, o) => s + (o.no || 0), 0) };
   return { totalStores, pricing, operatorType, regionSplit: null, facilityType: null, pricingHistory: parsePricingHistory(grid), facilityDetail: null, facilityOperatorNrsf: null, units: parseUnitsSummary(grid), sqftTotal: null, regionLabel: null };
