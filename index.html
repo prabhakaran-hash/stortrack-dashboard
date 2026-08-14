@@ -427,65 +427,85 @@ function parseNewZealand(grid) {
 function parseSourceCoverage(grid, unitLabel) {
   const hit = findCells(grid, exact("Source")).find((m) => cell(grid, m.r, m.c + 1) !== "");
   if (!hit) return null;
+  const cols = [];
+  for (let c = hit.c + 1; c < (grid[hit.r] || []).length; c++) {
+    const h = cell(grid, hit.r, c);
+    if (!h) break;
+    cols.push({ col: c, name: h });
+  }
+  if (!cols.length) return null;
+  const labelHeader = cell(grid, hit.r, hit.c) || "Source";
   const rows = [];
   let total = null;
   for (let r = hit.r + 1; r < grid.length; r++) {
     const label = cell(grid, r, hit.c);
     if (!label) break;
-    const count = numOf(cell(grid, r, hit.c + 1));
-    const pctVal = numOf(cell(grid, r, hit.c + 2));
-    if (label.toLowerCase() === "total") { total = { label, count }; break; }
-    rows.push({ label, count, pct: pctVal });
+    const values = cols.map((cc) => numOf(cell(grid, r, cc.col)));
+    if (label.toLowerCase() === "total") { total = { label, values }; break; }
+    rows.push({ label, values });
   }
-  return { unitLabel: unitLabel || "Size", rows, total };
+  return { unitLabel: unitLabel || "Size", labelHeader, columns: cols.map((c) => c.name), rows, total };
 }
 function parseStoreProfile(grid) {
   const statusHit = findCells(grid, exact("Region")).find((m) => cell(grid, m.r, m.c + 1) === "Total Stores");
   let status = null;
   if (statusHit) {
+    const cols = [];
+    for (let c = statusHit.c + 1; c < (grid[statusHit.r] || []).length; c++) {
+      const h = cell(grid, statusHit.r, c);
+      if (!h) break;
+      cols.push({ col: c, name: h });
+    }
     const r = statusHit.r + 1;
     status = {
       region: cell(grid, r, statusHit.c),
-      total: numOf(cell(grid, r, statusHit.c + 1)),
-      completed: numOf(cell(grid, r, statusHit.c + 2)),
-      pending: numOf(cell(grid, r, statusHit.c + 3)),
-      completedPct: numOf(cell(grid, r, statusHit.c + 4))
+      columns: cols.map((c) => c.name),
+      values: cols.map((cc) => numOf(cell(grid, r, cc.col)))
     };
   }
   const attrHit = findCells(grid, exact("Attribute Group")).find((m) => cell(grid, m.r, m.c + 1) === "Attribute Name");
+  let attrCols = [];
+  let groupHeader = "Group", nameHeader = "Attribute";
   const attributes = [];
   if (attrHit) {
+    groupHeader = cell(grid, attrHit.r, attrHit.c) || groupHeader;
+    nameHeader = cell(grid, attrHit.r, attrHit.c + 1) || nameHeader;
+    for (let c = attrHit.c + 2; c < (grid[attrHit.r] || []).length; c++) {
+      const h = cell(grid, attrHit.r, c);
+      if (!h) break;
+      attrCols.push({ col: c, name: h });
+    }
     let lastGroup = "";
     for (let r = attrHit.r + 1; r < grid.length; r++) {
       const name = cell(grid, r, attrHit.c + 1);
       if (!name) break;
       const group = cell(grid, r, attrHit.c) || lastGroup;
       lastGroup = group;
-      attributes.push({ group, name, count: numOf(cell(grid, r, attrHit.c + 2)), pct: numOf(cell(grid, r, attrHit.c + 3)) });
+      attributes.push({ group, name, values: attrCols.map((cc) => numOf(cell(grid, r, cc.col))) });
     }
   }
-  return { status, attributes };
+  return { status, groupHeader, nameHeader, attrColumns: attrCols.map((c) => c.name), attributes };
 }
 function parseOwnersSection(grid, sectionLabel) {
   const hit = findCells(grid, exact(sectionLabel))[0];
   if (!hit) return null;
-  const c = hit.c;
-  const rows = [];
-  for (let r = hit.r + 2; r < grid.length; r++) {
-    const label = cell(grid, r, c);
-    if (!label) break;
-    rows.push({
-      label,
-      storeCount: numOf(cell(grid, r, c + 1)),
-      updated: numOf(cell(grid, r, c + 2)),
-      updatedPct: numOf(cell(grid, r, c + 3)),
-      notFound: numOf(cell(grid, r, c + 4)),
-      notFoundPct: numOf(cell(grid, r, c + 5)),
-      pending: numOf(cell(grid, r, c + 6)),
-      completedPct: numOf(cell(grid, r, c + 7))
-    });
+  const headerRow = hit.r + 1;
+  const startC = hit.c;
+  const cols = [];
+  for (let c = startC + 1; c < (grid[headerRow] || []).length; c++) {
+    const h = cell(grid, headerRow, c);
+    if (!h) break;
+    cols.push({ col: c, name: h });
   }
-  return rows.length ? rows : null;
+  if (!cols.length) return null;
+  const labelHeader = cell(grid, headerRow, startC) || "Category";
+  const rows = [];
+  for (let r = headerRow + 1; r < grid.length; r++) {
+    const label = cell(grid, r, startC);
+    if (!label) break;
+    rows.push({ label, values: cols.map((cc) => numOf(cell(grid, r, cc.col))) });
+  }
+  return rows.length ? { labelHeader, columns: cols.map((c) => c.name), rows } : null;
 }
 function parseOwnersContacts(grid) {
   const ownerCompany = parseOwnersSection(grid, "Owner Company Summary*") || parseOwnersSection(grid, "Owner Company Summary");
@@ -869,36 +889,39 @@ function renderRegionBlock(region) {
 
   if (d.sourceCoverage && d.sourceCoverage.rows.length) {
     const sc = d.sourceCoverage;
+    const fmtSc = (v, name) => v == null ? "—" : (name.includes("%") ? Math.round(v * 100) + "%" : fmtNum(v));
     detailTables += `<div class="card"><h3>${sc.unitLabel} Research Coverage</h3><div class="card-sub">How ${sc.unitLabel.toLowerCase()} data was obtained</div>
-      <table class="data-table"><thead><tr><th>Source</th><th class="num">Store Count</th><th class="num">% of Stores</th></tr></thead>
-      <tbody>${sc.rows.map((x) => `<tr><td>${x.label}</td><td class="num">${fmtNum(x.count)}</td><td class="num">${x.pct != null ? Math.round(x.pct * 100) + "%" : "—"}</td></tr>`).join("")}
-      ${sc.total ? `<tr class="total-row"><td>${sc.total.label}</td><td class="num"><strong>${fmtNum(sc.total.count)}</strong></td><td class="num">—</td></tr>` : ""}
+      <table class="data-table"><thead><tr><th>${sc.labelHeader}</th>${sc.columns.map((c)=>`<th class="num">${c}</th>`).join("")}</tr></thead>
+      <tbody>${sc.rows.map((x) => `<tr><td>${x.label}</td>${x.values.map((v,i)=> `<td class="num">${fmtSc(v, sc.columns[i])}</td>`).join("")}</tr>`).join("")}
+      ${sc.total ? `<tr class="total-row"><td>${sc.total.label}</td>${sc.total.values.map((v,i)=> `<td class="num">${v==null?"—":(sc.columns[i].includes("%")?Math.round(v*100)+"%":`<strong>${fmtNum(v)}</strong>`)}</td>`).join("")}</tr>` : ""}
       </tbody></table></div>`;
   }
-  if (d.storeProfile && (d.storeProfile.status || (d.storeProfile.attributes && d.storeProfile.attributes.length))) {
+if (d.storeProfile && (d.storeProfile.status || (d.storeProfile.attributes && d.storeProfile.attributes.length))) {
     const sp = d.storeProfile;
+    const fmtSp = (v, name) => v == null ? "—" : (name.includes("%") ? Math.round(v * 100) + "%" : fmtNum(v));
     let spBlock = `<div class="card"><h3>Store Profile Research Status</h3><div class="card-sub">${sp.status ? sp.status.region : ""}</div>`;
     if (sp.status) {
-      spBlock += `<table class="data-table"><thead><tr><th class="num">Total Stores</th><th class="num">Research Completed</th><th class="num">Research Pending</th><th class="num">Completed %</th></tr></thead>
-        <tbody><tr><td class="num">${fmtNum(sp.status.total)}</td><td class="num">${fmtNum(sp.status.completed)}</td><td class="num">${fmtNum(sp.status.pending)}</td><td class="num">${sp.status.completedPct != null ? Math.round(sp.status.completedPct * 100) + "%" : "—"}</td></tr></tbody></table>`;
+      spBlock += `<table class="data-table"><thead><tr>${sp.status.columns.map((c)=>`<th class="num">${c}</th>`).join("")}</tr></thead>
+        <tbody><tr>${sp.status.values.map((v,i)=> `<td class="num">${fmtSp(v, sp.status.columns[i])}</td>`).join("")}</tr></tbody></table>`;
     }
     if (sp.attributes && sp.attributes.length) {
       spBlock += `<h3 style="margin-top:18px;">Attribute Population</h3><div class="card-sub">How many stores have each field researched</div>
-        <div class="scroll-table"><table class="data-table"><thead><tr><th>Group</th><th>Attribute</th><th class="num">Population Count</th><th class="num">Population %</th></tr></thead>
-        <tbody>${sp.attributes.map((a) => `<tr><td>${a.group}</td><td>${a.name}</td><td class="num">${fmtNum(a.count)}</td><td class="num">${a.pct != null ? Math.round(a.pct * 100) + "%" : "—"}</td></tr>`).join("")}</tbody></table></div>`;
+        <div class="scroll-table"><table class="data-table"><thead><tr><th>${sp.groupHeader}</th><th>${sp.nameHeader}</th>${sp.attrColumns.map((c)=>`<th class="num">${c}</th>`).join("")}</tr></thead>
+        <tbody>${sp.attributes.map((a) => `<tr><td>${a.group}</td><td>${a.name}</td>${a.values.map((v,i)=> `<td class="num">${fmtSp(v, sp.attrColumns[i])}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
     }
     spBlock += `</div>`;
     detailTables += spBlock;
   }
-  if (d.owners && (d.owners.ownerCompany || d.owners.contacts)) {
-    const ownersTable = (rows) => rows ? `<table class="data-table"><thead><tr><th>Operator Type</th><th class="num">Store Count</th><th class="num">Updated</th><th class="num">Updated %</th><th class="num">Info Not Found</th><th class="num">Not Found %</th><th class="num">Yet to Research</th><th class="num">Completed %</th></tr></thead>
-      <tbody>${rows.map((r) => `<tr><td>${r.label}</td><td class="num">${fmtNum(r.storeCount)}</td><td class="num">${fmtNum(r.updated)}</td><td class="num">${r.updatedPct != null ? Math.round(r.updatedPct * 100) + "%" : "—"}</td><td class="num">${fmtNum(r.notFound)}</td><td class="num">${r.notFoundPct != null ? Math.round(r.notFoundPct * 100) + "%" : "—"}</td><td class="num">${fmtNum(r.pending)}</td><td class="num">${r.completedPct != null ? Math.round(r.completedPct * 100) + "%" : "—"}</td></tr>`).join("")}</tbody></table>` : "";
+if (d.owners && (d.owners.ownerCompany || d.owners.contacts)) {
+    const fmtOw = (v, name) => v == null ? "—" : (name.includes("%") ? Math.round(v * 100) + "%" : fmtNum(v));
+    const ownersTable = (block) => block ? `<table class="data-table"><thead><tr><th>${block.labelHeader}</th>${block.columns.map((c)=>`<th class="num">${c}</th>`).join("")}</tr></thead>
+      <tbody>${block.rows.map((r) => `<tr><td>${r.label}</td>${r.values.map((v,i)=> `<td class="num">${fmtOw(v, block.columns[i])}</td>`).join("")}</tr>`).join("")}</tbody></table>` : "";
     detailTables += `<div class="card"><h3>Owners and Contacts Research Coverage</h3><div class="card-sub">By operator type</div>
       ${d.owners.ownerCompany ? `<div class="card-sub" style="margin-top:4px;"><strong>Owner Company</strong></div>${ownersTable(d.owners.ownerCompany)}` : ""}
       ${d.owners.contacts ? `<div class="card-sub" style="margin-top:14px;"><strong>Contacts</strong></div>${ownersTable(d.owners.contacts)}` : ""}
     </div>`;
   }
-    if (d.developments && d.developments.length) {
+if (d.developments && d.developments.length) {
     const devTables = d.developments.map((section) => {
       const stageLabels = section.rows[0].stages.map((s) => s.label);
       const subtitle = section.title ? `<div class="card-sub" style="margin-top:14px;"><strong>${section.title}</strong></div>` : "";
