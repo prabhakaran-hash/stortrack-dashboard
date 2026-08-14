@@ -324,12 +324,7 @@ function buildRegionSplit(rb) {
 
 function buildRegionPriceSplit(rb) {
   if (!rb) return [];
-  return rb.blockB.rows.map((r) => ({
-    label: r.label,
-    priceNo: r.values["Price - No"],
-    priceYes: r.values["Price - Yes"],
-    total: r.total
-  }));
+  return rb.blockB.rows.map((r) => ({ label: r.label, ...r.values, total: r.total }));
 }
 
 function parseCanada(grid) {
@@ -801,9 +796,8 @@ function renderRegionBlock(region) {
     const rl = d.regionLabel || "Region";
     const storeBar = barList(d.regionSplit.map((s) => ({label: s.label, value: s.total})), () => accent);
     const pricingBar = stackedYesNoList(d.regionSplit.map((s) => ({label: s.label, yes: s.priceYes, no: s.priceNo})));
-    const priceRows = (d.regionPriceSplit && d.regionPriceSplit.length) ? d.regionPriceSplit : d.regionSplit.map((s) => ({label: s.label, priceNo: s.priceNo, priceYes: s.priceYes, total: s.total}));
-    const priceNoTotal = priceRows.reduce((sum,s)=>sum+(s.priceNo||0),0);
-    const priceYesTotal = priceRows.reduce((sum,s)=>sum+(s.priceYes||0),0);
+    const priceRows = (d.regionPriceSplit && d.regionPriceSplit.length) ? d.regionPriceSplit : d.regionSplit.map((s) => ({label: s.label, "Price - No": s.priceNo, "Price - Yes": s.priceYes, total: s.total}));
+    const priceKeys = Object.keys(priceRows[0]).filter((k) => !["label","total"].includes(k));
     const priceGrandTotal = priceRows.reduce((sum,s)=>sum+(s.total||0),0);
     regionCharts = `<div class="chart-row">
       <div class="card"><h3>Stores by ${rl}</h3><div class="card-sub">Store count</div>${storeBar}</div>
@@ -818,9 +812,9 @@ function renderRegionBlock(region) {
         </tbody></table></div></div>
       <div class="chart-row" style="grid-template-columns:1fr;"><div class="card">
         <h3>${rl} — Pricing Yes/No breakdown</h3><div class="card-sub">Sheet order, as sorted in the source</div>
-        <table class="data-table"><thead><tr><th>${rl}</th><th class="num">Price - No</th><th class="num">Price - Yes</th><th class="num">Grand Total</th></tr></thead>
-        <tbody>${priceRows.map((s) => `<tr><td>${s.label}</td><td class="num">${fmtNum(s.priceNo)}</td><td class="num">${fmtNum(s.priceYes)}</td><td class="num"><strong>${fmtNum(s.total)}</strong></td></tr>`).join("")}
-        <tr class="total-row"><td>Total</td><td class="num">${fmtNum(priceNoTotal)}</td><td class="num">${fmtNum(priceYesTotal)}</td><td class="num"><strong>${fmtNum(priceGrandTotal)}</strong></td></tr>
+        <table class="data-table"><thead><tr><th>${rl}</th>${priceKeys.map((k)=>`<th class="num">${k}</th>`).join("")}<th class="num">Grand Total</th></tr></thead>
+        <tbody>${priceRows.map((s) => `<tr><td>${s.label}</td>${priceKeys.map((k)=>`<td class="num">${fmtNum(s[k])}</td>`).join("")}<td class="num"><strong>${fmtNum(s.total)}</strong></td></tr>`).join("")}
+        <tr class="total-row"><td>Total</td>${priceKeys.map((k)=>`<td class="num">${fmtNum(priceRows.reduce((sum,s)=>sum+(s[k]||0),0))}</td>`).join("")}<td class="num"><strong>${fmtNum(priceGrandTotal)}</strong></td></tr>
         </tbody></table></div></div>`;
   } else {
     regionCharts = "";
