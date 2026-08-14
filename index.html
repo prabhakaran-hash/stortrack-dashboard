@@ -293,6 +293,22 @@ function anchorPosPair(key, liveHits, grid) {
 
 function parseUnitsSummary(grid, regionKey) {
   const rk = (regionKey || "default") + ":units";
+  // Primary: anchor once on the 3-cell header row ("Summary | Obtained Method | Total") and
+  // read the four data rows below it by fixed position. This survives deleting any ONE of the
+  // individual row labels ("Total Stores", "No. of Units not available", etc.) since we never
+  // search for that text again once the header row itself has been located.
+  const hit = anchorPos(rk + ":anchor", findCells(grid, exact("Summary")).find((m) => cell(grid, m.r, m.c + 1) === "Obtained Method" && cell(grid, m.r, m.c + 2) === "Total"), grid);
+  if (hit) {
+    const totalCol = hit.c + 2;
+    return {
+      actual: numOf(cell(grid, hit.r + 1, totalCol)),
+      estimated: numOf(cell(grid, hit.r + 2, totalCol)),
+      notAvailable: numOf(cell(grid, hit.r + 3, totalCol)),
+      totalStoresInUnitsTab: numOf(cell(grid, hit.r + 4, totalCol))
+    };
+  }
+  // Fallback (kept for safety): the older per-row text search, only used if the header row
+  // itself can't be located and there's no remembered position for it either.
   const actualHit = anchorPos(rk + ":actual", startsWithMatch(grid, "1. Actual"), grid);
   const estHit = anchorPos(rk + ":est", startsWithMatch(grid, "2. Estimated"), grid);
   const naHit = anchorPos(rk + ":na", startsWithMatch(grid, "No. of Units not available"), grid);
