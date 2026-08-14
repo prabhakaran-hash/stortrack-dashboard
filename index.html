@@ -1011,18 +1011,22 @@ function renderRegionBlock(region) {
       if (x.totalNrsf != null) g.totalNrsf = x.totalNrsf;
     });
     const hasTotals = fnGroups.some((g) => g.totalStores != null || g.totalNrsf != null);
+    let grandStores = 0, grandNrsf = 0, grandNrsfSeen = false;
     const fnBody = fnGroups.map((g) => {
       const groupStores = g.totalStores != null ? g.totalStores : g.rows.reduce((s,x)=>s+(x.stores||0),0);
       const groupNrsf = g.totalNrsf != null ? g.totalNrsf : g.rows.reduce((s,x)=>s+(x.nrsf||0),0);
+      grandStores += groupStores || 0;
+      if (groupNrsf) { grandNrsf += groupNrsf; grandNrsfSeen = true; }
       return g.rows.map((x, i) => {
         const facCell = i === 0 ? `<td rowspan="${g.rows.length}">${g.facility}</td>` : "";
         const totCells = i === 0 && hasTotals ? `<td class="num" rowspan="${g.rows.length}"><strong>${fmtNum(groupStores)}</strong></td><td class="num" rowspan="${g.rows.length}"><strong>${groupNrsf ? fmtNum(groupNrsf) : "—"}</strong></td>` : "";
         return `<tr>${facCell}<td>${x.operator}</td><td class="num">${fmtNum(x.stores)}</td><td class="num">${x.nrsf ? fmtNum(x.nrsf) : "—"}</td>${totCells}</tr>`;
       }).join("");
     }).join("");
+    const fnTotalRow = `<tr class="total-row"><td colspan="2">Total</td><td class="num">—</td><td class="num">—</td>${hasTotals ? `<td class="num"><strong>${fmtNum(grandStores)}</strong></td><td class="num"><strong>${grandNrsfSeen ? fmtNum(grandNrsf) : "—"}</strong></td>` : ""}</tr>`;
     detailTables += `<div class="card"><h3>Facility Type × Operator Type — NRSF</h3><div class="card-sub">Store count and net rentable sq ft per slice${hasTotals ? ", with per-facility totals" : ""}</div>
       <table class="data-table"><thead><tr><th>Facility Type</th><th>Operator Type</th><th class="num">Stores</th><th class="num">NRSF</th>${hasTotals ? '<th class="num">Total Stores</th><th class="num">Total NRSF</th>' : ""}</tr></thead>
-      <tbody>${fnBody}</tbody></table></div>`;
+      <tbody>${fnBody}${fnTotalRow}</tbody></table></div>`;
   }
 
   if (d.sourceCoverage && d.sourceCoverage.rows.length) {
