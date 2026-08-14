@@ -65,11 +65,41 @@
   .dot.error { background: #ff6a6a; }
   .dot.live { animation: pulse 1.8s ease-in-out infinite; }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
-  select#intervalSelect, button#refreshNow {
+  button#refreshNow {
     font: inherit; font-size:13px; font-weight:600; color: #f2f6fb;
     border-radius:10px; padding:7px 12px; cursor:pointer;
   }
-  select#intervalSelect option { color: #10182c; }
+
+  /* --- Custom glass dropdowns (region picker + refresh interval) -----------------------
+     Native <select> popups can't be styled — most browsers render them with the OS's own
+     unthemed list, which looked half-invisible against this dark UI. These replace that
+     native popup with a proper glass listbox that matches the rest of the dashboard. ---- */
+  .glass-select { position:relative; display:inline-flex; }
+  .glass-select-btn {
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    font: inherit; font-size:13px; font-weight:600; color:#f2f6fb;
+    border-radius:10px; padding:7px 12px; cursor:pointer; min-width:150px; white-space:nowrap;
+  }
+  #regionSelectBtn { font-size:14px; font-weight:700; min-width:220px; padding:9px 14px; }
+  .glass-select .gs-caret { width:11px; height:11px; flex:none; transition: transform .15s ease; }
+  .glass-select.open .gs-caret { transform: rotate(180deg); }
+  .glass-select-menu {
+    position:absolute; top: calc(100% + 8px); left:0; min-width:100%; z-index:40;
+    background: linear-gradient(160deg, rgba(255,255,255,0.18), rgba(20,32,58,0.34) 60%);
+    backdrop-filter: blur(24px) saturate(190%); -webkit-backdrop-filter: blur(24px) saturate(190%);
+    border:1px solid rgba(255,255,255,0.32); border-radius:14px;
+    box-shadow: 0 14px 38px rgba(0,0,0,0.38), inset 0 1px 0 rgba(255,255,255,0.32);
+    padding:6px; opacity:0; transform: translateY(-6px) scale(.98); pointer-events:none;
+    transition: opacity .16s ease, transform .16s ease;
+  }
+  .glass-select.open .glass-select-menu { opacity:1; transform: translateY(0) scale(1); pointer-events:auto; }
+  .gs-option {
+    display:block; width:100%; text-align:left; font: inherit; font-size:13px; font-weight:600;
+    color:#f2f6fb; background:transparent; border:none; border-radius:10px; padding:9px 12px; cursor:pointer;
+    white-space:nowrap; transition: background .12s ease;
+  }
+  .gs-option:hover { background: rgba(255,255,255,0.16); }
+  .gs-option.selected { background: rgba(120,190,255,0.24); color:#eaf4ff; }
 
   /* --- Refresh button + hard-refresh glass dropdown ------------------------------------ */
   .refresh-group { position:relative; display:flex; }
@@ -134,10 +164,6 @@
 
   .region-picker { display:flex; align-items:center; gap:10px; margin-bottom:18px; }
   .region-picker label { font-size:13px; font-weight:700; color: var(--text-primary); }
-  .region-picker select {
-    font: inherit; font-size:14px; font-weight:700; color: var(--text-primary);
-    border-radius:10px; padding:9px 14px; cursor:pointer; min-width:220px;
-  }
 
   .region-strip { display:grid; grid-template-columns: repeat(4, 1fr); gap:12px; margin-bottom:28px; }
   .region-card {
@@ -241,12 +267,13 @@
       </div>
       <div class="status-cluster">
         <span class="status-pill glass"><span class="dot live" id="syncDot"></span><span id="syncText">Connecting…</span></span>
-        <select id="intervalSelect" class="glass" title="Auto-refresh interval">
-          <option value="300000">Refresh: 5 min</option>
-          <option value="900000">Refresh: 15 min</option>
-          <option value="1800000" selected>Refresh: 30 min</option>
-          <option value="3600000">Refresh: 1 hr</option>
-        </select>
+        <div class="glass-select" id="intervalSelectWrap">
+          <button type="button" class="glass-select-btn glass" id="intervalSelectBtn" title="Auto-refresh interval" aria-haspopup="listbox" aria-expanded="false">
+            <span id="intervalSelectLabel">Refresh: 30 min</span>
+            <svg class="gs-caret" viewBox="0 0 12 8" fill="none"><path d="M1 1.5L6 6.5L11 1.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <div class="glass-select-menu" id="intervalSelectMenu" role="listbox"></div>
+        </div>
         <div class="refresh-group">
           <button id="refreshNow" class="glass">Refresh now</button>
           <button id="refreshCaret" class="glass" title="More refresh options" aria-haspopup="true" aria-expanded="false">
@@ -271,8 +298,14 @@
   </div>
 
   <div class="region-picker">
-    <label for="regionSelect">Region</label>
-    <select id="regionSelect" class="glass"></select>
+    <label id="regionSelectLbl">Region</label>
+    <div class="glass-select" id="regionSelectWrap">
+      <button type="button" class="glass-select-btn glass" id="regionSelectBtn" aria-labelledby="regionSelectLbl" aria-haspopup="listbox" aria-expanded="false">
+        <span id="regionSelectLabel">Region</span>
+        <svg class="gs-caret" viewBox="0 0 12 8" fill="none"><path d="M1 1.5L6 6.5L11 1.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="glass-select-menu" id="regionSelectMenu" role="listbox"></div>
+    </div>
   </div>
 
   <section class="region-strip" id="regionStrip"></section>
@@ -918,10 +951,17 @@ let selectedRegion = (function () {
   return (saved && REGIONS.some((r) => r.name === saved)) ? saved : REGIONS[0].name;
 })();
 function renderRegionPicker() {
-  const sel = document.getElementById("regionSelect");
-  sel.innerHTML = REGIONS.map((r) => `<option value="${r.name}">${r.name}</option>`).join("");
-  sel.value = selectedRegion;
-  sel.onchange = () => { selectedRegion = sel.value; saveSelectedRegion(selectedRegion); render(); };
+  document.getElementById("regionSelectLabel").textContent = selectedRegion;
+  const menu = document.getElementById("regionSelectMenu");
+  menu.innerHTML = REGIONS.map((r) => `<button type="button" class="gs-option${r.name === selectedRegion ? " selected" : ""}" role="option" aria-selected="${r.name === selectedRegion}" data-value="${r.name}">${r.name}</button>`).join("");
+  menu.querySelectorAll(".gs-option").forEach((btn) => {
+    btn.onclick = () => {
+      selectedRegion = btn.dataset.value;
+      saveSelectedRegion(selectedRegion);
+      closeGlassSelect(document.getElementById("regionSelectWrap"));
+      render();
+    };
+  });
 }
 const BADGE_META = {
   loaded: { cls: "live", text: "Live" },
@@ -1202,8 +1242,46 @@ function render() {
     : renderRegionBlock(region);
 }
 
-document.getElementById("intervalSelect").addEventListener("change", (e) => { REFRESH_MS = Number(e.target.value); restartPolling(); });
 document.getElementById("refreshNow").addEventListener("click", () => { consecutiveFailures = 0; restartPolling(); syncAll(); });
+
+// --- Custom glass dropdowns (region picker + refresh interval) --------------------------
+// Native <select> popups render with the OS's own list styling — on this dark UI that came
+// out as a near-unreadable washed-out white box. These use the same open/close pattern as
+// the hard-refresh menu below so every dropdown in the header behaves and looks the same.
+function closeGlassSelect(wrap) { wrap.classList.remove("open"); const btn = wrap.querySelector(".glass-select-btn"); if (btn) btn.setAttribute("aria-expanded", "false"); }
+function closeAllGlassSelects(except) {
+  document.querySelectorAll(".glass-select.open").forEach((w) => { if (w !== except) closeGlassSelect(w); });
+}
+function toggleGlassSelect(wrap) {
+  const opening = !wrap.classList.contains("open");
+  closeAllGlassSelects(wrap);
+  wrap.classList.toggle("open", opening);
+  const btn = wrap.querySelector(".glass-select-btn");
+  if (btn) btn.setAttribute("aria-expanded", String(opening));
+}
+document.getElementById("regionSelectBtn").addEventListener("click", (e) => { e.stopPropagation(); toggleGlassSelect(document.getElementById("regionSelectWrap")); });
+
+const REFRESH_OPTIONS = [
+  { value: 300000, label: "Refresh: 5 min" },
+  { value: 900000, label: "Refresh: 15 min" },
+  { value: 1800000, label: "Refresh: 30 min" },
+  { value: 3600000, label: "Refresh: 1 hr" }
+];
+function renderIntervalSelect() {
+  document.getElementById("intervalSelectLabel").textContent = (REFRESH_OPTIONS.find((o) => o.value === REFRESH_MS) || REFRESH_OPTIONS[2]).label;
+  const menu = document.getElementById("intervalSelectMenu");
+  menu.innerHTML = REFRESH_OPTIONS.map((o) => `<button type="button" class="gs-option${o.value === REFRESH_MS ? " selected" : ""}" role="option" aria-selected="${o.value === REFRESH_MS}" data-value="${o.value}">${o.label}</button>`).join("");
+  menu.querySelectorAll(".gs-option").forEach((btn) => {
+    btn.onclick = () => {
+      REFRESH_MS = Number(btn.dataset.value);
+      restartPolling();
+      renderIntervalSelect();
+      closeGlassSelect(document.getElementById("intervalSelectWrap"));
+    };
+  });
+}
+renderIntervalSelect();
+document.getElementById("intervalSelectBtn").addEventListener("click", (e) => { e.stopPropagation(); toggleGlassSelect(document.getElementById("intervalSelectWrap")); });
 
 // --- Hard refresh: clears the remembered anchor-position cache and forces a genuinely
 // fresh reload (bypassing this browser's own cache). Instead of a screen flash, every card
@@ -1214,13 +1292,17 @@ const refreshMenu = document.getElementById("refreshMenu");
 function closeRefreshMenu() { refreshMenu.classList.remove("open"); refreshCaret.classList.remove("open"); refreshCaret.setAttribute("aria-expanded", "false"); }
 function toggleRefreshMenu() {
   const opening = !refreshMenu.classList.contains("open");
+  closeAllGlassSelects();
   refreshMenu.classList.toggle("open", opening);
   refreshCaret.classList.toggle("open", opening);
   refreshCaret.setAttribute("aria-expanded", String(opening));
 }
 refreshCaret.addEventListener("click", (e) => { e.stopPropagation(); toggleRefreshMenu(); });
-document.addEventListener("click", (e) => { if (!e.target.closest(".refresh-group")) closeRefreshMenu(); });
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeRefreshMenu(); });
+document.addEventListener("click", (e) => {
+  if (!e.target.closest(".refresh-group")) closeRefreshMenu();
+  if (!e.target.closest(".glass-select")) closeAllGlassSelects();
+});
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeRefreshMenu(); closeAllGlassSelects(); } });
 
 function playHardRefreshWave(originEl) {
   const originRect = (originEl || document.getElementById("refreshNow")).getBoundingClientRect();
