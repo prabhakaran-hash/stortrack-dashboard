@@ -115,7 +115,7 @@
   .kpi-tile .sub { font-size:12px; color: var(--text-muted); margin-top:6px; }
 
   .chart-row { display:grid; grid-template-columns: 1fr 1fr; gap:14px; margin-bottom:14px; }
-  .card { background: var(--surface-1); border:1px solid var(--border); border-radius:10px; padding:18px 20px 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+  .card { background: var(--surface-1); border:1px solid var(--border); border-radius:10px; padding:18px 20px 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.3); overflow-x:auto; }
   .card h3 { margin:0 0 2px; font-size:14.5px; font-weight:700; color: var(--text-primary); }
   .card .card-sub { font-size:12px; color: var(--text-muted); margin-bottom:10px; }
   .card.empty { display:flex; align-items:center; justify-content:center; color: var(--text-muted); font-size:13px; text-align:center; padding:30px 16px; }
@@ -141,11 +141,11 @@
   .legend-row { display:flex; gap:16px; flex-wrap:wrap; margin-bottom:10px; font-size:12px; color: var(--text-secondary); }
   .legend-row .swatch { width:10px; height:10px; border-radius:3px; display:inline-block; margin-right:5px; vertical-align:-1px; }
 
-  table.data-table { width:100%; border-collapse:collapse; font-size:12.5px; }
+  table.data-table { min-width:100%; border-collapse:collapse; font-size:12.5px; }
   table.data-table th, table.data-table td { text-align:left; padding:7px 9px; border-bottom:1px solid var(--gridline); }
-  table.data-table th { color: var(--text-secondary); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.03em; }
-  table.data-table th.num, table.data-table td.num { text-align:center; font-variant-numeric: tabular-nums; }
-  .scroll-table { max-height:360px; overflow-y:auto; border:1px solid var(--gridline); border-radius:6px; }
+  table.data-table th { color: var(--text-secondary); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.03em; white-space:nowrap; }
+  table.data-table th.num, table.data-table td.num { text-align:center; font-variant-numeric: tabular-nums; white-space:nowrap; }
+  .scroll-table { max-height:360px; overflow-y:auto; overflow-x:auto; border:1px solid var(--gridline); border-radius:6px; }
   .scroll-table table.data-table { border-collapse:separate; }
   .scroll-table thead th { position:sticky; top:0; background: var(--surface-1); z-index:1; }
   table.data-table tr.total-row td { font-weight:700; border-top:1.5px solid var(--baseline); }
@@ -266,6 +266,40 @@ function parseUnitsSummary(grid) {
   };
 }
 
+// ---------------------------------------------------------------------------------------
+// DYNAMIC COLUMN/ROW SCANNING — the sheet is the source of truth. A column stays part of
+// a table as long as it has a header OR any data beneath it in that table's row range, so
+// removing a header text (but leaving the data) still surfaces the data instead of being
+// silently truncated. Scanning only stops once it hits a genuinely empty column (no header
+// AND no data) — a single blank column ends a table, matching how these sheets lay tables
+// out side-by-side with one blank spacer column between them.
+// ---------------------------------------------------------------------------------------
+function readLabelRows(grid, startRow, labelCol, stopAtTotal) {
+  const rows = [];
+  for (let r = startRow; r < grid.length; r++) {
+    const label = cell(grid, r, labelCol);
+    if (!label) break;
+    if (stopAtTotal !== false && /^(grand )?total$/i.test(label)) break;
+    rows.push(r);
+  }
+  return rows;
+}
+function readCols(grid, headerRow, startC, rowStart, rowEnd) {
+  const rs = rowStart != null ? rowStart : headerRow + 1;
+  const re = rowEnd != null ? rowEnd : grid.length;
+  let width = (grid[headerRow] || []).length;
+  for (let r = rs; r < re; r++) width = Math.max(width, (grid[r] || []).length);
+  const cols = [];
+  for (let c = startC; c < width; c++) {
+    const h = cell(grid, headerRow, c);
+    let hasData = false;
+    for (let r = rs; r < re; r++) { if (cell(grid, r, c) !== "") { hasData = true; break; } }
+    if (!h && !hasData) break;
+    cols.push({ col: c, name: h });
+  }
+  return cols;
+}
+
 const CA_PROVINCES = ["AB","BC","MB","NB","NL","NS","NT","ON","PE","QC","SK","YT"];
 function parseRegionBlocks(grid) {
   const candidates = ["State", "Province", "Region", "Country"];
@@ -277,26 +311,18 @@ function parseRegionBlocks(grid) {
   if (!hits) return null;
   function readBlock(hit) {
     const headerRow = hit.r, startC = hit.c;
-    const cols = [];
-    for (let c = startC + 1; c < (grid[headerRow] || []).length; c++) {
-      const h = String(cell(grid, headerRow, c) || "").trim();
-      if (!h) break;
-      cols.push({ col: c, name: h });
-    }
+    const rowIdxs = readLabelRows(grid, headerRow + 1, startC);
+    const lastRow = rowIdxs.length ? rowIdxs[rowIdxs.length - 1] + 1 : headerRow + 1;
+    let cols = readCols(grid, headerRow, startC + 1, headerRow + 1, lastRow);
     let totalCol = null;
     if (cols.length && /^(grand )?total$/i.test(cols[cols.length - 1].name)) {
       totalCol = cols.pop().col;
     }
-    const rows = [];
-    for (let r = headerRow + 1; r < grid.length; r++) {
-      const rowLabel = String(cell(grid, r, startC) || "").trim();
-      if (!rowLabel) break;
-      if (/^(grand )?total$/i.test(rowLabel)) break;
-      const values = {};
-      cols.forEach((cc) => { values[cc.name] = numOf(cell(grid, r, cc.col)); });
-      const total = totalCol != null ? numOf(cell(grid, r, totalCol)) : null;
-      rows.push({ label: rowLabel, values, total });
-    }
+    const rows = rowIdxs.map((r) => ({
+      label: cell(grid, r, startC),
+      values: cols.map((cc) => numOf(cell(grid, r, cc.col))),
+      total: totalCol != null ? numOf(cell(grid, r, totalCol)) : null
+    }));
     return { columns: cols.map((c) => c.name), rows };
   }
   return { label, blockA: readBlock(hits[0]), blockB: readBlock(hits[1]) };
@@ -306,56 +332,50 @@ function buildRegionSplit(rb) {
   if (!rb) return [];
   const priceByLabel = {};
   rb.blockB.rows.forEach((r) => { priceByLabel[r.label] = r; });
+  const priceCols = rb.blockB.columns;
+  const noIdx = priceCols.findIndex((c) => /no/i.test(c));
+  const yesIdx = priceCols.findIndex((c) => /yes/i.test(c));
   return rb.blockA.rows.map((r) => {
-    const row = { label: r.label, ...r.values, total: r.total };
     const p = priceByLabel[r.label];
-    row.priceNo = p ? p.values["Price - No"] : null;
-    row.priceYes = p ? p.values["Price - Yes"] : null;
-    return row;
+    return {
+      label: r.label,
+      columns: rb.blockA.columns,
+      values: r.values,
+      total: r.total,
+      priceNo: p && noIdx >= 0 ? p.values[noIdx] : null,
+      priceYes: p && yesIdx >= 0 ? p.values[yesIdx] : null
+    };
   });
 }
 
 function buildRegionPriceSplit(rb) {
   if (!rb) return [];
-  return rb.blockB.rows.map((r) => ({ label: r.label, ...r.values, total: r.total }));
+  return rb.blockB.rows.map((r) => ({ label: r.label, columns: rb.blockB.columns, values: r.values, total: r.total }));
 }
 
 function parseOperatorBlocks(grid) {
   const catHits = findCells(grid, exact("Category"));
+  function headerNamesOf(h) {
+    const rowIdxs = readLabelRows(grid, h.r + 1, h.c);
+    const lastRow = rowIdxs.length ? rowIdxs[rowIdxs.length - 1] + 1 : h.r + 1;
+    return readCols(grid, h.r, h.c + 1, h.r + 1, lastRow).map((c) => c.name);
+  }
   const blockAHit = catHits.find((h) => cell(grid, h.r, h.c + 1) === "Store Count");
-  function rowHeadersOf(h) {
-    const out = [];
-    for (let c = h.c + 1; c < (grid[h.r] || []).length; c++) {
-      const v = cell(grid, h.r, c);
-      if (!v) break;
-      out.push(v);
-    }
-    return out;
-  }
-  const blockBHit = catHits.find((h) => { const hdrs = rowHeadersOf(h); return hdrs.includes("Available") && hdrs.includes("Not Available"); });
+  const blockBHit = catHits.find((h) => { const hdrs = headerNamesOf(h); return hdrs.includes("Available") && hdrs.includes("Not Available"); });
   if (!blockAHit) return null;
-  const rows = [];
-  for (let r = blockAHit.r + 1; r < grid.length; r++) {
-    const label = cell(grid, r, blockAHit.c);
-    if (!label) break;
-    if (/^(grand )?total$/i.test(label)) break;
-    rows.push({ label, stores: numOf(cell(grid, r, blockAHit.c + 1)) });
-  }
+  const rowIdxsA = readLabelRows(grid, blockAHit.r + 1, blockAHit.c);
+  const rows = rowIdxsA.map((r) => ({ label: cell(grid, r, blockAHit.c), stores: numOf(cell(grid, r, blockAHit.c + 1)) }));
   const priceByLabel = {};
   if (blockBHit) {
-    let availCol = null, naCol = null;
-    for (let c = blockBHit.c + 1; c < (grid[blockBHit.r] || []).length; c++) {
-      const v = cell(grid, blockBHit.r, c);
-      if (!v) break;
-      if (v === "Available") availCol = c;
-      else if (v === "Not Available") naCol = c;
-    }
-    for (let r = blockBHit.r + 1; r < grid.length; r++) {
+    const rowIdxsB = readLabelRows(grid, blockBHit.r + 1, blockBHit.c);
+    const lastRowB = rowIdxsB.length ? rowIdxsB[rowIdxsB.length - 1] + 1 : blockBHit.r + 1;
+    const cols = readCols(grid, blockBHit.r, blockBHit.c + 1, blockBHit.r + 1, lastRowB);
+    const availCol = cols.find((c) => c.name === "Available");
+    const naCol = cols.find((c) => c.name === "Not Available");
+    rowIdxsB.forEach((r) => {
       const label = cell(grid, r, blockBHit.c);
-      if (!label) break;
-      if (/^(grand )?total$/i.test(label)) break;
-      priceByLabel[label] = { yes: availCol != null ? numOf(cell(grid, r, availCol)) : null, no: naCol != null ? numOf(cell(grid, r, naCol)) : null };
-    }
+      priceByLabel[label] = { yes: availCol ? numOf(cell(grid, r, availCol.col)) : null, no: naCol ? numOf(cell(grid, r, naCol.col)) : null };
+    });
   }
   return rows.map((r) => ({ label: r.label, stores: r.stores, yes: priceByLabel[r.label] ? priceByLabel[r.label].yes : null, no: priceByLabel[r.label] ? priceByLabel[r.label].no : null }));
 }
@@ -363,32 +383,54 @@ function parseOperatorBlocks(grid) {
 function parseFacilityDetail(grid) {
   const hit = findCells(grid, exact("Category")).find((m) => cell(grid, m.r, m.c + 1) === "Facility Type");
   if (!hit) return null;
+  const rowIdxs = readLabelRows(grid, hit.r + 1, hit.c + 1);
+  const lastRow = rowIdxs.length ? rowIdxs[rowIdxs.length - 1] + 1 : hit.r + 1;
+  const cols = readCols(grid, hit.r, hit.c + 2, hit.r + 1, lastRow);
+  const yesCol = cols.find((c) => /yes/i.test(c.name));
+  const noCol = cols.find((c) => /\bno\b/i.test(c.name));
+  const totalCol = cols.find((c) => /^total$/i.test(c.name)) || cols[cols.length - 1];
   const rows = [];
   let lastCategory = "";
-  for (let r = hit.r + 1; r < grid.length; r++) {
+  rowIdxs.forEach((r) => {
     const rawCat = cell(grid, r, hit.c);
     const facType = cell(grid, r, hit.c + 1);
-    if (!facType) break;
     const category = rawCat || lastCategory;
     lastCategory = category;
-    rows.push({ category, type: facType, yes: numOf(cell(grid, r, hit.c + 2)), no: numOf(cell(grid, r, hit.c + 3)), total: numOf(cell(grid, r, hit.c + 4)) });
-  }
+    rows.push({
+      category, type: facType,
+      yes: yesCol ? numOf(cell(grid, r, yesCol.col)) : null,
+      no: noCol ? numOf(cell(grid, r, noCol.col)) : null,
+      total: totalCol ? numOf(cell(grid, r, totalCol.col)) : null
+    });
+  });
   return rows.length ? rows : null;
 }
 
 function parseFacilityOperatorNrsf(grid) {
   const hit = findCells(grid, exact("Facility Type")).find((m) => cell(grid, m.r, m.c + 1) === "Category" && cell(grid, m.r, m.c + 2) === "Store Count");
   if (!hit) return null;
+  const rowIdxs = readLabelRows(grid, hit.r + 1, hit.c + 1);
+  const lastRow = rowIdxs.length ? rowIdxs[rowIdxs.length - 1] + 1 : hit.r + 1;
+  const cols = readCols(grid, hit.r, hit.c + 2, hit.r + 1, lastRow);
+  const storesCol = cols.find((c) => /store count/i.test(c.name)) || cols[0];
+  const nrsfCol = cols.find((c) => /^nrsf$/i.test(c.name) || (/nrsf/i.test(c.name) && !/total/i.test(c.name)));
+  const totalStoresCol = cols.find((c) => /total stores/i.test(c.name));
+  const totalNrsfCol = cols.find((c) => /total nrsf/i.test(c.name));
   const rows = [];
   let lastFacility = "";
-  for (let r = hit.r + 1; r < grid.length; r++) {
+  rowIdxs.forEach((r) => {
     const rawFac = cell(grid, r, hit.c);
     const opLabel = cell(grid, r, hit.c + 1);
-    if (!opLabel) break;
     const facility = rawFac || lastFacility;
     lastFacility = facility;
-    rows.push({ facility, operator: opLabel, stores: numOf(cell(grid, r, hit.c + 2)) || 0, nrsf: numOf(cell(grid, r, hit.c + 4)) });
-  }
+    rows.push({
+      facility, operator: opLabel,
+      stores: storesCol ? (numOf(cell(grid, r, storesCol.col)) || 0) : 0,
+      nrsf: nrsfCol ? numOf(cell(grid, r, nrsfCol.col)) : null,
+      totalStores: totalStoresCol ? numOf(cell(grid, r, totalStoresCol.col)) : null,
+      totalNrsf: totalNrsfCol ? numOf(cell(grid, r, totalNrsfCol.col)) : null
+    });
+  });
   return rows.length ? rows : null;
 }
 
@@ -415,7 +457,7 @@ function parseUK(grid) {
   const regionSplit = buildRegionSplit(rb);
   const regionPriceSplit = buildRegionPriceSplit(rb);
   const nrsfRows = parseFacilityOperatorNrsf(grid);
-  const facilityOperatorNrsf = (nrsfRows || []).map((r) => ({ facility: r.facility.startsWith("Hybrid") ? "Hybrid" : r.facility, operator: r.operator, stores: r.stores, nrsf: r.nrsf }));
+  const facilityOperatorNrsf = (nrsfRows || []).map((r) => ({ facility: r.facility.startsWith("Hybrid") ? "Hybrid" : r.facility, operator: r.operator, stores: r.stores, nrsf: r.nrsf, totalStores: r.totalStores, totalNrsf: r.totalNrsf }));
   const facilityType = {};
   facilityOperatorNrsf.forEach((d) => { facilityType[d.facility] = (facilityType[d.facility] || 0) + (d.stores || 0); });
   const sqftTotal = facilityOperatorNrsf.reduce((s, d) => s + (d.nrsf || 0), 0);
@@ -443,36 +485,28 @@ function parseNewZealand(grid) {
 function parseSourceCoverage(grid, unitLabel) {
   const hit = findCells(grid, exact("Source")).find((m) => cell(grid, m.r, m.c + 1) !== "");
   if (!hit) return null;
-  const cols = [];
-  for (let c = hit.c + 1; c < (grid[hit.r] || []).length; c++) {
-    const h = cell(grid, hit.r, c);
-    if (!h) break;
-    cols.push({ col: c, name: h });
+  const rowIdxsAll = readLabelRows(grid, hit.r + 1, hit.c, false);
+  let totalRowIdx = null;
+  const dataRowIdxs = [];
+  for (const r of rowIdxsAll) {
+    const label = cell(grid, r, hit.c);
+    if (label.toLowerCase() === "total") { totalRowIdx = r; break; }
+    dataRowIdxs.push(r);
   }
+  const lastRow = (totalRowIdx != null ? totalRowIdx : (dataRowIdxs.length ? dataRowIdxs[dataRowIdxs.length - 1] : hit.r)) + 1;
+  const cols = readCols(grid, hit.r, hit.c + 1, hit.r + 1, lastRow);
   if (!cols.length) return null;
   const labelHeader = cell(grid, hit.r, hit.c) || "Source";
-  const rows = [];
-  let total = null;
-  for (let r = hit.r + 1; r < grid.length; r++) {
-    const label = cell(grid, r, hit.c);
-    if (!label) break;
-    const values = cols.map((cc) => numOf(cell(grid, r, cc.col)));
-    if (label.toLowerCase() === "total") { total = { label, values }; break; }
-    rows.push({ label, values });
-  }
+  const rows = dataRowIdxs.map((r) => ({ label: cell(grid, r, hit.c), values: cols.map((cc) => numOf(cell(grid, r, cc.col))) }));
+  const total = totalRowIdx != null ? { label: cell(grid, totalRowIdx, hit.c), values: cols.map((cc) => numOf(cell(grid, totalRowIdx, cc.col))) } : null;
   return { unitLabel: unitLabel || "Size", labelHeader, columns: cols.map((c) => c.name), rows, total };
 }
 function parseStoreProfile(grid) {
   const statusHit = findCells(grid, exact("Region")).find((m) => cell(grid, m.r, m.c + 1) === "Total Stores");
   let status = null;
   if (statusHit) {
-    const cols = [];
-    for (let c = statusHit.c + 1; c < (grid[statusHit.r] || []).length; c++) {
-      const h = cell(grid, statusHit.r, c);
-      if (!h) break;
-      cols.push({ col: c, name: h });
-    }
     const r = statusHit.r + 1;
+    const cols = readCols(grid, statusHit.r, statusHit.c + 1, r, r + 1);
     status = {
       region: cell(grid, r, statusHit.c),
       columns: cols.map((c) => c.name),
@@ -486,19 +520,16 @@ function parseStoreProfile(grid) {
   if (attrHit) {
     groupHeader = cell(grid, attrHit.r, attrHit.c) || groupHeader;
     nameHeader = cell(grid, attrHit.r, attrHit.c + 1) || nameHeader;
-    for (let c = attrHit.c + 2; c < (grid[attrHit.r] || []).length; c++) {
-      const h = cell(grid, attrHit.r, c);
-      if (!h) break;
-      attrCols.push({ col: c, name: h });
-    }
+    const rowIdxs = readLabelRows(grid, attrHit.r + 1, attrHit.c + 1);
+    const lastRow = rowIdxs.length ? rowIdxs[rowIdxs.length - 1] + 1 : attrHit.r + 1;
+    attrCols = readCols(grid, attrHit.r, attrHit.c + 2, attrHit.r + 1, lastRow);
     let lastGroup = "";
-    for (let r = attrHit.r + 1; r < grid.length; r++) {
+    rowIdxs.forEach((r) => {
       const name = cell(grid, r, attrHit.c + 1);
-      if (!name) break;
       const group = cell(grid, r, attrHit.c) || lastGroup;
       lastGroup = group;
       attributes.push({ group, name, values: attrCols.map((cc) => numOf(cell(grid, r, cc.col))) });
-    }
+    });
   }
   return { status, groupHeader, nameHeader, attrColumns: attrCols.map((c) => c.name), attributes };
 }
@@ -507,20 +538,12 @@ function parseOwnersSection(grid, sectionLabel) {
   if (!hit) return null;
   const headerRow = hit.r + 1;
   const startC = hit.c;
-  const cols = [];
-  for (let c = startC + 1; c < (grid[headerRow] || []).length; c++) {
-    const h = cell(grid, headerRow, c);
-    if (!h) break;
-    cols.push({ col: c, name: h });
-  }
+  const rowIdxs = readLabelRows(grid, headerRow + 1, startC);
+  const lastRow = rowIdxs.length ? rowIdxs[rowIdxs.length - 1] + 1 : headerRow + 1;
+  const cols = readCols(grid, headerRow, startC + 1, headerRow + 1, lastRow);
   if (!cols.length) return null;
   const labelHeader = cell(grid, headerRow, startC) || "Category";
-  const rows = [];
-  for (let r = headerRow + 1; r < grid.length; r++) {
-    const label = cell(grid, r, startC);
-    if (!label) break;
-    rows.push({ label, values: cols.map((cc) => numOf(cell(grid, r, cc.col))) });
-  }
+  const rows = rowIdxs.map((r) => ({ label: cell(grid, r, startC), values: cols.map((cc) => numOf(cell(grid, r, cc.col))) }));
   return rows.length ? { labelHeader, columns: cols.map((c) => c.name), rows } : null;
 }
 function parseOwnersContacts(grid) {
@@ -539,8 +562,7 @@ function parseDevelopments(grid) {
     for (let i = hit.c + 1; i < headerRow.length; i++) { if (cell(grid, hit.r, i).toLowerCase() === "total") { totalIdx = i; break; } }
     const stageCols = [];
     for (let cc = hit.c + 1; cc < (totalIdx > -1 ? totalIdx : headerRow.length); cc++) {
-      const label = cell(grid, hit.r, cc);
-      if (label) stageCols.push({ col: cc, label });
+      stageCols.push({ col: cc, label: cell(grid, hit.r, cc) });
     }
     const rows = [];
     for (let r = hit.r + 1; r < grid.length; r++) {
@@ -557,40 +579,38 @@ function parseDevelopments(grid) {
 
 function parsePricingHistory(grid) {
   const catHits = findCells(grid, exact("Category"));
-  function rowColsOf(h) {
-    const out = [];
-    for (let c = h.c + 1; c < (grid[h.r] || []).length; c++) {
-      const v = cell(grid, h.r, c);
-      if (!v) break;
-      out.push({ col: c, name: v });
-    }
-    return out;
+  function colsOf(h) {
+    const rowIdxs = readLabelRows(grid, h.r + 1, h.c, false);
+    const lastRow = rowIdxs.length ? rowIdxs[rowIdxs.length - 1] + 1 : h.r + 1;
+    return readCols(grid, h.r, h.c + 1, h.r + 1, lastRow);
   }
   const hit = catHits.find((h) => {
-    const cols = rowColsOf(h);
+    const cols = colsOf(h);
     const names = cols.map((c) => c.name);
     return names.includes("Available") && names.includes("Not Available") && cols.some((c) => /history/i.test(c.name));
   });
   if (!hit) return null;
-  const cols = rowColsOf(hit);
+  const rowIdxsAll = readLabelRows(grid, hit.r + 1, hit.c, false);
+  const dataRowIdxs = [];
+  for (const r of rowIdxsAll) {
+    const label = cell(grid, r, hit.c);
+    dataRowIdxs.push(r);
+    if (label.toLowerCase() === "grand total") break;
+  }
+  const lastRow = (dataRowIdxs.length ? dataRowIdxs[dataRowIdxs.length - 1] : hit.r) + 1;
+  const cols = readCols(grid, hit.r, hit.c + 1, hit.r + 1, lastRow);
   const colByName = (name) => { const f = cols.find((c) => c.name === name); return f ? f.col : null; };
   const availCol = colByName("Available");
   const naCol = colByName("Not Available");
   const totalCol = cols.find((c) => /^(grand )?total$/i.test(c.name));
   const historyCol = cols.find((c) => /history/i.test(c.name));
-  const rows = [];
-  for (let r = hit.r + 1; r < grid.length; r++) {
-    const label = cell(grid, r, hit.c);
-    if (!label) break;
-    rows.push({
-      label,
-      available: availCol != null ? numOf(cell(grid, r, availCol)) : null,
-      notAvailable: naCol != null ? numOf(cell(grid, r, naCol)) : null,
-      total: totalCol ? numOf(cell(grid, r, totalCol.col)) : null,
-      withHistory: historyCol ? numOf(cell(grid, r, historyCol.col)) : null
-    });
-    if (label.toLowerCase() === "grand total") break;
-  }
+  const rows = dataRowIdxs.map((r) => ({
+    label: cell(grid, r, hit.c),
+    available: availCol != null ? numOf(cell(grid, r, availCol)) : null,
+    notAvailable: naCol != null ? numOf(cell(grid, r, naCol)) : null,
+    total: totalCol ? numOf(cell(grid, r, totalCol.col)) : null,
+    withHistory: historyCol ? numOf(cell(grid, r, historyCol.col)) : null
+  }));
   return rows.length ? rows : null;
 }
 
@@ -841,12 +861,12 @@ function renderRegionBlock(region) {
 
   let regionCharts = "";
   if (d.regionSplit && d.regionSplit.length) {
-    const regionKeys = Object.keys(d.regionSplit[0]).filter((k) => !["label","total","priceYes","priceNo"].includes(k));
+    const regionKeys = d.regionSplit[0].columns;
     const rl = d.regionLabel || "Region";
     const storeBar = barList(d.regionSplit.map((s) => ({label: s.label, value: s.total})), () => accent);
     const pricingBar = stackedYesNoList(d.regionSplit.map((s) => ({label: s.label, yes: s.priceYes, no: s.priceNo})));
-    const priceRows = (d.regionPriceSplit && d.regionPriceSplit.length) ? d.regionPriceSplit : d.regionSplit.map((s) => ({label: s.label, "Price - No": s.priceNo, "Price - Yes": s.priceYes, total: s.total}));
-    const priceKeys = Object.keys(priceRows[0]).filter((k) => !["label","total"].includes(k));
+    const priceRows = (d.regionPriceSplit && d.regionPriceSplit.length) ? d.regionPriceSplit : d.regionSplit.map((s) => ({label: s.label, columns: ["Price - No","Price - Yes"], values: [s.priceNo, s.priceYes], total: s.total}));
+    const priceKeys = priceRows[0].columns;
     const priceGrandTotal = priceRows.reduce((sum,s)=>sum+(s.total||0),0);
     regionCharts = `<div class="chart-row">
       <div class="card"><h3>Stores by ${rl}</h3><div class="card-sub">Store count</div>${storeBar}</div>
@@ -855,15 +875,15 @@ function renderRegionBlock(region) {
         ${pricingBar}</div></div>
       <div class="chart-row" style="grid-template-columns:1fr;"><div class="card">
         <h3>${rl} — Operator Type breakdown</h3><div class="card-sub">Sheet order, as sorted in the source</div>
-        <table class="data-table"><thead><tr><th>${rl}</th>${regionKeys.map((k)=>`<th class="num">${k[0].toUpperCase()+k.slice(1)}</th>`).join("")}<th class="num">Grand Total</th></tr></thead>
-        <tbody>${d.regionSplit.map((s) => `<tr><td>${s.label}</td>${regionKeys.map((k)=>`<td class="num">${fmtNum(s[k])}</td>`).join("")}<td class="num"><strong>${fmtNum(s.total)}</strong></td></tr>`).join("")}
-        <tr class="total-row"><td>Grand Total</td>${regionKeys.map((k)=>`<td class="num">${fmtNum(d.regionSplit.reduce((sum,s)=>sum+(s[k]||0),0))}</td>`).join("")}<td class="num"><strong>${fmtNum(storeTotal)}</strong></td></tr>
+        <table class="data-table"><thead><tr><th>${rl}</th>${regionKeys.map((k)=>`<th class="num">${k}</th>`).join("")}<th class="num">Grand Total</th></tr></thead>
+        <tbody>${d.regionSplit.map((s) => `<tr><td>${s.label}</td>${s.values.map((v)=>`<td class="num">${fmtNum(v)}</td>`).join("")}<td class="num"><strong>${fmtNum(s.total)}</strong></td></tr>`).join("")}
+        <tr class="total-row"><td>Grand Total</td>${regionKeys.map((k,i)=>`<td class="num">${fmtNum(d.regionSplit.reduce((sum,s)=>sum+(s.values[i]||0),0))}</td>`).join("")}<td class="num"><strong>${fmtNum(storeTotal)}</strong></td></tr>
         </tbody></table></div></div>
       <div class="chart-row" style="grid-template-columns:1fr;"><div class="card">
         <h3>${rl} — Pricing Yes/No breakdown</h3><div class="card-sub">Sheet order, as sorted in the source</div>
         <table class="data-table"><thead><tr><th>${rl}</th>${priceKeys.map((k)=>`<th class="num">${k}</th>`).join("")}<th class="num">Grand Total</th></tr></thead>
-        <tbody>${priceRows.map((s) => `<tr><td>${s.label}</td>${priceKeys.map((k)=>`<td class="num">${fmtNum(s[k])}</td>`).join("")}<td class="num"><strong>${fmtNum(s.total)}</strong></td></tr>`).join("")}
-        <tr class="total-row"><td>Total</td>${priceKeys.map((k)=>`<td class="num">${fmtNum(priceRows.reduce((sum,s)=>sum+(s[k]||0),0))}</td>`).join("")}<td class="num"><strong>${fmtNum(priceGrandTotal)}</strong></td></tr>
+        <tbody>${priceRows.map((s) => `<tr><td>${s.label}</td>${s.values.map((v)=>`<td class="num">${fmtNum(v)}</td>`).join("")}<td class="num"><strong>${fmtNum(s.total)}</strong></td></tr>`).join("")}
+        <tr class="total-row"><td>Total</td>${priceKeys.map((k,i)=>`<td class="num">${fmtNum(priceRows.reduce((sum,s)=>sum+(s.values[i]||0),0))}</td>`).join("")}<td class="num"><strong>${fmtNum(priceGrandTotal)}</strong></td></tr>
         </tbody></table></div></div>`;
   } else {
     regionCharts = "";
@@ -916,9 +936,27 @@ function renderRegionBlock(region) {
       </tbody></table></div>`;
   }
   if (d.facilityOperatorNrsf) {
-    detailTables += `<div class="card"><h3>Facility Type × Operator Type — NRSF</h3><div class="card-sub">Store count and net rentable sq ft per slice</div>
-      <table class="data-table"><thead><tr><th>Facility Type</th><th>Operator Type</th><th class="num">Stores</th><th class="num">NRSF</th></tr></thead>
-      <tbody>${d.facilityOperatorNrsf.map((x) => `<tr><td>${x.facility}</td><td>${x.operator}</td><td class="num">${fmtNum(x.stores)}</td><td class="num">${x.nrsf ? fmtNum(x.nrsf) : "—"}</td></tr>`).join("")}</tbody></table></div>`;
+    const fnGroups = [];
+    d.facilityOperatorNrsf.forEach((x) => {
+      let g = fnGroups.find((g) => g.facility === x.facility);
+      if (!g) { g = { facility: x.facility, rows: [], totalStores: null, totalNrsf: null }; fnGroups.push(g); }
+      g.rows.push(x);
+      if (x.totalStores != null) g.totalStores = x.totalStores;
+      if (x.totalNrsf != null) g.totalNrsf = x.totalNrsf;
+    });
+    const hasTotals = fnGroups.some((g) => g.totalStores != null || g.totalNrsf != null);
+    const fnBody = fnGroups.map((g) => {
+      const groupStores = g.totalStores != null ? g.totalStores : g.rows.reduce((s,x)=>s+(x.stores||0),0);
+      const groupNrsf = g.totalNrsf != null ? g.totalNrsf : g.rows.reduce((s,x)=>s+(x.nrsf||0),0);
+      return g.rows.map((x, i) => {
+        const facCell = i === 0 ? `<td rowspan="${g.rows.length}">${g.facility}</td>` : "";
+        const totCells = i === 0 && hasTotals ? `<td class="num" rowspan="${g.rows.length}"><strong>${fmtNum(groupStores)}</strong></td><td class="num" rowspan="${g.rows.length}"><strong>${groupNrsf ? fmtNum(groupNrsf) : "—"}</strong></td>` : "";
+        return `<tr>${facCell}<td>${x.operator}</td><td class="num">${fmtNum(x.stores)}</td><td class="num">${x.nrsf ? fmtNum(x.nrsf) : "—"}</td>${totCells}</tr>`;
+      }).join("");
+    }).join("");
+    detailTables += `<div class="card"><h3>Facility Type × Operator Type — NRSF</h3><div class="card-sub">Store count and net rentable sq ft per slice${hasTotals ? ", with per-facility totals" : ""}</div>
+      <table class="data-table"><thead><tr><th>Facility Type</th><th>Operator Type</th><th class="num">Stores</th><th class="num">NRSF</th>${hasTotals ? '<th class="num">Total Stores</th><th class="num">Total NRSF</th>' : ""}</tr></thead>
+      <tbody>${fnBody}</tbody></table></div>`;
   }
 
   if (d.sourceCoverage && d.sourceCoverage.rows.length) {
