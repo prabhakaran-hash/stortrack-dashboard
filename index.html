@@ -45,37 +45,48 @@
   .brand h1 { margin:0; font-size:23px; font-weight:800; color:#ffffff; letter-spacing:-.01em; }
   .brand-logo { height:42px; width:auto; display:block; align-self:flex-start; object-fit:contain; background:rgba(248,250,253,0.97); border-radius:10px; padding:8px 14px 6px 10px; box-shadow:0 2px 10px rgba(0,0,0,0.22); box-sizing:content-box; }
   .status-cluster { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
-  .status-pill { display:flex; align-items:center; gap:8px; font-size:13px; color: #eef4fb; background: rgba(255,255,255,0.10); border:1px solid rgba(255,255,255,0.18); border-radius:999px; padding:6px 14px; backdrop-filter: blur(2px); }
+  /* --- Shared "liquid glass" material, used by every header control -------------------- */
+  .glass {
+    background: linear-gradient(160deg, rgba(255,255,255,0.22), rgba(255,255,255,0.02) 55%);
+    backdrop-filter: blur(22px) saturate(200%) brightness(1.05);
+    -webkit-backdrop-filter: blur(22px) saturate(200%) brightness(1.05);
+    border: 1px solid rgba(255,255,255,0.38);
+    box-shadow: inset 0 1.5px 0 rgba(255,255,255,0.55), inset 0 -14px 20px -16px rgba(255,255,255,0.18), 0 8px 22px rgba(0,0,0,0.25);
+    transition: background .15s ease, box-shadow .15s ease, transform .15s ease;
+  }
+  .glass:hover {
+    background: linear-gradient(160deg, rgba(255,255,255,0.30), rgba(255,255,255,0.05) 55%);
+    box-shadow: inset 0 1.5px 0 rgba(255,255,255,0.65), inset 0 -14px 20px -16px rgba(255,255,255,0.22), 0 10px 26px rgba(0,0,0,0.28);
+  }
+
+  .status-pill { display:flex; align-items:center; gap:8px; font-size:13px; color: #eef4fb; border-radius:999px; padding:6px 14px; }
   .dot { width:8px; height:8px; border-radius:50%; background: #35d07f; flex:none; }
   .dot.stale { background: #aab4c8; }
   .dot.error { background: #ff6a6a; }
   .dot.live { animation: pulse 1.8s ease-in-out infinite; }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
   select#intervalSelect, button#refreshNow {
-    font: inherit; font-size:13px; font-weight:600; color: #f2f6fb; background: rgba(255,255,255,0.10);
-    border:1px solid rgba(255,255,255,0.22); border-radius:8px; padding:7px 12px; cursor:pointer;
+    font: inherit; font-size:13px; font-weight:600; color: #f2f6fb;
+    border-radius:10px; padding:7px 12px; cursor:pointer;
   }
   select#intervalSelect option { color: #10182c; }
-  button#refreshNow:hover { background: rgba(255,255,255,0.2); }
 
   /* --- Refresh button + hard-refresh glass dropdown ------------------------------------ */
   .refresh-group { position:relative; display:flex; }
-  .refresh-group button#refreshNow { border-radius:8px 0 0 8px; border-right:none; }
+  .refresh-group button#refreshNow { border-radius:10px 0 0 10px; border-right:none; }
   #refreshCaret {
-    font: inherit; font-size:12px; color:#f2f6fb; background: rgba(255,255,255,0.10);
-    border:1px solid rgba(255,255,255,0.22); border-left:1px solid rgba(255,255,255,0.30);
-    border-radius:0 8px 8px 0; padding:7px 9px; cursor:pointer; display:flex; align-items:center;
-    transition: background .15s ease, transform .15s ease;
+    font: inherit; font-size:12px; color:#f2f6fb;
+    border-left:1px solid rgba(255,255,255,0.34);
+    border-radius:0 10px 10px 0; padding:7px 9px; cursor:pointer; display:flex; align-items:center;
   }
-  #refreshCaret:hover { background: rgba(255,255,255,0.2); }
   #refreshCaret.open { transform: rotate(180deg); }
   #refreshCaret svg { display:block; width:11px; height:11px; }
   .refresh-menu {
     position:absolute; top: calc(100% + 8px); right:0; min-width:220px; z-index:40;
-    background: linear-gradient(155deg, rgba(40,58,96,0.55), rgba(18,28,52,0.55));
-    backdrop-filter: blur(20px) saturate(150%); -webkit-backdrop-filter: blur(20px) saturate(150%);
-    border:1px solid rgba(255,255,255,0.22); border-radius:14px;
-    box-shadow: 0 12px 34px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.18);
+    background: linear-gradient(160deg, rgba(255,255,255,0.16), rgba(20,32,58,0.30) 60%);
+    backdrop-filter: blur(24px) saturate(180%); -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border:1px solid rgba(255,255,255,0.30); border-radius:16px;
+    box-shadow: 0 14px 38px rgba(0,0,0,0.38), inset 0 1px 0 rgba(255,255,255,0.30);
     padding:6px; opacity:0; transform: translateY(-6px) scale(.98); pointer-events:none;
     transition: opacity .16s ease, transform .16s ease;
   }
@@ -83,9 +94,9 @@
   .refresh-menu button {
     width:100%; display:flex; align-items:center; gap:9px; text-align:left; font: inherit;
     font-size:13px; font-weight:600; color:#f2f6fb; background:transparent; border:none;
-    border-radius:9px; padding:9px 10px; cursor:pointer; transition: background .12s ease;
+    border-radius:10px; padding:9px 10px; cursor:pointer; transition: background .12s ease;
   }
-  .refresh-menu button:hover { background: rgba(255,255,255,0.14); }
+  .refresh-menu button:hover { background: rgba(255,255,255,0.16); }
   .refresh-menu button .rm-icon {
     width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center;
     background: rgba(120,190,255,0.18); border:1px solid rgba(120,190,255,0.35); flex:none;
@@ -93,27 +104,27 @@
   .refresh-menu button svg { width:14px; height:14px; }
   .refresh-menu .rm-sub { display:block; font-size:11px; font-weight:500; color:#aebbd4; margin-top:1px; }
 
-  /* Full-dashboard "liquid glass" sweep played when Hard Refresh is triggered */
-  .hard-refresh-overlay { position:fixed; inset:0; z-index:9999; overflow:hidden; pointer-events:none; }
-  .hard-refresh-overlay::before {
-    content:""; position:absolute; top:-60%; left:-65%; width:55%; height:220%;
-    background: linear-gradient(120deg, transparent 0%, rgba(255,255,255,0) 30%, rgba(140,200,255,0.30) 50%, rgba(255,255,255,0) 70%, transparent 100%);
-    filter: blur(10px); transform: rotate(10deg);
-    animation: hr-sweep 1000ms cubic-bezier(.22,.61,.36,1);
+  /* --- Hard refresh: iOS-style "jiggle" wave rippling out from the button that was pressed,
+     instead of a screen flash — every card gets a light springy wobble, timed so it visibly
+     radiates outward like the springboard wiggle you get long-pressing an app icon. -------- */
+  .card.hr-jiggle, .region-card.hr-jiggle { animation-duration: 520ms; animation-timing-function: ease-in-out; transform-origin: 50% 50%; }
+  .hr-jiggle.hr-a { animation-name: hr-jiggle-a; }
+  .hr-jiggle.hr-b { animation-name: hr-jiggle-b; }
+  @keyframes hr-jiggle-a {
+    0%   { transform: rotate(0deg) scale(1); }
+    18%  { transform: rotate(-1.6deg) scale(1.006); }
+    38%  { transform: rotate(1.5deg) scale(1.006); }
+    58%  { transform: rotate(-1.1deg) scale(1.003); }
+    78%  { transform: rotate(0.9deg) scale(1.002); }
+    100% { transform: rotate(0deg) scale(1); }
   }
-  @keyframes hr-sweep {
-    0%   { left:-65%; opacity:0; }
-    12%  { opacity:1; }
-    88%  { opacity:1; }
-    100% { left:130%; opacity:0; }
-  }
-  .card.hr-pulse {
-    animation: hr-card-pulse 700ms ease;
-  }
-  @keyframes hr-card-pulse {
-    0%   { transform:scale(1); filter:brightness(1); box-shadow:none; }
-    38%  { transform:scale(1.012); filter:brightness(1.12); box-shadow:0 0 22px rgba(140,200,255,0.30); }
-    100% { transform:scale(1); filter:brightness(1); box-shadow:none; }
+  @keyframes hr-jiggle-b {
+    0%   { transform: rotate(0deg) scale(1); }
+    18%  { transform: rotate(1.6deg) scale(1.006); }
+    38%  { transform: rotate(-1.5deg) scale(1.006); }
+    58%  { transform: rotate(1.1deg) scale(1.003); }
+    78%  { transform: rotate(-0.9deg) scale(1.002); }
+    100% { transform: rotate(0deg) scale(1); }
   }
 
   .banner { background:#132a45; border:1px solid #2a4a70; color:#cfe4fb; border-radius:10px; padding:12px 16px; font-size:13.5px; margin-bottom:16px; line-height:1.55; }
@@ -125,8 +136,7 @@
   .region-picker label { font-size:13px; font-weight:700; color: var(--text-primary); }
   .region-picker select {
     font: inherit; font-size:14px; font-weight:700; color: var(--text-primary);
-    background: var(--surface-1); border:1px solid var(--border); border-radius:8px;
-    padding:9px 14px; cursor:pointer; min-width:220px; box-shadow: 0 1px 2px rgba(0,0,0,0.35);
+    border-radius:10px; padding:9px 14px; cursor:pointer; min-width:220px;
   }
 
   .region-strip { display:grid; grid-template-columns: repeat(4, 1fr); gap:12px; margin-bottom:28px; }
@@ -148,10 +158,13 @@
   .region-card .rc-value { font-size:25px; font-weight:800; color: var(--text-primary); }
   .region-card .rc-store-list-btn {
     display:inline-block; margin-top:10px; font-size:12.5px; font-weight:700; color: var(--accent-color, var(--accent));
-    text-decoration:none; padding:6px 10px; border-radius:6px; background: rgba(255,255,255,0.06);
-    border:1px solid var(--border);
+    text-decoration:none; padding:6px 10px; border-radius:8px;
+    background: linear-gradient(160deg, rgba(255,255,255,0.14), rgba(255,255,255,0.03) 60%);
+    backdrop-filter: blur(10px) saturate(160%); -webkit-backdrop-filter: blur(10px) saturate(160%);
+    border:1px solid rgba(255,255,255,0.22);
+    transition: background .12s ease;
   }
-  .region-card .rc-store-list-btn:hover { background: rgba(255,255,255,0.14); }
+  .region-card .rc-store-list-btn:hover { background: linear-gradient(160deg, rgba(255,255,255,0.22), rgba(255,255,255,0.06) 60%); }
   .region-card .rc-sub { font-size:12px; color: var(--text-muted); margin-top:2px; }
 
   .region-block { margin-bottom:44px; }
@@ -227,16 +240,16 @@
         <h1>Self-Storage Regional Dashboard</h1>
       </div>
       <div class="status-cluster">
-        <span class="status-pill"><span class="dot live" id="syncDot"></span><span id="syncText">Connecting…</span></span>
-        <select id="intervalSelect" title="Auto-refresh interval">
+        <span class="status-pill glass"><span class="dot live" id="syncDot"></span><span id="syncText">Connecting…</span></span>
+        <select id="intervalSelect" class="glass" title="Auto-refresh interval">
           <option value="300000">Refresh: 5 min</option>
           <option value="900000">Refresh: 15 min</option>
           <option value="1800000" selected>Refresh: 30 min</option>
           <option value="3600000">Refresh: 1 hr</option>
         </select>
         <div class="refresh-group">
-          <button id="refreshNow">Refresh now</button>
-          <button id="refreshCaret" title="More refresh options" aria-haspopup="true" aria-expanded="false">
+          <button id="refreshNow" class="glass">Refresh now</button>
+          <button id="refreshCaret" class="glass" title="More refresh options" aria-haspopup="true" aria-expanded="false">
             <svg viewBox="0 0 12 8" fill="none"><path d="M1 1.5L6 6.5L11 1.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
           <div class="refresh-menu" id="refreshMenu" role="menu">
@@ -259,7 +272,7 @@
 
   <div class="region-picker">
     <label for="regionSelect">Region</label>
-    <select id="regionSelect"></select>
+    <select id="regionSelect" class="glass"></select>
   </div>
 
   <section class="region-strip" id="regionStrip"></section>
@@ -1193,8 +1206,9 @@ document.getElementById("intervalSelect").addEventListener("change", (e) => { RE
 document.getElementById("refreshNow").addEventListener("click", () => { consecutiveFailures = 0; restartPolling(); syncAll(); });
 
 // --- Hard refresh: clears the remembered anchor-position cache and forces a genuinely
-// fresh reload (bypassing this browser's own cache), with a "liquid glass" sweep across
-// the dashboard so it's visually obvious something more than a normal refresh happened. ---
+// fresh reload (bypassing this browser's own cache). Instead of a screen flash, every card
+// does a light springy "jiggle" — like iOS app icons wiggling — timed to radiate outward
+// from wherever the button was pressed, so it visibly reads as a wave, not a glitch. -------
 const refreshCaret = document.getElementById("refreshCaret");
 const refreshMenu = document.getElementById("refreshMenu");
 function closeRefreshMenu() { refreshMenu.classList.remove("open"); refreshCaret.classList.remove("open"); refreshCaret.setAttribute("aria-expanded", "false"); }
@@ -1208,29 +1222,32 @@ refreshCaret.addEventListener("click", (e) => { e.stopPropagation(); toggleRefre
 document.addEventListener("click", (e) => { if (!e.target.closest(".refresh-group")) closeRefreshMenu(); });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeRefreshMenu(); });
 
-function playHardRefreshWave() {
-  const overlay = document.createElement("div");
-  overlay.className = "hard-refresh-overlay";
-  document.body.appendChild(overlay);
-  const cards = Array.from(document.querySelectorAll(".card"));
+function playHardRefreshWave(originEl) {
+  const originRect = (originEl || document.getElementById("refreshNow")).getBoundingClientRect();
+  const ox = originRect.left + originRect.width / 2, oy = originRect.top + originRect.height / 2;
+  const cards = Array.from(document.querySelectorAll(".card, .region-card"));
+  const dists = cards.map((card) => {
+    const r = card.getBoundingClientRect();
+    return Math.hypot((r.left + r.width / 2) - ox, (r.top + r.height / 2) - oy);
+  });
+  const maxDist = Math.max(1, ...dists);
   cards.forEach((card, i) => {
-    card.style.animationDelay = Math.min(i * 35, 500) + "ms";
-    card.classList.add("hr-pulse");
+    card.style.animationDelay = ((dists[i] / maxDist) * 280).toFixed(0) + "ms";
+    card.classList.add("hr-jiggle", Math.random() < 0.5 ? "hr-a" : "hr-b");
   });
   setTimeout(() => {
-    overlay.remove();
-    cards.forEach((c) => { c.classList.remove("hr-pulse"); c.style.animationDelay = ""; });
-  }, 1200);
+    cards.forEach((c) => { c.classList.remove("hr-jiggle", "hr-a", "hr-b"); c.style.animationDelay = ""; });
+  }, 950);
 }
-document.getElementById("hardRefreshBtn").addEventListener("click", () => {
+document.getElementById("hardRefreshBtn").addEventListener("click", (e) => {
   closeRefreshMenu();
-  playHardRefreshWave();
-  try { localStorage.removeItem("stortrack_pos_cache_v1"); POS_CACHE = {}; } catch (e) {}
+  playHardRefreshWave(e.currentTarget);
+  try { localStorage.removeItem("stortrack_pos_cache_v1"); POS_CACHE = {}; } catch (e2) {}
   setTimeout(() => {
     const url = new URL(location.href);
     url.searchParams.set("_hr", Date.now());
     location.replace(url.toString());
-  }, 850);
+  }, 900);
 });
 
 let pollTimer = null;
