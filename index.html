@@ -274,6 +274,64 @@ const CA_FACILITY_CATEGORY = {
   "Self Storage, Container and Parking": "Hybrid",
   "Parking": "Parking", "RV and Boat Storage": "Parking"
 };
+function parseRegionBlocks(grid) {
+  const candidates = ["State", "Province", "Region", "Country"];
+  let label = null, hits = null;
+  for (const c of candidates) {
+    const h = findCells(grid, exact(c));
+    if (h.length >= 2) { label = c; hits = h.slice(0, 2); break; }
+  }
+  if (!hits) return null;
+  function readBlock(hit) {
+    const headerRow = hit.r, startC = hit.c;
+    const cols = [];
+    for (let c = startC + 1; c < (grid[headerRow] || []).length; c++) {
+      const h = String(cell(grid, headerRow, c) || "").trim();
+      if (!h) break;
+      cols.push({ col: c, name: h });
+    }
+    let totalCol = null;
+    if (cols.length && /^(grand )?total$/i.test(cols[cols.length - 1].name)) {
+      totalCol = cols.pop().col;
+    }
+    const rows = [];
+    for (let r = headerRow + 1; r < grid.length; r++) {
+      const rowLabel = String(cell(grid, r, startC) || "").trim();
+      if (!rowLabel) break;
+      if (/^(grand )?total$/i.test(rowLabel)) break;
+      const values = {};
+      cols.forEach((cc) => { values[cc.name] = numOf(cell(grid, r, cc.col)); });
+      const total = totalCol != null ? numOf(cell(grid, r, totalCol)) : null;
+      rows.push({ label: rowLabel, values, total });
+    }
+    return { columns: cols.map((c) => c.name), rows };
+  }
+  return { label, blockA: readBlock(hits[0]), blockB: readBlock(hits[1]) };
+}
+
+function buildRegionSplit(rb) {
+  if (!rb) return [];
+  const priceByLabel = {};
+  rb.blockB.rows.forEach((r) => { priceByLabel[r.label] = r; });
+  return rb.blockA.rows.map((r) => {
+    const row = { label: r.label, ...r.values, total: r.total };
+    const p = priceByLabel[r.label];
+    row.priceNo = p ? p.values["Price - No"] : null;
+    row.priceYes = p ? p.values["Price - Yes"] : null;
+    return row;
+  });
+}
+
+function buildRegionPriceSplit(rb) {
+  if (!rb) return [];
+  return rb.blockB.rows.map((r) => ({
+    label: r.label,
+    priceNo: r.values["Price - No"],
+    priceYes: r.values["Price - Yes"],
+    total: r.total
+  }));
+}
+
 function parseCanada(grid) {
   const opRows = {};
   ["Large Operator", "Medium Operator", "Single Operator"].forEach((label) => {
@@ -293,21 +351,9 @@ function parseCanada(grid) {
     pricing = { yes: numOf(cell(grid, gtR, gtC + 4)), no: numOf(cell(grid, gtR, gtC + 5)) };
   }
   const totalStores = (opRows["Large Operator"]?.stores || 0) + (opRows["Medium Operator"]?.stores || 0) + (opRows["Single Operator"]?.stores || 0);
-  const abHits = colOccurrences(grid, "AB");
-  const table1Col = abHits[0] ? abHits[0].c : null, table2Col = abHits[1] ? abHits[1].c : null;
-  const regionSplit = CA_PROVINCES.map((code) => {
-    const m1 = findCells(grid, exact(code)).find((m) => m.c === table1Col);
-    const m2 = findCells(grid, exact(code)).find((m) => m.c === table2Col);
-    return {
-      label: code,
-      large: m1 ? numOf(cell(grid, m1.r, m1.c + 1)) : null,
-      medium: m1 ? numOf(cell(grid, m1.r, m1.c + 2)) : null,
-      single: m1 ? numOf(cell(grid, m1.r, m1.c + 3)) : null,
-      total: m1 ? numOf(cell(grid, m1.r, m1.c + 4)) : null,
-      priceNo: m2 ? numOf(cell(grid, m2.r, m2.c + 1)) : null,
-      priceYes: m2 ? numOf(cell(grid, m2.r, m2.c + 2)) : null
-    };
-  }).filter((s) => s.total != null);
+  const rb = parseRegionBlocks(grid);
+  const regionSplit = buildRegionSplit(rb);
+  const regionPriceSplit = buildRegionPriceSplit(rb);
   const facilityDetail = Object.keys(CA_FACILITY_CATEGORY).map((type) => {
     const hit = findCells(grid, exact(type)).find((m) => {
       const c1 = cell(grid, m.r, m.c + 1);
@@ -320,7 +366,7 @@ function parseCanada(grid) {
   facilityDetail.forEach((d) => { facilityType[d.category] = (facilityType[d.category] || 0) + (d.total || 0); });
   return { totalStores, pricing,
     operatorType: ["Large Operator", "Medium Operator", "Single Operator"].map((label) => ({ label, stores: opRows[label]?.stores ?? null, yes: opRows[label]?.yes ?? null, no: opRows[label]?.no ?? null })),
-    regionSplit, facilityType, pricingHistory: parsePricingHistory(grid), facilityDetail, facilityOperatorNrsf: null, units: parseUnitsSummary(grid), sqftTotal: null, regionLabel: "Province" };
+    regionSplit, regionPriceSplit, facilityType, pricingHistory: parsePricingHistory(grid), facilityDetail, facilityOperatorNrsf: null, units: parseUnitsSummary(grid), sqftTotal: null, regionLabel: "Province" };
 }
 
 const UK_OPERATORS = ["Large Operator", "Medium Operator", "Small Operator", "Single Operator"];
@@ -334,19 +380,9 @@ function parseUK(grid) {
   });
   const totalStores = operatorType.reduce((s, o) => s + (o.stores || 0), 0);
   const pricing = { yes: operatorType.reduce((s, o) => s + (o.yes || 0), 0), no: operatorType.reduce((s, o) => s + (o.no || 0), 0) };
-  const regionKeyOrder = ["large", "medium", "small", "single"];
-  const ukRegionHits = colOccurrences(grid, UK_REGIONS[0]);
-const table1Col = ukRegionHits[0] ? ukRegionHits[0].c : null, table2Col = ukRegionHits[1] ? ukRegionHits[1].c : null;
-const regionSplit = UK_REGIONS.map((label) => {
-  const m1 = findCells(grid, exact(label)).find((m) => m.c === table1Col);
-  const m2 = findCells(grid, exact(label)).find((m) => m.c === table2Col);
-  const row = { label };
-  regionKeyOrder.forEach((k, i) => { row[k] = m1 ? numOf(cell(grid, m1.r, m1.c + 1 + i)) : null; });
-  row.total = m1 ? numOf(cell(grid, m1.r, m1.c + 5)) : null;
-  row.priceNo = m2 ? numOf(cell(grid, m2.r, m2.c + 1)) : null;
-  row.priceYes = m2 ? numOf(cell(grid, m2.r, m2.c + 2)) : null;
-  return row;
-});
+  const rb = parseRegionBlocks(grid);
+  const regionSplit = buildRegionSplit(rb);
+  const regionPriceSplit = buildRegionPriceSplit(rb);
 const facilityOperatorNrsf = [], facilityType = {};
   UK_FACILITIES.forEach((facLabel) => {
     // Real data row: next cell is an operator name (text), the one after is a
@@ -367,7 +403,7 @@ const facilityOperatorNrsf = [], facilityType = {};
     facilityType[shortName] = catTotal;
   });
   const sqftTotal = facilityOperatorNrsf.reduce((s, d) => s + (d.nrsf || 0), 0);
-  return { totalStores, pricing, operatorType, regionSplit, facilityType, facilityOperatorNrsf, pricingHistory: parsePricingHistory(grid), facilityDetail: null, units: parseUnitsSummary(grid), sqftTotal, regionLabel: "Region" };
+  return { totalStores, pricing, operatorType, regionSplit, regionPriceSplit, facilityType, facilityOperatorNrsf, pricingHistory: parsePricingHistory(grid), facilityDetail: null, units: parseUnitsSummary(grid), sqftTotal, regionLabel: "Region" };
 }
 
 const AU_OPERATORS = ["REIT", "Large Operator", "Medium Operator", "Single Operator"];
@@ -380,23 +416,10 @@ function parseAustralia(grid) {
   });
   const totalStores = operatorType.reduce((s, o) => s + (o.stores || 0), 0);
   const pricing = { yes: operatorType.reduce((s, o) => s + (o.yes || 0), 0), no: operatorType.reduce((s, o) => s + (o.no || 0), 0) };
-  const stateHits = colOccurrences(grid, AU_STATES[0]);
-  const table1Col = stateHits[0] ? stateHits[0].c : null, table2Col = stateHits[1] ? stateHits[1].c : null;
-  const regionSplit = AU_STATES.map((label) => {
-    const m1 = findCells(grid, exact(label)).find((m) => m.c === table1Col);
-    const m2 = findCells(grid, exact(label)).find((m) => m.c === table2Col);
-    return {
-      label,
-      reit: m1 ? numOf(cell(grid, m1.r, m1.c + 1)) : null,
-      large: m1 ? numOf(cell(grid, m1.r, m1.c + 2)) : null,
-      medium: m1 ? numOf(cell(grid, m1.r, m1.c + 3)) : null,
-      single: m1 ? numOf(cell(grid, m1.r, m1.c + 4)) : null,
-      total: m1 ? numOf(cell(grid, m1.r, m1.c + 5)) : null,
-      priceNo: m2 ? numOf(cell(grid, m2.r, m2.c + 1)) : null,
-      priceYes: m2 ? numOf(cell(grid, m2.r, m2.c + 2)) : null
-    };
-  }).filter((s) => s.total != null);
-  return { totalStores, pricing, operatorType, regionSplit, facilityType: null, pricingHistory: parsePricingHistory(grid), facilityDetail: null, facilityOperatorNrsf: null, units: parseUnitsSummary(grid), sqftTotal: null, regionLabel: "State" };
+  const rb = parseRegionBlocks(grid);
+  const regionSplit = buildRegionSplit(rb);
+  const regionPriceSplit = buildRegionPriceSplit(rb);
+  return { totalStores, pricing, operatorType, regionSplit, regionPriceSplit, facilityType: null, pricingHistory: parsePricingHistory(grid), facilityDetail: null, facilityOperatorNrsf: null, units: parseUnitsSummary(grid), sqftTotal: null, regionLabel: "State" };
 }
 
 const NZ_OPERATORS = ["Large Operator", "Medium Operator", "Single Operator"];
@@ -778,16 +801,26 @@ function renderRegionBlock(region) {
     const rl = d.regionLabel || "Region";
     const storeBar = barList(d.regionSplit.map((s) => ({label: s.label, value: s.total})), () => accent);
     const pricingBar = stackedYesNoList(d.regionSplit.map((s) => ({label: s.label, yes: s.priceYes, no: s.priceNo})));
+    const priceRows = (d.regionPriceSplit && d.regionPriceSplit.length) ? d.regionPriceSplit : d.regionSplit.map((s) => ({label: s.label, priceNo: s.priceNo, priceYes: s.priceYes, total: s.total}));
+    const priceNoTotal = priceRows.reduce((sum,s)=>sum+(s.priceNo||0),0);
+    const priceYesTotal = priceRows.reduce((sum,s)=>sum+(s.priceYes||0),0);
+    const priceGrandTotal = priceRows.reduce((sum,s)=>sum+(s.total||0),0);
     regionCharts = `<div class="chart-row">
       <div class="card"><h3>Stores by ${rl}</h3><div class="card-sub">Store count</div>${storeBar}</div>
       <div class="card"><h3>Pricing Yes/No by ${rl}</h3><div class="card-sub">Actual counts, not just a percentage</div>
         <div class="legend-row"><span><span class="swatch" style="background:${YES_COLOR}"></span>Price available</span><span><span class="swatch" style="background:${NO_COLOR}"></span>Price not available</span></div>
         ${pricingBar}</div></div>
       <div class="chart-row" style="grid-template-columns:1fr;"><div class="card">
-        <h3>${rl} — full breakdown</h3><div class="card-sub">Operator type and pricing by ${rl.toLowerCase()}</div>
-        <table class="data-table"><thead><tr><th>${rl}</th>${regionKeys.map((k)=>`<th class="num">${k[0].toUpperCase()+k.slice(1)}</th>`).join("")}<th class="num">Total</th><th class="num">Price Yes</th><th class="num">Price No</th></tr></thead>
-        <tbody>${d.regionSplit.map((s) => `<tr><td>${s.label}</td>${regionKeys.map((k)=>`<td class="num">${fmtNum(s[k])}</td>`).join("")}<td class="num"><strong>${fmtNum(s.total)}</strong></td><td class="num">${fmtNum(s.priceYes)}</td><td class="num">${fmtNum(s.priceNo)}</td></tr>`).join("")}
-        <tr class="total-row"><td>Total</td>${regionKeys.map((k)=>`<td class="num">${fmtNum(d.regionSplit.reduce((sum,s)=>sum+(s[k]||0),0))}</td>`).join("")}<td class="num">${fmtNum(storeTotal)}</td><td class="num">${fmtNum(yesTotal)}</td><td class="num">${fmtNum(noTotal)}</td></tr>
+        <h3>${rl} — Operator Type breakdown</h3><div class="card-sub">Sheet order, as sorted in the source</div>
+        <table class="data-table"><thead><tr><th>${rl}</th>${regionKeys.map((k)=>`<th class="num">${k[0].toUpperCase()+k.slice(1)}</th>`).join("")}<th class="num">Grand Total</th></tr></thead>
+        <tbody>${d.regionSplit.map((s) => `<tr><td>${s.label}</td>${regionKeys.map((k)=>`<td class="num">${fmtNum(s[k])}</td>`).join("")}<td class="num"><strong>${fmtNum(s.total)}</strong></td></tr>`).join("")}
+        <tr class="total-row"><td>Grand Total</td>${regionKeys.map((k)=>`<td class="num">${fmtNum(d.regionSplit.reduce((sum,s)=>sum+(s[k]||0),0))}</td>`).join("")}<td class="num"><strong>${fmtNum(storeTotal)}</strong></td></tr>
+        </tbody></table></div></div>
+      <div class="chart-row" style="grid-template-columns:1fr;"><div class="card">
+        <h3>${rl} — Pricing Yes/No breakdown</h3><div class="card-sub">Sheet order, as sorted in the source</div>
+        <table class="data-table"><thead><tr><th>${rl}</th><th class="num">Price - No</th><th class="num">Price - Yes</th><th class="num">Grand Total</th></tr></thead>
+        <tbody>${priceRows.map((s) => `<tr><td>${s.label}</td><td class="num">${fmtNum(s.priceNo)}</td><td class="num">${fmtNum(s.priceYes)}</td><td class="num"><strong>${fmtNum(s.total)}</strong></td></tr>`).join("")}
+        <tr class="total-row"><td>Total</td><td class="num">${fmtNum(priceNoTotal)}</td><td class="num">${fmtNum(priceYesTotal)}</td><td class="num"><strong>${fmtNum(priceGrandTotal)}</strong></td></tr>
         </tbody></table></div></div>`;
   } else {
     regionCharts = "";
