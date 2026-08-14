@@ -861,11 +861,21 @@ function renderRegionBlock(region) {
 
   let regionCharts = "";
   if (d.regionSplit && d.regionSplit.length) {
-    const regionKeys = d.regionSplit[0].columns;
+    // Some cached/fallback snapshots pre-date the columns/values row shape and store each
+    // operator-type count as its own named key (e.g. {label:"AB", large:133, medium:82, ...})
+    // instead of {label, columns:[...], values:[...]}. Normalize both shapes here so rendering
+    // below works whether the data came from a fresh parse or an older cached snapshot.
+    const REGION_SPLIT_RESERVED = ["label", "total", "priceNo", "priceYes", "columns", "values"];
+    const regionSplitNorm = d.regionSplit.map((s) => {
+      if (s.columns && s.values) return s;
+      const cols = Object.keys(s).filter((k) => !REGION_SPLIT_RESERVED.includes(k));
+      return { label: s.label, columns: cols, values: cols.map((k) => s[k]), total: s.total, priceNo: s.priceNo, priceYes: s.priceYes };
+    });
+    const regionKeys = regionSplitNorm[0].columns;
     const rl = d.regionLabel || "Region";
-    const storeBar = barList(d.regionSplit.map((s) => ({label: s.label, value: s.total})), () => accent);
-    const pricingBar = stackedYesNoList(d.regionSplit.map((s) => ({label: s.label, yes: s.priceYes, no: s.priceNo})));
-    const priceRows = (d.regionPriceSplit && d.regionPriceSplit.length) ? d.regionPriceSplit : d.regionSplit.map((s) => ({label: s.label, columns: ["Price - No","Price - Yes"], values: [s.priceNo, s.priceYes], total: s.total}));
+    const storeBar = barList(regionSplitNorm.map((s) => ({label: s.label, value: s.total})), () => accent);
+    const pricingBar = stackedYesNoList(regionSplitNorm.map((s) => ({label: s.label, yes: s.priceYes, no: s.priceNo})));
+    const priceRows = (d.regionPriceSplit && d.regionPriceSplit.length) ? d.regionPriceSplit : regionSplitNorm.map((s) => ({label: s.label, columns: ["Price - No","Price - Yes"], values: [s.priceNo, s.priceYes], total: s.total}));
     const priceKeys = priceRows[0].columns;
     const priceGrandTotal = priceRows.reduce((sum,s)=>sum+(s.total||0),0);
     regionCharts = `<div class="chart-row">
@@ -876,8 +886,8 @@ function renderRegionBlock(region) {
       <div class="chart-row" style="grid-template-columns:1fr;"><div class="card">
         <h3>${rl} — Operator Type breakdown</h3><div class="card-sub">Sheet order, as sorted in the source</div>
         <table class="data-table"><thead><tr><th>${rl}</th>${regionKeys.map((k)=>`<th class="num">${k}</th>`).join("")}<th class="num">Grand Total</th></tr></thead>
-        <tbody>${d.regionSplit.map((s) => `<tr><td>${s.label}</td>${s.values.map((v)=>`<td class="num">${fmtNum(v)}</td>`).join("")}<td class="num"><strong>${fmtNum(s.total)}</strong></td></tr>`).join("")}
-        <tr class="total-row"><td>Grand Total</td>${regionKeys.map((k,i)=>`<td class="num">${fmtNum(d.regionSplit.reduce((sum,s)=>sum+(s.values[i]||0),0))}</td>`).join("")}<td class="num"><strong>${fmtNum(storeTotal)}</strong></td></tr>
+        <tbody>${regionSplitNorm.map((s) => `<tr><td>${s.label}</td>${s.values.map((v)=>`<td class="num">${fmtNum(v)}</td>`).join("")}<td class="num"><strong>${fmtNum(s.total)}</strong></td></tr>`).join("")}
+        <tr class="total-row"><td>Grand Total</td>${regionKeys.map((k,i)=>`<td class="num">${fmtNum(regionSplitNorm.reduce((sum,s)=>sum+(s.values[i]||0),0))}</td>`).join("")}<td class="num"><strong>${fmtNum(storeTotal)}</strong></td></tr>
         </tbody></table></div></div>
       <div class="chart-row" style="grid-template-columns:1fr;"><div class="card">
         <h3>${rl} — Pricing Yes/No breakdown</h3><div class="card-sub">Sheet order, as sorted in the source</div>
