@@ -389,23 +389,47 @@
   .dash-shell { display:flex; align-items:flex-start; gap:22px; }
   .sidebar {
     flex:none; width:252px; border-radius:16px; padding:10px; align-self:flex-start;
-    position:sticky; top:16px;
+    position:sticky; top:16px; z-index:20;
     /* Dark-mode (default) look: sits on the dark navy page, so the standard frosted-glass
        recipe (from .glass) already reads as a clearly separate floating panel — just add
        a slightly stronger drop shadow than buttons get, since this is a much larger surface. */
     box-shadow: 0 14px 34px rgba(0,0,0,0.35), 0 2px 10px rgba(0,0,0,0.22);
+    transition: box-shadow .32s cubic-bezier(.2,1.4,.4,1), transform .32s cubic-bezier(.2,1.4,.4,1);
+  }
+  /* The real "3D Touch" signature isn't just a shadow on the dropdown — it's the rest of the
+     screen dimming so the popped element reads as physically lifted forward by contrast, not
+     just by its own shadow. #sbDropdownScrim is a fixed full-page veil, explicitly stacked
+     BELOW .sidebar (z-index:20 above) but ABOVE everything else (header, cards, main panel,
+     which are all z-index:auto/0) — so opening the region dropdown dims the whole page except
+     the sidebar module, which appears to float above it. */
+  #sbDropdownScrim {
+    position: fixed; inset: 0; z-index: 15; pointer-events: none; opacity: 0;
+    background: rgba(3,12,11,0.5);
+    transition: opacity .32s ease;
+  }
+  html[data-theme="light"] #sbDropdownScrim { background: rgba(10,26,24,0.22); }
+  #sbDropdownScrim.visible { opacity: 1; pointer-events: auto; }
+  .sidebar.sb-popped {
+    box-shadow: 0 26px 60px rgba(0,0,0,0.55), 0 8px 22px rgba(0,0,0,0.35);
+    transform: translateY(-2px) scale(1.008);
+  }
+  html[data-theme="light"] .sidebar.sb-popped {
+    box-shadow: 0 26px 56px rgba(13,50,46,0.30), 0 8px 22px rgba(13,50,46,0.18);
   }
   /* Light mode: the page body and cards are both near-white, so the sidebar needs its own
      distinct tone to read as a separate panel rather than blending in. Use a cool grey-blue
      (derived from the header's navy) instead of a near-transparent tint. */
   html[data-theme="light"] .sidebar.glass {
-    background: linear-gradient(160deg, rgba(23,38,66,0.13), rgba(23,38,66,0.05) 60%), linear-gradient(0deg, #e7ebf3, #e7ebf3);
+    /* Was still tinted with the pre-Green-Street navy blue (rgba(23,38,66,..) + #e7ebf3) —
+       missed by the earlier global retint since it used slightly different RGB values than
+       the rest of the file. Retinted to match the same teal used everywhere else. */
+    background: linear-gradient(160deg, rgba(13,50,46,0.13), rgba(13,50,46,0.05) 60%), linear-gradient(0deg, #e3ece8, #e3ece8);
     border: 1px solid rgba(13,50,46,0.28);
     box-shadow: inset 0 1.5px 0 rgba(255,255,255,0.75), inset 0 -12px 18px -16px rgba(13,50,46,0.08), 0 14px 34px rgba(13,50,46,0.16), 0 3px 10px rgba(13,50,46,0.10);
     color: var(--text-primary);
   }
   html[data-theme="light"] .sidebar.glass:hover {
-    background: linear-gradient(160deg, rgba(23,38,66,0.15), rgba(23,38,66,0.06) 60%), linear-gradient(0deg, #e7ebf3, #e7ebf3);
+    background: linear-gradient(160deg, rgba(13,50,46,0.15), rgba(13,50,46,0.06) 60%), linear-gradient(0deg, #e3ece8, #e3ece8);
   }
   /* Section list for the currently-selected region only — the region switch itself now
      happens via the single consolidated dropdown above (.sb-region-picker), so this is a
@@ -483,6 +507,7 @@
     ping me with what you're seeing and we'll fix the sync without making the sheet more public than it already is.
   </div>
 
+  <div id="sbDropdownScrim" aria-hidden="true"></div>
   <div class="dash-shell">
     <aside class="sidebar glass" id="sidebarNav">
       <div class="region-picker sb-region-picker">
@@ -1534,7 +1559,17 @@ themeToggleBtn.addEventListener("click", () => {
 // Native <select> popups render with the OS's own list styling — on this dark UI that came
 // out as a near-unreadable washed-out white box. These use the same open/close pattern as
 // the hard-refresh menu below so every dropdown in the header behaves and looks the same.
-function closeGlassSelect(wrap) { wrap.classList.remove("open"); const btn = wrap.querySelector(".glass-select-btn"); if (btn) btn.setAttribute("aria-expanded", "false"); }
+// The dim-scrim + "popped forward" lift only apply to the sidebar's region dropdown (it's the
+// one with a full-page-width visual impact worth the "3D touch" treatment) — the header's
+// interval dropdown keeps its original simple open/close, unaffected by these two helpers.
+function setSidebarPopped(on) {
+  document.getElementById("sbDropdownScrim")?.classList.toggle("visible", on);
+  document.getElementById("sidebarNav")?.classList.toggle("sb-popped", on);
+}
+function closeGlassSelect(wrap) {
+  wrap.classList.remove("open"); const btn = wrap.querySelector(".glass-select-btn"); if (btn) btn.setAttribute("aria-expanded", "false");
+  if (wrap.id === "regionSelectWrap") setSidebarPopped(false);
+}
 function closeAllGlassSelects(except) {
   document.querySelectorAll(".glass-select.open").forEach((w) => { if (w !== except) closeGlassSelect(w); });
 }
@@ -1544,6 +1579,7 @@ function toggleGlassSelect(wrap) {
   wrap.classList.toggle("open", opening);
   const btn = wrap.querySelector(".glass-select-btn");
   if (btn) btn.setAttribute("aria-expanded", String(opening));
+  if (wrap.id === "regionSelectWrap") setSidebarPopped(opening);
 }
 document.getElementById("regionSelectBtn").addEventListener("click", (e) => { e.stopPropagation(); toggleGlassSelect(document.getElementById("regionSelectWrap")); });
 
