@@ -17,57 +17,60 @@
 <style>
   .viz-root {
     color-scheme: dark;
-    --surface-1:      #111a2e;
-    --page:           #0a1120;
-    --text-primary:   #f2f5fb;
-    --text-secondary: #a9b3c9;
-    --text-muted:     #7c869c;
-    --gridline:       #23304a;
-    --baseline:       #374563;
+    /* Green Street brand palette (pulled from greenstreet.com/products/research/):
+       deep forest teal for chrome, a bright lime-green accent, warm cream for light mode. */
+    --surface-1:      #10221f;
+    --page:           #071614;
+    --text-primary:   #eef7f2;
+    --text-secondary: #9db8ad;
+    --text-muted:     #6f8b81;
+    --gridline:       #1f3d37;
+    --baseline:       #345650;
     --border:         rgba(255,255,255,0.08);
-    --good:           #16c172;
+    --good:           #3ddc91;
     --bad:            #e5605f;
-    --navy:           #0f1c36;
-    --navy-2:         #1d3f6e;
-    --accent:         #3987e5;
+    --navy:           #0d4040;
+    --navy-2:         #02756e;
+    --accent:         #21a37e;
+    --brand-lime:     #98f387;
     --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500;
     background: var(--page); color: var(--text-primary); display: block; min-height: 100vh;
     transition: background .2s ease, color .2s ease;
   }
-  /* Light theme — the header stays the same navy brand color in both themes (so every
+  /* Light theme — the header stays the same brand teal in both themes (so every
      "glass" control anchored to it looks identical); only the page body, cards and text
      switch. */
   html[data-theme="light"] .viz-root {
     color-scheme: light;
     --surface-1:      #ffffff;
-    --page:           #eef1f8;
-    --text-primary:   #16213c;
-    --text-secondary: #49566f;
-    --text-muted:     #7a8399;
-    --gridline:       #e2e6ee;
-    --baseline:       #ccd3e0;
-    --border:         rgba(15,28,54,0.10);
+    --page:           #f5f3e9;
+    --text-primary:   #162331;
+    --text-secondary: #45566b;
+    --text-muted:     #74897f;
+    --gridline:       #e6e2d5;
+    --baseline:       #cdd6ca;
+    --border:         rgba(13,40,38,0.12);
   }
-  html[data-theme="light"] body { background: #eef1f8; }
+  html[data-theme="light"] body { background: #f5f3e9; }
   /* The region picker and "View Store List" links sit directly on the page body (not the
      navy header), so their glass needs a dark-tinted border/highlight to stay visible once
      that body turns light — a white-on-white glass edge would otherwise disappear. */
   html[data-theme="light"] .region-picker .glass,
   html[data-theme="light"] .region-card .rc-store-list-btn {
-    background: linear-gradient(160deg, rgba(20,32,58,0.07), rgba(20,32,58,0.015) 55%);
-    border-color: rgba(20,32,58,0.16);
-    box-shadow: inset 0 1.5px 0 rgba(255,255,255,0.7), inset 0 -12px 18px -16px rgba(20,32,58,0.05), 0 4px 14px rgba(20,32,58,0.10);
+    background: linear-gradient(160deg, rgba(13,50,46,0.07), rgba(13,50,46,0.015) 55%);
+    border-color: rgba(13,50,46,0.16);
+    box-shadow: inset 0 1.5px 0 rgba(255,255,255,0.7), inset 0 -12px 18px -16px rgba(13,50,46,0.05), 0 4px 14px rgba(13,50,46,0.10);
     color: var(--text-primary);
   }
   html[data-theme="light"] .region-picker .glass:hover,
   html[data-theme="light"] .region-card .rc-store-list-btn:hover {
-    background: linear-gradient(160deg, rgba(20,32,58,0.11), rgba(20,32,58,0.02) 55%);
+    background: linear-gradient(160deg, rgba(13,50,46,0.11), rgba(13,50,46,0.02) 55%);
   }
   #themeToggle { display:flex; align-items:center; justify-content:center; width:34px; height:34px; padding:0; border-radius:50%; cursor:pointer; }
   #themeToggle svg { display:block; transition: transform .35s ease; }
   #themeToggle[aria-pressed="true"] svg { transform: rotate(180deg); }
   * { box-sizing: border-box; }
-  html, body { margin:0; padding:0; background: #0a1120; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; transition: background .2s ease; }
+  html, body { margin:0; padding:0; background: #071614; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; transition: background .2s ease; }
   .wrap { max-width: 1240px; margin: 0 auto; padding: 0 24px 60px; }
 
   header.top {
@@ -127,7 +130,7 @@
   .glass-select.open .gs-caret { transform: rotate(180deg); }
   .glass-select-menu {
     position:absolute; top: calc(100% + 8px); left:0; min-width:100%; z-index:40;
-    background: linear-gradient(160deg, rgba(255,255,255,0.18), rgba(20,32,58,0.34) 60%);
+    background: linear-gradient(160deg, rgba(255,255,255,0.18), rgba(13,50,46,0.34) 60%);
     backdrop-filter: blur(24px) saturate(190%); -webkit-backdrop-filter: blur(24px) saturate(190%);
     border:1px solid rgba(255,255,255,0.32); border-radius:14px;
     box-shadow: 0 14px 38px rgba(0,0,0,0.38), inset 0 1px 0 rgba(255,255,255,0.32);
@@ -144,11 +147,11 @@
     /* A gradient overlay leaves a weak spot (its lightest corner) where the section list
        still showed through — a flat, near-opaque tint covers it evenly across the whole
        panel while the blur + border + shadow keep it reading as glass, not a flat box. */
-    background: rgba(9,15,28,0.97);
+    background: rgba(7,26,24,0.97);
     backdrop-filter: blur(24px) saturate(190%); -webkit-backdrop-filter: blur(24px) saturate(190%);
   }
   html[data-theme="light"] .sidebar .glass-select-menu {
-    background: linear-gradient(160deg, rgba(255,255,255,0.18), rgba(20,32,58,0.34) 60%);
+    background: linear-gradient(160deg, rgba(255,255,255,0.18), rgba(13,50,46,0.34) 60%);
   }
   .gs-option {
     display:block; width:100%; text-align:left; font: inherit; font-size:13px; font-weight:600;
@@ -156,7 +159,7 @@
     white-space:nowrap; transition: background .12s ease;
   }
   .gs-option:hover { background: rgba(255,255,255,0.16); }
-  .gs-option.selected { background: rgba(120,190,255,0.24); color:#eaf4ff; }
+  .gs-option.selected { background: rgba(88,225,150,0.24); color:#eafff2; }
 
   /* --- Refresh button + hard-refresh glass dropdown ------------------------------------ */
   .refresh-group { position:relative; display:flex; }
@@ -170,7 +173,7 @@
   #refreshCaret svg { display:block; width:11px; height:11px; }
   .refresh-menu {
     position:absolute; top: calc(100% + 8px); right:0; min-width:220px; z-index:40;
-    background: linear-gradient(160deg, rgba(255,255,255,0.16), rgba(20,32,58,0.30) 60%);
+    background: linear-gradient(160deg, rgba(255,255,255,0.16), rgba(13,50,46,0.30) 60%);
     backdrop-filter: blur(24px) saturate(180%); -webkit-backdrop-filter: blur(24px) saturate(180%);
     border:1px solid rgba(255,255,255,0.30); border-radius:16px;
     box-shadow: 0 14px 38px rgba(0,0,0,0.38), inset 0 1px 0 rgba(255,255,255,0.30);
@@ -186,7 +189,7 @@
   .refresh-menu button:hover { background: rgba(255,255,255,0.16); }
   .refresh-menu button .rm-icon {
     width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center;
-    background: rgba(120,190,255,0.18); border:1px solid rgba(120,190,255,0.35); flex:none;
+    background: rgba(88,225,150,0.18); border:1px solid rgba(88,225,150,0.4); flex:none;
   }
   .refresh-menu button svg { width:14px; height:14px; }
   .refresh-menu .rm-sub { display:block; font-size:11px; font-weight:500; color:#aebbd4; margin-top:1px; }
@@ -326,7 +329,7 @@
   .sb-region-picker .glass-select { width:100%; }
   .sb-region-picker .glass-select-btn { width:100%; justify-content:space-between; }
   .sb-divider { height:1px; margin:0 4px 10px; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.18) 20%, rgba(255,255,255,0.18) 80%, transparent); }
-  html[data-theme="light"] .sidebar.glass .sb-divider { background: linear-gradient(90deg, transparent, rgba(20,32,58,0.16) 20%, rgba(20,32,58,0.16) 80%, transparent); }
+  html[data-theme="light"] .sidebar.glass .sb-divider { background: linear-gradient(90deg, transparent, rgba(13,50,46,0.16) 20%, rgba(13,50,46,0.16) 80%, transparent); }
 
   /* A visible split between the sidebar and the main content, on top of the gap + shadow. */
   .dash-divider {
@@ -334,7 +337,7 @@
     background: linear-gradient(180deg, transparent, rgba(255,255,255,0.14) 10%, rgba(255,255,255,0.14) 90%, transparent);
   }
   html[data-theme="light"] .dash-divider {
-    background: linear-gradient(180deg, transparent, rgba(20,32,58,0.14) 10%, rgba(20,32,58,0.14) 90%, transparent);
+    background: linear-gradient(180deg, transparent, rgba(13,50,46,0.14) 10%, rgba(13,50,46,0.14) 90%, transparent);
   }
   @media (max-width: 900px) { .dash-divider { display:none; } }
 
@@ -352,8 +355,8 @@
      (derived from the header's navy) instead of a near-transparent tint. */
   html[data-theme="light"] .sidebar.glass {
     background: linear-gradient(160deg, rgba(23,38,66,0.13), rgba(23,38,66,0.05) 60%), linear-gradient(0deg, #e7ebf3, #e7ebf3);
-    border: 1px solid rgba(20,32,58,0.28);
-    box-shadow: inset 0 1.5px 0 rgba(255,255,255,0.75), inset 0 -12px 18px -16px rgba(20,32,58,0.08), 0 14px 34px rgba(20,32,58,0.16), 0 3px 10px rgba(20,32,58,0.10);
+    border: 1px solid rgba(13,50,46,0.28);
+    box-shadow: inset 0 1.5px 0 rgba(255,255,255,0.75), inset 0 -12px 18px -16px rgba(13,50,46,0.08), 0 14px 34px rgba(13,50,46,0.16), 0 3px 10px rgba(13,50,46,0.10);
     color: var(--text-primary);
   }
   html[data-theme="light"] .sidebar.glass:hover {
@@ -370,9 +373,9 @@
   }
   html[data-theme="light"] .sidebar.glass .sb-section-btn { color: var(--text-secondary); }
   .sb-section-btn:hover { background: rgba(255,255,255,0.14); }
-  html[data-theme="light"] .sb-section-btn:hover { background: rgba(20,32,58,0.08); }
-  .sb-section-btn.selected { background: rgba(120,190,255,0.24); color:#eaf4ff !important; }
-  html[data-theme="light"] .sb-section-btn.selected { background: rgba(37,99,235,0.16); color: var(--text-primary) !important; }
+  html[data-theme="light"] .sb-section-btn:hover { background: rgba(13,50,46,0.08); }
+  .sb-section-btn.selected { background: rgba(88,225,150,0.24); color:#eafff2 !important; }
+  html[data-theme="light"] .sb-section-btn.selected { background: rgba(13,64,64,0.18); color: var(--text-primary) !important; }
   .sb-sections-empty { padding:8px 12px; font-size:11.5px; color: var(--text-muted); }
 
   .main-panel { flex:1; min-width:0; }
