@@ -143,47 +143,38 @@
      so the default translucent recipe let that list's text bleed through. Make it solid enough
      to fully cover it. Light mode already reads cleanly with the original recipe, so restate
      it unchanged there. */
+  /* Genuine frosted glass is back. Earlier attempts kept this opaque because any real
+     transparency let the section list underneath (#sidebarSections) ghost through — but that
+     list is now faded to opacity:0 the instant this dropdown opens (see ".sb-popped
+     #sidebarSections" below), so there's nothing legible left behind the panel to bleed
+     through. That removes the constraint that forced the opaque-plus-fake-sheen compromise,
+     so this can be genuinely translucent + blurred again. */
   .sidebar .glass-select-menu {
-    /* Any real transparency here — even at 0.94-0.97 opacity, with or without blur — let the
-       section list behind it ghost through faintly (tested extensively: blur alone up to 90px
-       does not hide it, since the underlying text survives as a blurred-but-legible smear).
-       The only way to fully guarantee zero bleed is a 100%-opaque base. To keep the "glass"
-       look without any real transparency to the backdrop, the frosted feel comes from a
-       diagonal light sheen + corner highlight layered ON TOP of the opaque color (a
-       background-image gradient, not a see-through one) — it never reveals what's behind the
-       element, only decorates the opaque surface itself. */
-    /* "3D touch" elevation: a slightly lighter, less-inky base than pure near-black, plus a
-       heavier, multi-layer soft shadow (tight+contact, mid, and a big ambient layer) so the
-       panel reads as if it's physically lifted off the sidebar, the way iOS's old 3D Touch
-       peek cards popped off the page. */
-    background:
-      linear-gradient(135deg, rgba(255,255,255,0.16), rgba(255,255,255,0.04) 40%, rgba(255,255,255,0) 70%),
-      radial-gradient(120% 90% at 15% 0%, rgba(255,255,255,0.11), rgba(255,255,255,0) 55%),
-      rgba(15,36,32,1);
-    backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
-    border: 1px solid rgba(255,255,255,0.18);
+    background: linear-gradient(160deg, rgba(255,255,255,0.20), rgba(15,36,32,0.62) 65%);
+    backdrop-filter: blur(28px) saturate(180%); -webkit-backdrop-filter: blur(28px) saturate(180%);
+    border: 1px solid rgba(255,255,255,0.22);
     box-shadow:
       0 2px 6px rgba(0,0,0,0.35),
       0 14px 30px rgba(0,0,0,0.42),
       0 30px 60px rgba(0,0,0,0.35),
-      inset 0 1px 0 rgba(255,255,255,0.24);
+      inset 0 1px 0 rgba(255,255,255,0.30);
   }
-  /* Light mode: the rest of the light theme is dark text on light surfaces, so fighting that
-     with near-white option text over a translucent dark overlay just reads as washed-out grey.
-     Match the app's own convention instead — an opaque light panel with dark, legible text.
-     Tinted off-white (not stark #fff) plus the same layered "3D touch" elevation shadow as
-     dark mode, so the panel reads as a lifted card rather than a flat white sheet. */
   html[data-theme="light"] .sidebar .glass-select-menu {
-    background:
-      linear-gradient(135deg, rgba(255,255,255,0.9), rgba(255,255,255,0.55) 45%, rgba(255,255,255,0.35) 100%),
-      #eef2f5;
-    border: 1px solid rgba(13,50,46,0.14);
+    background: linear-gradient(160deg, rgba(255,255,255,0.86), rgba(255,255,255,0.42) 65%);
+    backdrop-filter: blur(28px) saturate(160%); -webkit-backdrop-filter: blur(28px) saturate(160%);
+    border: 1px solid rgba(13,50,46,0.16);
     box-shadow:
       0 2px 6px rgba(13,50,46,0.10),
       0 12px 28px rgba(13,50,46,0.18),
       0 28px 56px rgba(13,50,46,0.14),
-      inset 0 1px 0 rgba(255,255,255,0.9);
+      inset 0 1px 0 rgba(255,255,255,0.75);
   }
+  /* Hides whatever would otherwise sit directly behind the dropdown while it's open — the
+     actual no-bleed guarantee, doing more work than the blur itself. */
+  .sidebar.sb-popped #sidebarSections {
+    opacity: 0; pointer-events: none; transition: opacity .18s ease;
+  }
+  #sidebarSections { transition: opacity .18s ease; }
   /* Spring "pop" open — the 3D Touch peek gesture overshoots slightly before settling, instead
      of a flat linear fade/slide. Scoped to the sidebar's region dropdown only so the header's
      interval dropdown keeps its original simple transition. */
