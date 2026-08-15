@@ -303,9 +303,27 @@
   }
   /* The old dropdown-style region picker is superseded by the sidebar's own region rows,
      but it's left in the DOM (not deleted) so its untouched JS wiring keeps working. */
-  .region-picker { display:none; }
+  /* The original horizontal "Region  [Canada ▾]" picker now lives inside the sidebar
+     itself (see .sb-region-picker below) instead of floating above the whole layout. */
+  .sb-region-picker.region-picker { display:flex; flex-direction:column; align-items:stretch; gap:8px; margin:2px 4px 12px; }
+  .sb-region-picker label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color: var(--text-muted); }
+  html[data-theme="light"] .sidebar.glass .sb-region-picker label { color: var(--text-secondary); }
+  .sb-region-picker .glass-select { width:100%; }
+  .sb-region-picker .glass-select-btn { width:100%; justify-content:space-between; }
+  .sb-divider { height:1px; margin:0 4px 10px; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.18) 20%, rgba(255,255,255,0.18) 80%, transparent); }
+  html[data-theme="light"] .sidebar.glass .sb-divider { background: linear-gradient(90deg, transparent, rgba(20,32,58,0.16) 20%, rgba(20,32,58,0.16) 80%, transparent); }
 
-  .dash-shell { display:flex; align-items:flex-start; gap:30px; }
+  /* A visible split between the sidebar and the main content, on top of the gap + shadow. */
+  .dash-divider {
+    flex:none; align-self:stretch; width:1px; margin-top:16px;
+    background: linear-gradient(180deg, transparent, rgba(255,255,255,0.14) 10%, rgba(255,255,255,0.14) 90%, transparent);
+  }
+  html[data-theme="light"] .dash-divider {
+    background: linear-gradient(180deg, transparent, rgba(20,32,58,0.14) 10%, rgba(20,32,58,0.14) 90%, transparent);
+  }
+  @media (max-width: 900px) { .dash-divider { display:none; } }
+
+  .dash-shell { display:flex; align-items:flex-start; gap:22px; }
   .sidebar {
     flex:none; width:252px; border-radius:16px; padding:10px; align-self:flex-start;
     position:sticky; top:16px;
@@ -326,34 +344,21 @@
   html[data-theme="light"] .sidebar.glass:hover {
     background: linear-gradient(160deg, rgba(23,38,66,0.15), rgba(23,38,66,0.06) 60%), linear-gradient(0deg, #e7ebf3, #e7ebf3);
   }
-  .sb-region { border-radius:10px; margin-bottom:4px; overflow:hidden; }
-  .sb-region.selected { background: rgba(120,190,255,0.14); }
-  .sb-region-row {
-    display:flex; align-items:center; justify-content:space-between; gap:8px;
-    padding:11px 10px 11px 12px; cursor:pointer; border-left:3px solid var(--accent-color, transparent);
-  }
-  .sb-region-name { font-size:13.5px; font-weight:700; color:#f2f6fb; }
-  html[data-theme="light"] .sidebar.glass .sb-region-name { color: var(--text-primary); }
-  .sb-chevron {
-    flex:none; width:24px; height:24px; border-radius:50%; border:none; cursor:pointer;
-    display:flex; align-items:center; justify-content:center; background:transparent; color:inherit;
-    transition: transform .15s ease, background .12s ease;
-  }
-  .sb-chevron:hover { background: rgba(255,255,255,0.14); }
-  html[data-theme="light"] .sb-chevron:hover { background: rgba(20,32,58,0.08); }
-  .sb-chevron svg { width:10px; height:10px; display:block; }
-  .sb-chevron.open { transform: rotate(180deg); }
-  .sb-sections { list-style:none; margin:0; padding:2px 8px 8px 18px; display:flex; flex-direction:column; gap:2px; }
+  /* Section list for the currently-selected region only — the region switch itself now
+     happens via the single consolidated dropdown above (.sb-region-picker), so this is a
+     flat list, not a per-region accordion. */
+  .sb-sections, .sb-sections-top { list-style:none; margin:0; padding:0 4px; display:flex; flex-direction:column; gap:2px; }
   .sb-section-btn {
-    display:block; width:100%; text-align:left; font:inherit; font-size:12px; font-weight:600;
-    color:#c7d2e6; background:transparent; border:none; border-radius:8px;
-    padding:7px 10px; cursor:pointer; transition: background .12s ease, color .12s ease;
+    display:block; width:100%; text-align:left; font:inherit; font-size:13px; font-weight:600;
+    color:#c7d2e6; background:transparent; border:none; border-radius:9px;
+    padding:10px 12px; cursor:pointer; transition: background .12s ease, color .12s ease;
   }
   html[data-theme="light"] .sidebar.glass .sb-section-btn { color: var(--text-secondary); }
   .sb-section-btn:hover { background: rgba(255,255,255,0.14); }
   html[data-theme="light"] .sb-section-btn:hover { background: rgba(20,32,58,0.08); }
   .sb-section-btn.selected { background: rgba(120,190,255,0.24); color:#eaf4ff !important; }
-  .sb-sections-empty { padding:4px 10px 10px 18px; font-size:11.5px; color: var(--text-muted); }
+  html[data-theme="light"] .sb-section-btn.selected { background: rgba(37,99,235,0.16); color: var(--text-primary) !important; }
+  .sb-sections-empty { padding:8px 12px; font-size:11.5px; color: var(--text-muted); }
 
   .main-panel { flex:1; min-width:0; }
   .mp-empty-state { min-height:160px; font-size:14px; }
@@ -415,19 +420,22 @@
     ping me with what you're seeing and we'll fix the sync without making the sheet more public than it already is.
   </div>
 
-  <div class="region-picker">
-    <label id="regionSelectLbl">Region</label>
-    <div class="glass-select" id="regionSelectWrap">
-      <button type="button" class="glass-select-btn glass" id="regionSelectBtn" aria-labelledby="regionSelectLbl" aria-haspopup="listbox" aria-expanded="false">
-        <span id="regionSelectLabel">Region</span>
-        <svg class="gs-caret" viewBox="0 0 12 8" fill="none"><path d="M1 1.5L6 6.5L11 1.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      </button>
-      <div class="glass-select-menu" id="regionSelectMenu" role="listbox"></div>
-    </div>
-  </div>
-
   <div class="dash-shell">
-    <aside class="sidebar glass" id="sidebarNav"></aside>
+    <aside class="sidebar glass" id="sidebarNav">
+      <div class="region-picker sb-region-picker">
+        <label id="regionSelectLbl">Region</label>
+        <div class="glass-select" id="regionSelectWrap">
+          <button type="button" class="glass-select-btn glass" id="regionSelectBtn" aria-labelledby="regionSelectLbl" aria-haspopup="listbox" aria-expanded="false">
+            <span id="regionSelectLabel">Region</span>
+            <svg class="gs-caret" viewBox="0 0 12 8" fill="none"><path d="M1 1.5L6 6.5L11 1.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <div class="glass-select-menu" id="regionSelectMenu" role="listbox"></div>
+        </div>
+      </div>
+      <div class="sb-divider" aria-hidden="true"></div>
+      <div id="sidebarSections"></div>
+    </aside>
+    <div class="dash-divider" aria-hidden="true"></div>
     <main class="main-panel">
       <section class="region-strip" id="regionStrip"></section>
       <div id="mainPanelBody"></div>
@@ -1388,55 +1396,23 @@ function getRegionParsed(region) {
 }
 
 function renderSidebar() {
-  const nav = document.getElementById("sidebarNav");
-  nav.innerHTML = REGIONS.map((r) => {
-    const isSelected = r.name === selectedRegion;
-    const isExpanded = expandedRegions.has(r.name);
-    let sectionsHtml = "";
-    if (isExpanded) {
-      const parsed = getRegionParsed(r);
-      const titles = parsed ? parsed.titles : [];
-      sectionsHtml = titles.length
-        ? `<ul class="sb-sections">${titles.map((t) => `<li><button type="button" class="sb-section-btn${focusedSectionByRegion[r.name] === t ? " selected" : ""}" data-region="${r.name}" data-title="${encodeURIComponent(t)}">${t}</button></li>`).join("")}</ul>`
-        : `<div class="sb-sections-empty">${r.status === "error" && !r.data ? "Sync failed — no sections available" : "Loading sections…"}</div>`;
-    }
-    return `<div class="sb-region${isSelected ? " selected" : ""}" style="--accent-color:${accentFor(r.name)}">
-      <div class="sb-region-row" data-region="${r.name}">
-        <span class="sb-region-name">${r.name}</span>
-        <button type="button" class="sb-chevron${isExpanded ? " open" : ""}" data-region="${r.name}" aria-expanded="${isExpanded}" aria-label="Toggle ${r.name} sections">
-          <svg viewBox="0 0 12 8" fill="none"><path d="M1 1.5L6 6.5L11 1.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </button>
-      </div>
-      ${sectionsHtml}
-    </div>`;
-  }).join("");
+  // Region switching is now handled by the single consolidated "Region" dropdown at the
+  // top of the sidebar (renderRegionPicker(), untouched) — this function only fills in the
+  // current region's section list below it, instead of looping over all 4 regions with
+  // their own expand/collapse chevrons.
+  const box = document.getElementById("sidebarSections");
+  const r = REGIONS.find((x) => x.name === selectedRegion);
+  if (!r) { box.innerHTML = ""; return; }
+  const parsed = getRegionParsed(r);
+  const titles = parsed ? parsed.titles : [];
+  box.innerHTML = titles.length
+    ? `<ul class="sb-sections sb-sections-top">${titles.map((t) => `<li><button type="button" class="sb-section-btn${focusedSectionByRegion[r.name] === t ? " selected" : ""}" data-title="${encodeURIComponent(t)}">${t}</button></li>`).join("")}</ul>`
+    : `<div class="sb-sections-empty">${r.status === "error" && !r.data ? "Sync failed — no sections available" : "Loading sections…"}</div>`;
 
-  nav.querySelectorAll(".sb-region-row").forEach((row) => {
-    row.addEventListener("click", (e) => {
-      if (e.target.closest(".sb-chevron")) return;
-      selectedRegion = row.dataset.region;
-      saveSelectedRegion(selectedRegion);
-      expandedRegions.add(selectedRegion);
-      render();
-    });
-  });
-  nav.querySelectorAll(".sb-chevron").forEach((btn) => {
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const name = btn.dataset.region;
-      if (expandedRegions.has(name)) expandedRegions.delete(name); else expandedRegions.add(name);
-      renderSidebar();
-    });
-  });
-  nav.querySelectorAll(".sb-section-btn").forEach((btn) => {
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const name = btn.dataset.region;
+  box.querySelectorAll(".sb-section-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
       const title = decodeURIComponent(btn.dataset.title);
-      selectedRegion = name;
-      saveSelectedRegion(selectedRegion);
-      expandedRegions.add(name);
-      focusedSectionByRegion[name] = title;
+      focusedSectionByRegion[selectedRegion] = title;
       render();
     });
   });
