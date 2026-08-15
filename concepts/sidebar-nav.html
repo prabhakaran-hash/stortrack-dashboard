@@ -144,22 +144,32 @@
      to fully cover it. Light mode already reads cleanly with the original recipe, so restate
      it unchanged there. */
   .sidebar .glass-select-menu {
-    /* A gradient overlay leaves a weak spot (its lightest corner) where the section list
-       still showed through — a flat, fully opaque tint covers it evenly across the whole
-       panel while the blur + border + shadow keep it reading as glass, not a flat box.
-       Note: saturate() amplifies whatever faint bleed remains at <100% opacity — with the
-       teal-tinted Green Street palette that was enough to make the section list ghost
-       through again, so this is opaque (1) and drops saturate entirely. */
-    background: rgba(7,26,24,1);
+    /* Any real transparency here — even at 0.94-0.97 opacity, with or without blur — let the
+       section list behind it ghost through faintly (tested extensively: blur alone up to 90px
+       does not hide it, since the underlying text survives as a blurred-but-legible smear).
+       The only way to fully guarantee zero bleed is a 100%-opaque base. To keep the "glass"
+       look without any real transparency to the backdrop, the frosted feel comes from a
+       diagonal light sheen + corner highlight layered ON TOP of the opaque color (a
+       background-image gradient, not a see-through one) — it never reveals what's behind the
+       element, only decorates the opaque surface itself. */
+    background:
+      linear-gradient(135deg, rgba(255,255,255,0.14), rgba(255,255,255,0.03) 38%, rgba(255,255,255,0) 65%),
+      radial-gradient(120% 90% at 15% 0%, rgba(255,255,255,0.10), rgba(255,255,255,0) 55%),
+      rgba(7,26,24,1);
     backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(255,255,255,0.16);
+    box-shadow: 0 18px 44px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.22), inset 0 0 0 1px rgba(255,255,255,0.04);
   }
   /* Light mode: the rest of the light theme is dark text on light surfaces, so fighting that
      with near-white option text over a translucent dark overlay just reads as washed-out grey.
-     Match the app's own convention instead — an opaque light panel with dark, legible text. */
+     Match the app's own convention instead — an opaque light panel with dark, legible text,
+     with the same "sheen on top of opaque" trick for a glassy lift without any real bleed risk. */
   html[data-theme="light"] .sidebar .glass-select-menu {
-    background: #ffffff;
+    background:
+      linear-gradient(135deg, rgba(255,255,255,0.55), rgba(255,255,255,0.15) 45%, rgba(255,255,255,0) 75%),
+      #ffffff;
     border: 1px solid rgba(13,50,46,0.18);
-    box-shadow: 0 14px 34px rgba(13,50,46,0.16), 0 3px 10px rgba(13,50,46,0.10);
+    box-shadow: 0 18px 40px rgba(13,50,46,0.18), inset 0 1px 0 rgba(255,255,255,0.9);
   }
   .gs-option {
     display:block; width:100%; text-align:left; font: inherit; font-size:13px; font-weight:600;
