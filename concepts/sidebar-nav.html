@@ -150,8 +150,13 @@
     background: rgba(7,26,24,0.97);
     backdrop-filter: blur(24px) saturate(190%); -webkit-backdrop-filter: blur(24px) saturate(190%);
   }
+  /* Light mode: the rest of the light theme is dark text on light surfaces, so fighting that
+     with near-white option text over a translucent dark overlay just reads as washed-out grey.
+     Match the app's own convention instead — an opaque light panel with dark, legible text. */
   html[data-theme="light"] .sidebar .glass-select-menu {
-    background: linear-gradient(160deg, rgba(255,255,255,0.18), rgba(13,50,46,0.34) 60%);
+    background: #ffffff;
+    border: 1px solid rgba(13,50,46,0.18);
+    box-shadow: 0 14px 34px rgba(13,50,46,0.16), 0 3px 10px rgba(13,50,46,0.10);
   }
   .gs-option {
     display:block; width:100%; text-align:left; font: inherit; font-size:13px; font-weight:600;
@@ -160,6 +165,9 @@
   }
   .gs-option:hover { background: rgba(255,255,255,0.16); }
   .gs-option.selected { background: rgba(88,225,150,0.24); color:#eafff2; }
+  html[data-theme="light"] .sidebar .gs-option { color: var(--text-primary); }
+  html[data-theme="light"] .sidebar .gs-option:hover { background: rgba(13,50,46,0.08); }
+  html[data-theme="light"] .sidebar .gs-option.selected { background: rgba(33,163,126,0.16); color: var(--text-primary); }
 
   /* --- Refresh button + hard-refresh glass dropdown ------------------------------------ */
   .refresh-group { position:relative; display:flex; }
