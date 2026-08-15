@@ -1,9 +1,18 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Stortrack — Self-Storage Regional Dashboard</title>
+<script>
+  // Applied before anything paints, so there's no flash of the wrong theme on load.
+  (function () {
+    try {
+      var t = localStorage.getItem("stortrack_theme");
+      document.documentElement.setAttribute("data-theme", t === "light" ? "light" : "dark");
+    } catch (e) { document.documentElement.setAttribute("data-theme", "dark"); }
+  })();
+</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <style>
   .viz-root {
@@ -23,9 +32,42 @@
     --accent:         #3987e5;
     --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500;
     background: var(--page); color: var(--text-primary); display: block; min-height: 100vh;
+    transition: background .2s ease, color .2s ease;
   }
+  /* Light theme — the header stays the same navy brand color in both themes (so every
+     "glass" control anchored to it looks identical); only the page body, cards and text
+     switch. */
+  html[data-theme="light"] .viz-root {
+    color-scheme: light;
+    --surface-1:      #ffffff;
+    --page:           #eef1f8;
+    --text-primary:   #16213c;
+    --text-secondary: #49566f;
+    --text-muted:     #7a8399;
+    --gridline:       #e2e6ee;
+    --baseline:       #ccd3e0;
+    --border:         rgba(15,28,54,0.10);
+  }
+  html[data-theme="light"] body { background: #eef1f8; }
+  /* The region picker and "View Store List" links sit directly on the page body (not the
+     navy header), so their glass needs a dark-tinted border/highlight to stay visible once
+     that body turns light — a white-on-white glass edge would otherwise disappear. */
+  html[data-theme="light"] .region-picker .glass,
+  html[data-theme="light"] .region-card .rc-store-list-btn {
+    background: linear-gradient(160deg, rgba(20,32,58,0.07), rgba(20,32,58,0.015) 55%);
+    border-color: rgba(20,32,58,0.16);
+    box-shadow: inset 0 1.5px 0 rgba(255,255,255,0.7), inset 0 -12px 18px -16px rgba(20,32,58,0.05), 0 4px 14px rgba(20,32,58,0.10);
+    color: var(--text-primary);
+  }
+  html[data-theme="light"] .region-picker .glass:hover,
+  html[data-theme="light"] .region-card .rc-store-list-btn:hover {
+    background: linear-gradient(160deg, rgba(20,32,58,0.11), rgba(20,32,58,0.02) 55%);
+  }
+  #themeToggle { display:flex; align-items:center; justify-content:center; width:34px; height:34px; padding:0; border-radius:50%; cursor:pointer; }
+  #themeToggle svg { display:block; transition: transform .35s ease; }
+  #themeToggle[aria-pressed="true"] svg { transform: rotate(180deg); }
   * { box-sizing: border-box; }
-  html, body { margin:0; padding:0; background: #0a1120; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  html, body { margin:0; padding:0; background: #0a1120; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; transition: background .2s ease; }
   .wrap { max-width: 1240px; margin: 0 auto; padding: 0 24px 60px; }
 
   header.top {
@@ -286,6 +328,12 @@
             </button>
           </div>
         </div>
+        <button id="themeToggle" class="glass" title="Switch between dark and light theme" aria-label="Toggle dark/light theme" aria-pressed="false">
+          <svg viewBox="0 0 20 20" width="17" height="17">
+            <circle cx="10" cy="10" r="8.5" fill="#fff" stroke="rgba(120,140,170,0.55)" stroke-width="1"/>
+            <path d="M10 1.5a8.5 8.5 0 000 17z" fill="#151c2e"/>
+          </svg>
+        </button>
       </div>
     </div>
   </header>
@@ -1243,6 +1291,19 @@ function render() {
 }
 
 document.getElementById("refreshNow").addEventListener("click", () => { consecutiveFailures = 0; restartPolling(); syncAll(); });
+
+// --- Theme toggle: dark/light, remembered across visits. The attribute is actually set as
+// early as possible by a tiny inline script in <head> (before first paint) to avoid a flash
+// of the wrong theme; this just keeps the button and any later toggle in sync with it. -----
+function saveTheme(t) { try { localStorage.setItem("stortrack_theme", t); } catch (e) {} }
+const themeToggleBtn = document.getElementById("themeToggle");
+themeToggleBtn.setAttribute("aria-pressed", String(document.documentElement.getAttribute("data-theme") === "light"));
+themeToggleBtn.addEventListener("click", () => {
+  const next = document.documentElement.getAttribute("data-theme") === "light" ? "dark" : "light";
+  document.documentElement.setAttribute("data-theme", next);
+  themeToggleBtn.setAttribute("aria-pressed", String(next === "light"));
+  saveTheme(next);
+});
 
 // --- Custom glass dropdowns (region picker + refresh interval) --------------------------
 // Native <select> popups render with the OS's own list styling — on this dark UI that came
