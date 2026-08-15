@@ -135,6 +135,17 @@
     transition: opacity .16s ease, transform .16s ease;
   }
   .glass-select.open .glass-select-menu { opacity:1; transform: translateY(0) scale(1); pointer-events:auto; }
+  /* In the sidebar's region dropdown (dark mode), the section list sits directly behind this
+     menu — unlike the header's interval dropdown, which floats over one uniform navy strip —
+     so the default translucent recipe let that list's text bleed through. Make it solid enough
+     to fully cover it. Light mode already reads cleanly with the original recipe, so restate
+     it unchanged there. */
+  .sidebar .glass-select-menu {
+    background: linear-gradient(160deg, rgba(255,255,255,0.10), rgba(9,15,28,0.97) 55%);
+  }
+  html[data-theme="light"] .sidebar .glass-select-menu {
+    background: linear-gradient(160deg, rgba(255,255,255,0.18), rgba(20,32,58,0.34) 60%);
+  }
   .gs-option {
     display:block; width:100%; text-align:left; font: inherit; font-size:13px; font-weight:600;
     color:#f2f6fb; background:transparent; border:none; border-radius:10px; padding:9px 12px; cursor:pointer;
