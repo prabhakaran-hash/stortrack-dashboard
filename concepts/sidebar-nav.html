@@ -145,10 +145,13 @@
      it unchanged there. */
   .sidebar .glass-select-menu {
     /* A gradient overlay leaves a weak spot (its lightest corner) where the section list
-       still showed through — a flat, near-opaque tint covers it evenly across the whole
-       panel while the blur + border + shadow keep it reading as glass, not a flat box. */
-    background: rgba(7,26,24,0.97);
-    backdrop-filter: blur(24px) saturate(190%); -webkit-backdrop-filter: blur(24px) saturate(190%);
+       still showed through — a flat, fully opaque tint covers it evenly across the whole
+       panel while the blur + border + shadow keep it reading as glass, not a flat box.
+       Note: saturate() amplifies whatever faint bleed remains at <100% opacity — with the
+       teal-tinted Green Street palette that was enough to make the section list ghost
+       through again, so this is opaque (1) and drops saturate entirely. */
+    background: rgba(7,26,24,1);
+    backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
   }
   /* Light mode: the rest of the light theme is dark text on light surfaces, so fighting that
      with near-white option text over a translucent dark overlay just reads as washed-out grey.
