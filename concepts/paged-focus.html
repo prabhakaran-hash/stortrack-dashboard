@@ -148,7 +148,10 @@
     white-space:nowrap; transition: background .12s ease;
   }
   .gs-option:hover { background: rgba(255,255,255,0.16); }
-  .gs-option.selected { background: rgba(88,225,150,0.24); color:#eafff2; }
+  /* Solid enough (0.55 vs the old 0.24) to evenly mask whatever's blurred behind the glass
+     panel — at the old lower alpha, the colourful region cards bled through unevenly and the
+     highlighted row read as a two-tone smear instead of a clean, uniform pill. */
+  .gs-option.selected { background: rgba(61,220,145,0.55); box-shadow: inset 0 1px 0 rgba(255,255,255,0.22); color:#0d2b20; }
 
   /* --- Refresh button + hard-refresh glass dropdown ------------------------------------ */
   .refresh-group { position:relative; display:flex; }
@@ -331,7 +334,7 @@
   .focus-card-area.focus-fade-out { opacity:0; transform: translateY(6px); }
   .focus-card-area .card { margin:0; }
 
-  /* --- "Compare sections" premium multi-select — view several sections for one region
+  /* --- "Analyst View" premium multi-select — view several sections for one region
      side-by-side instead of one tab at a time. ----------------------------------------- */
   .fs-multiselect-bar {
     display:flex; align-items:center; justify-content:space-between; gap:10px;
@@ -340,10 +343,6 @@
   }
   .fs-multiselect-left { display:flex; align-items:center; gap:8px; }
   .fs-multiselect-label { font-size:12.5px; font-weight:700; color: var(--text-primary); }
-  .fs-ms-badge-pro {
-    font-size:9.5px; font-weight:800; letter-spacing:.05em; color:#3a2e10;
-    background: linear-gradient(135deg, #ffe9a8, #ffcf5c); border-radius:999px; padding:2px 7px;
-  }
   .fs-multiselect-toggle { display:flex; align-items:center; gap:8px; cursor:pointer; background:none; border:none; padding:0; }
   .fs-ms-track {
     width:36px; height:20px; border-radius:999px; background: var(--gridline);
@@ -1388,7 +1387,7 @@ if (d.developments && d.developments.length) {
 let REGION_FOCUS_IDX = {};   // remembered focused tab index, per region name (single-select mode)
 let LAST_FOCUS_SECTIONS = []; // [{title, html}] for whichever region is currently shown
 
-// --- "Compare sections" premium multi-select ---------------------------------------------
+// --- "Analyst View" premium multi-select ---------------------------------------------
 // Lets someone view several of a region's sections stacked together instead of one tab at a
 // time. multiSelectMode is a single global switch (not per-region) — turning it on/off applies
 // to whichever region is currently in view. Each region remembers its own set of chosen
@@ -1436,8 +1435,7 @@ function buildFocusedRegionBlock(region) {
 
     const toggleBar = `<div class="fs-multiselect-bar">
       <div class="fs-multiselect-left">
-        <span class="fs-multiselect-label">Compare sections</span>
-        <span class="fs-ms-badge-pro">PRO</span>
+        <span class="fs-multiselect-label">Analyst View</span>
       </div>
       <button type="button" class="fs-multiselect-toggle${multiSelectMode ? " on" : ""}" id="fsMultiSelectToggle" aria-pressed="${multiSelectMode}">
         <span class="fs-ms-track"><span class="fs-ms-thumb"></span></span>

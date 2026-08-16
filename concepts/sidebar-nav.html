@@ -209,7 +209,10 @@
     white-space:nowrap; transition: background .12s ease;
   }
   .gs-option:hover { background: rgba(255,255,255,0.16); }
-  .gs-option.selected { background: rgba(88,225,150,0.24); color:#eafff2; }
+  /* Solid enough (0.55 vs the old 0.24) to evenly mask whatever's blurred behind the glass
+     panel — at the old lower alpha, the colourful region cards bled through unevenly and the
+     highlighted row read as a two-tone smear instead of a clean, uniform pill. */
+  .gs-option.selected { background: rgba(61,220,145,0.55); box-shadow: inset 0 1px 0 rgba(255,255,255,0.22); color:#0d2b20; }
   html[data-theme="light"] .sidebar .gs-option { color: var(--text-primary); }
   html[data-theme="light"] .sidebar .gs-option:hover { background: rgba(13,50,46,0.08); }
   html[data-theme="light"] .sidebar .gs-option.selected { background: rgba(33,163,126,0.16); color: var(--text-primary); }
@@ -483,7 +486,7 @@
   html[data-theme="light"] .sb-section-btn.selected { background: rgba(13,64,64,0.18); color: var(--text-primary) !important; }
   .sb-sections-empty { padding:8px 12px; font-size:11.5px; color: var(--text-muted); }
 
-  /* --- "Compare sections" — premium multi-select ---------------------------------------
+  /* --- "Analyst View" — premium multi-select ---------------------------------------
      Off by default (identical single-section behaviour to before). Switching it on lets
      someone tick more than one section for the current region and see them all stacked in
      the main panel at once, each individually removable, instead of the one-at-a-time view. */
@@ -508,10 +511,6 @@
   .sb-multiselect-toggle.on .sb-ms-thumb { transform: translateX(13px); background:#0d2b22; }
   .sb-ms-label { flex:1; }
   .sb-multiselect-toggle.on .sb-ms-label { color: var(--text-primary); }
-  .sb-ms-badge-pro {
-    flex:none; font-size:9.5px; font-weight:800; letter-spacing:.06em; color:#0d2b22;
-    background: linear-gradient(120deg, var(--brand-lime, #98f387), #5fe3c0); border-radius:5px; padding:2px 5px;
-  }
   .sb-ms-meta { display:flex; align-items:center; justify-content:space-between; padding:0 6px; font-size:11.5px; color: var(--text-muted); }
   .sb-ms-clear { font:inherit; font-size:11.5px; font-weight:700; color: var(--brand-lime, #98f387); background:transparent; border:none; cursor:pointer; padding:0; }
   html[data-theme="light"] .sb-ms-clear { color: var(--navy-2, #02756e); }
@@ -1564,7 +1563,7 @@ if (d.developments && d.developments.length) {
 // selected region open), and which section title(s) are currently focused per region.
 // focusedSectionByRegion holds a Set per region rather than a single string so the same
 // state naturally supports both modes: single-select keeps that Set at size ≤ 1 (the
-// original one-at-a-time behaviour, untouched), while "Compare sections" (multiSelectMode)
+// original one-at-a-time behaviour, untouched), while "Analyst View" (multiSelectMode)
 // lets it grow past 1 so several sections can be viewed stacked together at once.
 let expandedRegions = new Set([selectedRegion]);
 let focusedSectionByRegion = {};
@@ -1611,8 +1610,7 @@ function renderSidebar() {
   const toggleBar = `<div class="sb-multiselect-bar">
     <button type="button" class="sb-multiselect-toggle${multiSelectMode ? " on" : ""}" id="multiSelectToggle" aria-pressed="${multiSelectMode}">
       <span class="sb-ms-track"><span class="sb-ms-thumb"></span></span>
-      <span class="sb-ms-label">Compare sections</span>
-      <span class="sb-ms-badge-pro">PRO</span>
+      <span class="sb-ms-label">Analyst View</span>
     </button>
     ${multiSelectMode && selected.size ? `<div class="sb-ms-meta"><span>${selected.size} selected</span><button type="button" id="msClearAll" class="sb-ms-clear">Clear all</button></div>` : ""}
   </div>`;
