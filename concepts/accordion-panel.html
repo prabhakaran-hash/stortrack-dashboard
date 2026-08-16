@@ -8,9 +8,11 @@
   // Applied before anything paints, so there's no flash of the wrong theme on load.
   (function () {
     try {
+      // Default is light (the dashboard's primary, professional-facing look); dark is now the
+      // opt-in exception, remembered only once someone actually switches to it.
       var t = localStorage.getItem("stortrack_theme");
-      document.documentElement.setAttribute("data-theme", t === "light" ? "light" : "dark");
-    } catch (e) { document.documentElement.setAttribute("data-theme", "dark"); }
+      document.documentElement.setAttribute("data-theme", t === "dark" ? "dark" : "light");
+    } catch (e) { document.documentElement.setAttribute("data-theme", "light"); }
   })();
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
@@ -30,6 +32,7 @@
     --navy:           #0d4040;
     --navy-2:         #02756e;
     --accent:         #21a37e;
+    --brand-lime:     #98f387;
     --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500;
     background: var(--page); color: var(--text-primary); display: block; min-height: 100vh;
     transition: background .2s ease, color .2s ease;
@@ -70,22 +73,24 @@
   html, body { margin:0; padding:0; background: #071614; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; transition: background .2s ease; }
   .wrap { max-width: 1240px; margin: 0 auto; padding: 0 24px 60px; }
 
+  /* Tightened from the original (22/20 padding, 24 margin, 4px accent bar) to a sleeker,
+     more premium/professional band that doesn't dominate the page above the fold. */
   header.top {
     background: linear-gradient(120deg, var(--navy) 0%, var(--navy-2) 100%);
-    margin: 0 0 24px; padding: 22px 0 20px;
+    margin: 0 0 16px; padding: 14px 0 12px;
   }
   header.top .header-inner {
     max-width: 1240px; margin: 0 auto; padding: 0 24px;
     display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;
   }
   header.top::after {
-    content:""; display:block; height:4px; margin-top:18px;
+    content:""; display:block; height:3px; margin-top:12px;
     background: linear-gradient(90deg, var(--series-1) 0 25%, var(--series-2) 25% 50%, var(--series-3) 50% 75%, var(--series-4) 75% 100%);
   }
-  .brand { display:flex; flex-direction:column; gap:6px; }
-  .brand .name { font-size:12.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color: #9fc2ea; }
-  .brand h1 { margin:0; font-size:23px; font-weight:800; color:#ffffff; letter-spacing:-.01em; }
-  .brand-logo { height:42px; width:auto; display:block; align-self:flex-start; object-fit:contain; background:rgba(248,250,253,0.97); border-radius:10px; padding:8px 14px 6px 10px; box-shadow:0 2px 10px rgba(0,0,0,0.22); box-sizing:content-box; }
+  .brand { display:flex; flex-direction:column; gap:4px; }
+  .brand .name { font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color: #9fc2ea; }
+  .brand h1 { margin:0; font-size:19px; font-weight:800; color:#ffffff; letter-spacing:-.01em; }
+  .brand-logo { height:34px; width:auto; display:block; align-self:flex-start; object-fit:contain; background:rgba(248,250,253,0.97); border-radius:9px; padding:6px 11px 5px 8px; box-shadow:0 2px 10px rgba(0,0,0,0.22); box-sizing:content-box; }
   .status-cluster { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
   /* --- Shared "liquid glass" material, used by every header control -------------------- */
   .glass {
@@ -127,8 +132,10 @@
   .glass-select.open .gs-caret { transform: rotate(180deg); }
   .glass-select-menu {
     position:absolute; top: calc(100% + 8px); left:0; min-width:100%; z-index:40;
-    background: linear-gradient(160deg, rgba(255,255,255,0.18), rgba(13,50,46,0.34) 60%);
-    backdrop-filter: blur(24px) saturate(190%); -webkit-backdrop-filter: blur(24px) saturate(190%);
+    /* Lighter blur than the original 24px — heavy blur over-smoothed into a flat wash;
+       this reads as genuinely frosted glass instead. */
+    background: linear-gradient(160deg, rgba(255,255,255,0.16), rgba(13,50,46,0.38) 60%);
+    backdrop-filter: blur(14px) saturate(180%); -webkit-backdrop-filter: blur(14px) saturate(180%);
     border:1px solid rgba(255,255,255,0.32); border-radius:14px;
     box-shadow: 0 14px 38px rgba(0,0,0,0.38), inset 0 1px 0 rgba(255,255,255,0.32);
     padding:6px; opacity:0; transform: translateY(-6px) scale(.98); pointer-events:none;
@@ -261,9 +268,9 @@
 
   .bar-row { display:flex; align-items:center; gap:10px; margin:9px 0; }
   .bar-row .bar-label { width:150px; flex:none; font-size:12.5px; color: var(--text-secondary); text-align:right; }
-  .bar-track { flex:1; border-bottom:1px solid var(--gridline); position:relative; }
+  .bar-track { flex:1; margin-right:56px; border-bottom:1px solid var(--gridline); position:relative; }
   .bar-fill { height:13px; margin-top:2px; border-radius:4px; position:relative; transition:width .4s ease; }
-  .bar-value { position:absolute; left:calc(100% + 8px); top:50%; transform:translateY(-50%); font-size:12px; font-weight:600; white-space:nowrap; }
+  .bar-value { position:absolute; left:calc(100% + 10px); top:50%; transform:translateY(-50%); font-size:12px; font-weight:600; white-space:nowrap; }
 
   .stack-track { flex:1; height:15px; border-radius:4px; margin-top:2px; overflow:hidden; display:flex; background: var(--gridline); }
   .stack-seg { height:100%; transition: width .4s ease; }
@@ -937,7 +944,11 @@ function fmtNum(n) { return (n == null) ? "—" : Math.round(n).toLocaleString("
 function fmtCompact(n) { if (n == null) return "—"; if (n >= 1e6) return (n/1e6).toFixed(1) + "M"; if (n >= 1e3) return (n/1e3).toFixed(1) + "K"; return String(Math.round(n)); }
 function pct(a, b) { return b ? Math.round(a/b*100) : 0; }
 const PALETTE_HEX = ["#3987e5","#d95926","#199e70","#c98500"];
-const YES_COLOR = "#16c172", NO_COLOR = "#d95926";
+// Green Street brand colours (same values as the --good/--bad/--navy-2/--brand-lime CSS vars
+// defined on .viz-root) — fixed regardless of which region is selected, so the KPI tiles never
+// visually duplicate that region's own accent border color.
+const YES_COLOR = "#3ddc91", NO_COLOR = "#e5605f";
+const KPI_STORES_COLOR = "#02756e", KPI_COVERAGE_COLOR = "#98f387";
 // One fixed accent per region — used for that region's card top-border, its
 // header band, and its "count" bar charts. Pricing yes/no bars always stay
 // green/orange everywhere since that's a fixed available/unavailable meaning.
@@ -1140,10 +1151,10 @@ function renderRegionBlock(region) {
   const accent = accentFor(region.name);
 
   const kpis = `<div class="kpi-row">
-    <div class="kpi-tile" style="--kpi-accent:${accent}"><div class="label">Total Stores</div><div class="value">${fmtNum(storeTotal)}</div><div class="sub">${region.lastSynced ? "synced " + region.lastSynced.toLocaleTimeString() : "cached snapshot"}</div></div>
+    <div class="kpi-tile" style="--kpi-accent:${KPI_STORES_COLOR}"><div class="label">Total Stores</div><div class="value">${fmtNum(storeTotal)}</div><div class="sub">${region.lastSynced ? "synced " + region.lastSynced.toLocaleTimeString() : "cached snapshot"}</div></div>
     <div class="kpi-tile" style="--kpi-accent:${YES_COLOR}"><div class="label">Price Available — Yes</div><div class="value">${fmtNum(yesTotal)}</div><div class="sub">${pct(yesTotal, yesTotal+noTotal)}% of stores</div></div>
     <div class="kpi-tile" style="--kpi-accent:${NO_COLOR}"><div class="label">Price Available — No</div><div class="value">${fmtNum(noTotal)}</div><div class="sub">${pct(noTotal, yesTotal+noTotal)}% of stores</div></div>
-    <div class="kpi-tile" style="--kpi-accent:#eda100"><div class="label">${d.sqftTotal ? "Total NRSF" : "Units Coverage"}</div>
+    <div class="kpi-tile" style="--kpi-accent:${KPI_COVERAGE_COLOR}"><div class="label">${d.sqftTotal ? "Total NRSF" : "Units Coverage"}</div>
       <div class="value">${d.sqftTotal ? fmtCompact(d.sqftTotal) : fmtNum((d.units.actual||0) + (d.units.estimated||0))}</div>
       <div class="sub">${d.sqftTotal ? fmtNum(d.sqftTotal) + " sq ft" : "actual + estimated unit counts"}</div></div>
   </div>`;
