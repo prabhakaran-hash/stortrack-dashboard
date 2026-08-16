@@ -8,28 +8,31 @@
   // Applied before anything paints, so there's no flash of the wrong theme on load.
   (function () {
     try {
+      // Default is light (the dashboard's primary, professional-facing look); dark is now the
+      // opt-in exception, remembered only once someone actually switches to it.
       var t = localStorage.getItem("stortrack_theme");
-      document.documentElement.setAttribute("data-theme", t === "light" ? "light" : "dark");
-    } catch (e) { document.documentElement.setAttribute("data-theme", "dark"); }
+      document.documentElement.setAttribute("data-theme", t === "dark" ? "dark" : "light");
+    } catch (e) { document.documentElement.setAttribute("data-theme", "light"); }
   })();
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <style>
   .viz-root {
     color-scheme: dark;
-    --surface-1:      #111a2e;
-    --page:           #0a1120;
-    --text-primary:   #f2f5fb;
-    --text-secondary: #a9b3c9;
-    --text-muted:     #7c869c;
-    --gridline:       #23304a;
-    --baseline:       #374563;
+    --surface-1:      #10221f;
+    --page:           #071614;
+    --text-primary:   #eef7f2;
+    --text-secondary: #9db8ad;
+    --text-muted:     #6f8b81;
+    --gridline:       #1f3d37;
+    --baseline:       #345650;
     --border:         rgba(255,255,255,0.08);
-    --good:           #16c172;
+    --good:           #3ddc91;
     --bad:            #e5605f;
-    --navy:           #0f1c36;
-    --navy-2:         #1d3f6e;
-    --accent:         #3987e5;
+    --navy:           #0d4040;
+    --navy-2:         #02756e;
+    --accent:         #21a37e;
+    --brand-lime:     #98f387;
     --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500;
     background: var(--page); color: var(--text-primary); display: block; min-height: 100vh;
     transition: background .2s ease, color .2s ease;
@@ -40,52 +43,57 @@
   html[data-theme="light"] .viz-root {
     color-scheme: light;
     --surface-1:      #ffffff;
-    --page:           #eef1f8;
-    --text-primary:   #16213c;
-    --text-secondary: #49566f;
-    --text-muted:     #7a8399;
-    --gridline:       #e2e6ee;
-    --baseline:       #ccd3e0;
-    --border:         rgba(15,28,54,0.10);
+    --page:           #f5f3e9;
+    --text-primary:   #162331;
+    --text-secondary: #45566b;
+    --text-muted:     #74897f;
+    --gridline:       #e6e2d5;
+    --baseline:       #cdd6ca;
+    --border:         rgba(13,40,38,0.12);
   }
-  html[data-theme="light"] body { background: #eef1f8; }
+  html[data-theme="light"] body { background: #f5f3e9; }
   /* The region picker and "View Store List" links sit directly on the page body (not the
      navy header), so their glass needs a dark-tinted border/highlight to stay visible once
      that body turns light — a white-on-white glass edge would otherwise disappear. */
   html[data-theme="light"] .region-picker .glass,
   html[data-theme="light"] .region-card .rc-store-list-btn {
-    background: linear-gradient(160deg, rgba(20,32,58,0.07), rgba(20,32,58,0.015) 55%);
-    border-color: rgba(20,32,58,0.16);
-    box-shadow: inset 0 1.5px 0 rgba(255,255,255,0.7), inset 0 -12px 18px -16px rgba(20,32,58,0.05), 0 4px 14px rgba(20,32,58,0.10);
+    background: linear-gradient(160deg, rgba(13,50,46,0.07), rgba(13,50,46,0.015) 55%);
+    border-color: rgba(13,50,46,0.16);
+    box-shadow: inset 0 1.5px 0 rgba(255,255,255,0.7), inset 0 -12px 18px -16px rgba(13,50,46,0.05), 0 4px 14px rgba(13,50,46,0.10);
     color: var(--text-primary);
   }
   html[data-theme="light"] .region-picker .glass:hover,
   html[data-theme="light"] .region-card .rc-store-list-btn:hover {
-    background: linear-gradient(160deg, rgba(20,32,58,0.11), rgba(20,32,58,0.02) 55%);
+    background: linear-gradient(160deg, rgba(13,50,46,0.11), rgba(13,50,46,0.02) 55%);
   }
   #themeToggle { display:flex; align-items:center; justify-content:center; width:34px; height:34px; padding:0; border-radius:50%; cursor:pointer; }
   #themeToggle svg { display:block; transition: transform .35s ease; }
   #themeToggle[aria-pressed="true"] svg { transform: rotate(180deg); }
   * { box-sizing: border-box; }
-  html, body { margin:0; padding:0; background: #0a1120; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; transition: background .2s ease; }
+  html, body { margin:0; padding:0; background: #071614; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; transition: background .2s ease; }
   .wrap { max-width: 1240px; margin: 0 auto; padding: 0 24px 60px; }
 
+  /* Tightened from the original (22/20 padding, 24 margin, 4px accent bar) — that much air plus
+     a thick 4-colour stripe read as bulky/decorative rather than sleek. Same content, less
+     ceremony: less top/bottom breathing room, a slimmer 3px accent line sitting closer to the
+     header, and a smaller wordmark/logo so the whole band reads as a compact professional
+     strip instead of a banner. */
   header.top {
     background: linear-gradient(120deg, var(--navy) 0%, var(--navy-2) 100%);
-    margin: 0 0 24px; padding: 22px 0 20px;
+    margin: 0 0 16px; padding: 14px 0 12px;
   }
   header.top .header-inner {
     max-width: 1240px; margin: 0 auto; padding: 0 24px;
     display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;
   }
   header.top::after {
-    content:""; display:block; height:4px; margin-top:18px;
+    content:""; display:block; height:3px; margin-top:12px;
     background: linear-gradient(90deg, var(--series-1) 0 25%, var(--series-2) 25% 50%, var(--series-3) 50% 75%, var(--series-4) 75% 100%);
   }
-  .brand { display:flex; flex-direction:column; gap:6px; }
-  .brand .name { font-size:12.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color: #9fc2ea; }
-  .brand h1 { margin:0; font-size:23px; font-weight:800; color:#ffffff; letter-spacing:-.01em; }
-  .brand-logo { height:42px; width:auto; display:block; align-self:flex-start; object-fit:contain; background:rgba(248,250,253,0.97); border-radius:10px; padding:8px 14px 6px 10px; box-shadow:0 2px 10px rgba(0,0,0,0.22); box-sizing:content-box; }
+  .brand { display:flex; flex-direction:column; gap:4px; }
+  .brand .name { font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color: #9fc2ea; }
+  .brand h1 { margin:0; font-size:19px; font-weight:800; color:#ffffff; letter-spacing:-.01em; }
+  .brand-logo { height:34px; width:auto; display:block; align-self:flex-start; object-fit:contain; background:rgba(248,250,253,0.97); border-radius:9px; padding:6px 11px 5px 8px; box-shadow:0 2px 10px rgba(0,0,0,0.22); box-sizing:content-box; }
   .status-cluster { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
   /* --- Shared "liquid glass" material, used by every header control -------------------- */
   .glass {
@@ -125,10 +133,13 @@
   #regionSelectBtn { font-size:14px; font-weight:700; min-width:220px; padding:9px 14px; }
   .glass-select .gs-caret { width:11px; height:11px; flex:none; transition: transform .15s ease; }
   .glass-select.open .gs-caret { transform: rotate(180deg); }
+  /* Frosted glass, tuned: a heavy blur (the original 24px) over-smooths into a flat tinted
+     panel with no visible "glass" texture — a lighter blur reads as genuinely frosted because
+     there's still a soft hint of whatever's behind it instead of a uniform wash. */
   .glass-select-menu {
     position:absolute; top: calc(100% + 8px); left:0; min-width:100%; z-index:40;
-    background: linear-gradient(160deg, rgba(255,255,255,0.18), rgba(20,32,58,0.34) 60%);
-    backdrop-filter: blur(24px) saturate(190%); -webkit-backdrop-filter: blur(24px) saturate(190%);
+    background: linear-gradient(160deg, rgba(255,255,255,0.16), rgba(13,50,46,0.38) 60%);
+    backdrop-filter: blur(14px) saturate(180%); -webkit-backdrop-filter: blur(14px) saturate(180%);
     border:1px solid rgba(255,255,255,0.32); border-radius:14px;
     box-shadow: 0 14px 38px rgba(0,0,0,0.38), inset 0 1px 0 rgba(255,255,255,0.32);
     padding:6px; opacity:0; transform: translateY(-6px) scale(.98); pointer-events:none;
@@ -141,7 +152,7 @@
     white-space:nowrap; transition: background .12s ease;
   }
   .gs-option:hover { background: rgba(255,255,255,0.16); }
-  .gs-option.selected { background: rgba(120,190,255,0.24); color:#eaf4ff; }
+  .gs-option.selected { background: rgba(88,225,150,0.24); color:#eafff2; }
 
   /* --- Refresh button + hard-refresh glass dropdown ------------------------------------ */
   .refresh-group { position:relative; display:flex; }
@@ -155,7 +166,7 @@
   #refreshCaret svg { display:block; width:11px; height:11px; }
   .refresh-menu {
     position:absolute; top: calc(100% + 8px); right:0; min-width:220px; z-index:40;
-    background: linear-gradient(160deg, rgba(255,255,255,0.16), rgba(20,32,58,0.30) 60%);
+    background: linear-gradient(160deg, rgba(255,255,255,0.16), rgba(13,50,46,0.30) 60%);
     backdrop-filter: blur(24px) saturate(180%); -webkit-backdrop-filter: blur(24px) saturate(180%);
     border:1px solid rgba(255,255,255,0.30); border-radius:16px;
     box-shadow: 0 14px 38px rgba(0,0,0,0.38), inset 0 1px 0 rgba(255,255,255,0.30);
@@ -171,7 +182,7 @@
   .refresh-menu button:hover { background: rgba(255,255,255,0.16); }
   .refresh-menu button .rm-icon {
     width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center;
-    background: rgba(120,190,255,0.18); border:1px solid rgba(120,190,255,0.35); flex:none;
+    background: rgba(88,225,150,0.18); border:1px solid rgba(88,225,150,0.35); flex:none;
   }
   .refresh-menu button svg { width:14px; height:14px; }
   .refresh-menu .rm-sub { display:block; font-size:11px; font-weight:500; color:#aebbd4; margin-top:1px; }
@@ -261,9 +272,13 @@
 
   .bar-row { display:flex; align-items:center; gap:10px; margin:9px 0; }
   .bar-row .bar-label { width:150px; flex:none; font-size:12.5px; color: var(--text-secondary); text-align:right; }
-  .bar-track { flex:1; border-bottom:1px solid var(--gridline); position:relative; }
+  /* The value label sits past the bar's own right edge (bar-value, below), so the track needs
+     dedicated room reserved for it — otherwise the longest bar in a chart (whichever one hits
+     100% width) pushes its number flush against the card's edge, since nothing else was holding
+     space open for it. */
+  .bar-track { flex:1; margin-right:56px; border-bottom:1px solid var(--gridline); position:relative; }
   .bar-fill { height:13px; margin-top:2px; border-radius:4px; position:relative; transition:width .4s ease; }
-  .bar-value { position:absolute; left:calc(100% + 8px); top:50%; transform:translateY(-50%); font-size:12px; font-weight:600; white-space:nowrap; }
+  .bar-value { position:absolute; left:calc(100% + 10px); top:50%; transform:translateY(-50%); font-size:12px; font-weight:600; white-space:nowrap; }
 
   .stack-track { flex:1; height:15px; border-radius:4px; margin-top:2px; overflow:hidden; display:flex; background: var(--gridline); }
   .stack-seg { height:100%; transition: width .4s ease; }
@@ -887,10 +902,18 @@ function fmtNum(n) { return (n == null) ? "—" : Math.round(n).toLocaleString("
 function fmtCompact(n) { if (n == null) return "—"; if (n >= 1e6) return (n/1e6).toFixed(1) + "M"; if (n >= 1e3) return (n/1e3).toFixed(1) + "K"; return String(Math.round(n)); }
 function pct(a, b) { return b ? Math.round(a/b*100) : 0; }
 const PALETTE_HEX = ["#3987e5","#d95926","#199e70","#c98500"];
-const YES_COLOR = "#16c172", NO_COLOR = "#d95926";
+// Green Street brand colours (same values as the --good/--bad/--navy-2/--brand-lime CSS vars
+// defined on .viz-root) — fixed regardless of which region is selected, so they read as "this
+// metric type" rather than "this region". Previously Yes/No borrowed #16c172/#d95926 (the latter
+// happens to BE United Kingdom's own region accent), and the KPI row's own "Total Stores" tile
+// reused accentFor(region) directly — meaning it visually duplicated whichever region card was
+// selected just above it (most obvious with Canada, where both were the exact same blue). None
+// of the four KPI colours below collide with any REGION_ACCENT value.
+const YES_COLOR = "#3ddc91", NO_COLOR = "#e5605f";
+const KPI_STORES_COLOR = "#02756e", KPI_COVERAGE_COLOR = "#98f387";
 // One fixed accent per region — used for that region's card top-border, its
 // header band, and its "count" bar charts. Pricing yes/no bars always stay
-// green/orange everywhere since that's a fixed available/unavailable meaning.
+// green/red everywhere since that's a fixed available/unavailable meaning.
 const REGION_ACCENT = { "Canada": "#3987e5", "United Kingdom": "#d95926", "Australia": "#199e70", "New Zealand": "#c98500" };
 function accentFor(name) { return REGION_ACCENT[name] || "#3987e5"; }
 
@@ -1090,10 +1113,10 @@ function renderRegionBlock(region) {
   const accent = accentFor(region.name);
 
   const kpis = `<div class="kpi-row">
-    <div class="kpi-tile" style="--kpi-accent:${accent}"><div class="label">Total Stores</div><div class="value">${fmtNum(storeTotal)}</div><div class="sub">${region.lastSynced ? "synced " + region.lastSynced.toLocaleTimeString() : "cached snapshot"}</div></div>
+    <div class="kpi-tile" style="--kpi-accent:${KPI_STORES_COLOR}"><div class="label">Total Stores</div><div class="value">${fmtNum(storeTotal)}</div><div class="sub">${region.lastSynced ? "synced " + region.lastSynced.toLocaleTimeString() : "cached snapshot"}</div></div>
     <div class="kpi-tile" style="--kpi-accent:${YES_COLOR}"><div class="label">Price Available — Yes</div><div class="value">${fmtNum(yesTotal)}</div><div class="sub">${pct(yesTotal, yesTotal+noTotal)}% of stores</div></div>
     <div class="kpi-tile" style="--kpi-accent:${NO_COLOR}"><div class="label">Price Available — No</div><div class="value">${fmtNum(noTotal)}</div><div class="sub">${pct(noTotal, yesTotal+noTotal)}% of stores</div></div>
-    <div class="kpi-tile" style="--kpi-accent:#eda100"><div class="label">${d.sqftTotal ? "Total NRSF" : "Units Coverage"}</div>
+    <div class="kpi-tile" style="--kpi-accent:${KPI_COVERAGE_COLOR}"><div class="label">${d.sqftTotal ? "Total NRSF" : "Units Coverage"}</div>
       <div class="value">${d.sqftTotal ? fmtCompact(d.sqftTotal) : fmtNum((d.units.actual||0) + (d.units.estimated||0))}</div>
       <div class="sub">${d.sqftTotal ? fmtNum(d.sqftTotal) + " sq ft" : "actual + estimated unit counts"}</div></div>
   </div>`;
