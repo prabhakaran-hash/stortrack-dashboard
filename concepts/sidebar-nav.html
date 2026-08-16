@@ -8,9 +8,11 @@
   // Applied before anything paints, so there's no flash of the wrong theme on load.
   (function () {
     try {
+      // Default is light (the dashboard's primary, professional-facing look); dark is now the
+      // opt-in exception, remembered only once someone actually switches to it.
       var t = localStorage.getItem("stortrack_theme");
-      document.documentElement.setAttribute("data-theme", t === "light" ? "light" : "dark");
-    } catch (e) { document.documentElement.setAttribute("data-theme", "dark"); }
+      document.documentElement.setAttribute("data-theme", t === "dark" ? "dark" : "light");
+    } catch (e) { document.documentElement.setAttribute("data-theme", "light"); }
   })();
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
@@ -73,22 +75,27 @@
   html, body { margin:0; padding:0; background: #071614; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; transition: background .2s ease; }
   .wrap { max-width: 1240px; margin: 0 auto; padding: 0 24px 60px; }
 
+  /* Tightened from the original (22/20 padding, 24 margin, 4px accent bar) — that much air plus
+     a thick 4-colour stripe read as bulky/decorative rather than sleek. Same content, less
+     ceremony: less top/bottom breathing room, a slimmer 3px accent line sitting closer to the
+     header, and a smaller wordmark/logo so the whole band reads as a compact professional
+     strip instead of a banner. */
   header.top {
     background: linear-gradient(120deg, var(--navy) 0%, var(--navy-2) 100%);
-    margin: 0 0 24px; padding: 22px 0 20px;
+    margin: 0 0 16px; padding: 14px 0 12px;
   }
   header.top .header-inner {
     max-width: 1240px; margin: 0 auto; padding: 0 24px;
     display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;
   }
   header.top::after {
-    content:""; display:block; height:4px; margin-top:18px;
+    content:""; display:block; height:3px; margin-top:12px;
     background: linear-gradient(90deg, var(--series-1) 0 25%, var(--series-2) 25% 50%, var(--series-3) 50% 75%, var(--series-4) 75% 100%);
   }
-  .brand { display:flex; flex-direction:column; gap:6px; }
-  .brand .name { font-size:12.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color: #9fc2ea; }
-  .brand h1 { margin:0; font-size:23px; font-weight:800; color:#ffffff; letter-spacing:-.01em; }
-  .brand-logo { height:42px; width:auto; display:block; align-self:flex-start; object-fit:contain; background:rgba(248,250,253,0.97); border-radius:10px; padding:8px 14px 6px 10px; box-shadow:0 2px 10px rgba(0,0,0,0.22); box-sizing:content-box; }
+  .brand { display:flex; flex-direction:column; gap:4px; }
+  .brand .name { font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color: #9fc2ea; }
+  .brand h1 { margin:0; font-size:19px; font-weight:800; color:#ffffff; letter-spacing:-.01em; }
+  .brand-logo { height:34px; width:auto; display:block; align-self:flex-start; object-fit:contain; background:rgba(248,250,253,0.97); border-radius:9px; padding:6px 11px 5px 8px; box-shadow:0 2px 10px rgba(0,0,0,0.22); box-sizing:content-box; }
   .status-cluster { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
   /* --- Shared "liquid glass" material, used by every header control -------------------- */
   .glass {
