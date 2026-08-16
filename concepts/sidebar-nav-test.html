@@ -1631,9 +1631,13 @@ function renderSidebar() {
     if (!multiSelectMode) {
       // Dropping back to single-select: keep whichever section was clicked most recently
       // for this region (if any), drop the rest, so the original one-at-a-time view comes
-      // back exactly as it was rather than showing a stack of leftover picks.
+      // back exactly as it was rather than showing a stack of leftover picks. If someone
+      // built their whole selection through the multi-select checkboxes (never actually
+      // clicking a section while in single mode), lastSingleTitleByRegion stays empty —
+      // fall back to whatever's still ticked so switching off compare mode never surprises
+      // them with a blank panel when they clearly had something selected.
       const sel = getFocusedSet(selectedRegion);
-      const keep = lastSingleTitleByRegion[selectedRegion];
+      const keep = lastSingleTitleByRegion[selectedRegion] || [...sel][0] || null;
       sel.clear();
       if (keep) sel.add(keep);
     }
