@@ -8,9 +8,11 @@
   // Applied before anything paints, so there's no flash of the wrong theme on load.
   (function () {
     try {
+      // Default is light (the dashboard's primary, professional-facing look); dark is now the
+      // opt-in exception, remembered only once someone actually switches to it.
       var t = localStorage.getItem("stortrack_theme");
-      document.documentElement.setAttribute("data-theme", t === "light" ? "light" : "dark");
-    } catch (e) { document.documentElement.setAttribute("data-theme", "dark"); }
+      document.documentElement.setAttribute("data-theme", t === "dark" ? "dark" : "light");
+    } catch (e) { document.documentElement.setAttribute("data-theme", "light"); }
   })();
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
@@ -30,6 +32,7 @@
     --navy:           #0d4040;
     --navy-2:         #02756e;
     --accent:         #21a37e;
+    --brand-lime:     #98f387;
     --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500;
     background: var(--page); color: var(--text-primary); display: block; min-height: 100vh;
     transition: background .2s ease, color .2s ease;
@@ -70,22 +73,24 @@
   html, body { margin:0; padding:0; background: #071614; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; transition: background .2s ease; }
   .wrap { max-width: 1240px; margin: 0 auto; padding: 0 24px 60px; }
 
+  /* Tightened from the original (22/20 padding, 24 margin, 4px accent bar) to a sleeker,
+     more premium/professional band that doesn't dominate the page above the fold. */
   header.top {
     background: linear-gradient(120deg, var(--navy) 0%, var(--navy-2) 100%);
-    margin: 0 0 24px; padding: 22px 0 20px;
+    margin: 0 0 16px; padding: 14px 0 12px;
   }
   header.top .header-inner {
     max-width: 1240px; margin: 0 auto; padding: 0 24px;
     display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;
   }
   header.top::after {
-    content:""; display:block; height:4px; margin-top:18px;
+    content:""; display:block; height:3px; margin-top:12px;
     background: linear-gradient(90deg, var(--series-1) 0 25%, var(--series-2) 25% 50%, var(--series-3) 50% 75%, var(--series-4) 75% 100%);
   }
-  .brand { display:flex; flex-direction:column; gap:6px; }
-  .brand .name { font-size:12.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color: #9fc2ea; }
-  .brand h1 { margin:0; font-size:23px; font-weight:800; color:#ffffff; letter-spacing:-.01em; }
-  .brand-logo { height:42px; width:auto; display:block; align-self:flex-start; object-fit:contain; background:rgba(248,250,253,0.97); border-radius:10px; padding:8px 14px 6px 10px; box-shadow:0 2px 10px rgba(0,0,0,0.22); box-sizing:content-box; }
+  .brand { display:flex; flex-direction:column; gap:4px; }
+  .brand .name { font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color: #9fc2ea; }
+  .brand h1 { margin:0; font-size:19px; font-weight:800; color:#ffffff; letter-spacing:-.01em; }
+  .brand-logo { height:34px; width:auto; display:block; align-self:flex-start; object-fit:contain; background:rgba(248,250,253,0.97); border-radius:9px; padding:6px 11px 5px 8px; box-shadow:0 2px 10px rgba(0,0,0,0.22); box-sizing:content-box; }
   .status-cluster { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
   /* --- Shared "liquid glass" material, used by every header control -------------------- */
   .glass {
@@ -127,8 +132,10 @@
   .glass-select.open .gs-caret { transform: rotate(180deg); }
   .glass-select-menu {
     position:absolute; top: calc(100% + 8px); left:0; min-width:100%; z-index:40;
-    background: linear-gradient(160deg, rgba(255,255,255,0.18), rgba(13,50,46,0.34) 60%);
-    backdrop-filter: blur(24px) saturate(190%); -webkit-backdrop-filter: blur(24px) saturate(190%);
+    /* Lighter blur than the original 24px — heavy blur over-smoothed into a flat wash;
+       this reads as genuinely frosted glass instead. */
+    background: linear-gradient(160deg, rgba(255,255,255,0.16), rgba(13,50,46,0.38) 60%);
+    backdrop-filter: blur(14px) saturate(180%); -webkit-backdrop-filter: blur(14px) saturate(180%);
     border:1px solid rgba(255,255,255,0.32); border-radius:14px;
     box-shadow: 0 14px 38px rgba(0,0,0,0.38), inset 0 1px 0 rgba(255,255,255,0.32);
     padding:6px; opacity:0; transform: translateY(-6px) scale(.98); pointer-events:none;
@@ -261,9 +268,9 @@
 
   .bar-row { display:flex; align-items:center; gap:10px; margin:9px 0; }
   .bar-row .bar-label { width:150px; flex:none; font-size:12.5px; color: var(--text-secondary); text-align:right; }
-  .bar-track { flex:1; border-bottom:1px solid var(--gridline); position:relative; }
+  .bar-track { flex:1; margin-right:56px; border-bottom:1px solid var(--gridline); position:relative; }
   .bar-fill { height:13px; margin-top:2px; border-radius:4px; position:relative; transition:width .4s ease; }
-  .bar-value { position:absolute; left:calc(100% + 8px); top:50%; transform:translateY(-50%); font-size:12px; font-weight:600; white-space:nowrap; }
+  .bar-value { position:absolute; left:calc(100% + 10px); top:50%; transform:translateY(-50%); font-size:12px; font-weight:600; white-space:nowrap; }
 
   .stack-track { flex:1; height:15px; border-radius:4px; margin-top:2px; overflow:hidden; display:flex; background: var(--gridline); }
   .stack-seg { height:100%; transition: width .4s ease; }
@@ -323,6 +330,60 @@
   .focus-card-area { transition: opacity .18s ease, transform .18s ease; opacity:1; transform: translateY(0); }
   .focus-card-area.focus-fade-out { opacity:0; transform: translateY(6px); }
   .focus-card-area .card { margin:0; }
+
+  /* --- "Compare sections" premium multi-select — view several sections for one region
+     side-by-side instead of one tab at a time. ----------------------------------------- */
+  .fs-multiselect-bar {
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:8px 10px; margin-bottom:8px;
+    background: var(--surface-1); border:1px solid var(--border); border-radius:12px;
+  }
+  .fs-multiselect-left { display:flex; align-items:center; gap:8px; }
+  .fs-multiselect-label { font-size:12.5px; font-weight:700; color: var(--text-primary); }
+  .fs-ms-badge-pro {
+    font-size:9.5px; font-weight:800; letter-spacing:.05em; color:#3a2e10;
+    background: linear-gradient(135deg, #ffe9a8, #ffcf5c); border-radius:999px; padding:2px 7px;
+  }
+  .fs-multiselect-toggle { display:flex; align-items:center; gap:8px; cursor:pointer; background:none; border:none; padding:0; }
+  .fs-ms-track {
+    width:36px; height:20px; border-radius:999px; background: var(--gridline);
+    position:relative; transition: background .18s ease; flex:none;
+  }
+  .fs-ms-thumb {
+    position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:50%;
+    background:#fff; box-shadow:0 1px 3px rgba(0,0,0,0.3); transition: transform .18s ease;
+  }
+  .fs-multiselect-toggle.on .fs-ms-track { background: var(--brand-lime, #98f387); }
+  .fs-multiselect-toggle.on .fs-ms-thumb { transform: translateX(16px); }
+  .fs-ms-meta { display:flex; align-items:center; gap:8px; font-size:12px; color: var(--text-muted); }
+  .fs-ms-clear { font: inherit; font-size:12px; font-weight:600; color: var(--accent); background:none; border:none; cursor:pointer; padding:0; text-decoration:underline; }
+
+  .focus-tab.fs-ms-item { display:flex; align-items:center; gap:8px; }
+  .fs-ms-check {
+    width:15px; height:15px; border-radius:4px; border:1.5px solid var(--baseline); flex:none;
+    position:relative; background: var(--surface-1);
+  }
+  .focus-tab.fs-ms-item.active .fs-ms-check,
+  .focus-tab.fs-ms-item[aria-checked="true"] .fs-ms-check {
+    background: var(--brand-lime, #98f387); border-color: var(--brand-lime, #98f387);
+  }
+  .fs-ms-item[aria-checked="true"] .fs-ms-check::after {
+    content:""; position:absolute; left:4px; top:1px; width:4px; height:8px;
+    border:solid #0d4040; border-width:0 2px 2px 0; transform:rotate(45deg);
+  }
+
+  .fs-compare-stack { display:flex; flex-direction:column; gap:14px; }
+  .fs-compare-item { position:relative; }
+  .fs-compare-item .card { margin:0; }
+  .fs-compare-remove {
+    position:absolute; top:14px; right:16px; width:24px; height:24px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center; font-size:14px; line-height:1; font-weight:700;
+    color: var(--text-muted); background: var(--gridline); border:none; cursor:pointer;
+    transition: background .15s ease, color .15s ease;
+  }
+  .fs-compare-remove:hover { background: var(--bad); color:#fff; }
+  .fs-compare-empty { padding:30px 16px; text-align:center; color: var(--text-muted); font-size:13px; }
+
   @media (max-width: 900px) {
     .focus-tabs { gap:4px; }
     .focus-tab { padding:7px 10px; font-size:12px; }
@@ -919,7 +980,11 @@ function fmtNum(n) { return (n == null) ? "—" : Math.round(n).toLocaleString("
 function fmtCompact(n) { if (n == null) return "—"; if (n >= 1e6) return (n/1e6).toFixed(1) + "M"; if (n >= 1e3) return (n/1e3).toFixed(1) + "K"; return String(Math.round(n)); }
 function pct(a, b) { return b ? Math.round(a/b*100) : 0; }
 const PALETTE_HEX = ["#3987e5","#d95926","#199e70","#c98500"];
-const YES_COLOR = "#16c172", NO_COLOR = "#d95926";
+// Green Street brand colours (same values as the --good/--bad/--navy-2/--brand-lime CSS vars
+// defined on .viz-root) — fixed regardless of which region is selected, so the KPI tiles never
+// visually duplicate that region's own accent border color.
+const YES_COLOR = "#3ddc91", NO_COLOR = "#e5605f";
+const KPI_STORES_COLOR = "#02756e", KPI_COVERAGE_COLOR = "#98f387";
 // One fixed accent per region — used for that region's card top-border, its
 // header band, and its "count" bar charts. Pricing yes/no bars always stay
 // green/orange everywhere since that's a fixed available/unavailable meaning.
@@ -1122,10 +1187,10 @@ function renderRegionBlock(region) {
   const accent = accentFor(region.name);
 
   const kpis = `<div class="kpi-row">
-    <div class="kpi-tile" style="--kpi-accent:${accent}"><div class="label">Total Stores</div><div class="value">${fmtNum(storeTotal)}</div><div class="sub">${region.lastSynced ? "synced " + region.lastSynced.toLocaleTimeString() : "cached snapshot"}</div></div>
+    <div class="kpi-tile" style="--kpi-accent:${KPI_STORES_COLOR}"><div class="label">Total Stores</div><div class="value">${fmtNum(storeTotal)}</div><div class="sub">${region.lastSynced ? "synced " + region.lastSynced.toLocaleTimeString() : "cached snapshot"}</div></div>
     <div class="kpi-tile" style="--kpi-accent:${YES_COLOR}"><div class="label">Price Available — Yes</div><div class="value">${fmtNum(yesTotal)}</div><div class="sub">${pct(yesTotal, yesTotal+noTotal)}% of stores</div></div>
     <div class="kpi-tile" style="--kpi-accent:${NO_COLOR}"><div class="label">Price Available — No</div><div class="value">${fmtNum(noTotal)}</div><div class="sub">${pct(noTotal, yesTotal+noTotal)}% of stores</div></div>
-    <div class="kpi-tile" style="--kpi-accent:#eda100"><div class="label">${d.sqftTotal ? "Total NRSF" : "Units Coverage"}</div>
+    <div class="kpi-tile" style="--kpi-accent:${KPI_COVERAGE_COLOR}"><div class="label">${d.sqftTotal ? "Total NRSF" : "Units Coverage"}</div>
       <div class="value">${d.sqftTotal ? fmtCompact(d.sqftTotal) : fmtNum((d.units.actual||0) + (d.units.estimated||0))}</div>
       <div class="sub">${d.sqftTotal ? fmtNum(d.sqftTotal) + " sq ft" : "actual + estimated unit counts"}</div></div>
   </div>`;
@@ -1320,8 +1385,22 @@ if (d.developments && d.developments.length) {
 // and turns them into single-focus panel pages behind a slim tab strip. No parsing or
 // business logic is duplicated here — this only rearranges already-rendered markup.
 // ---------------------------------------------------------------------------------------
-let REGION_FOCUS_IDX = {};   // remembered focused tab index, per region name
+let REGION_FOCUS_IDX = {};   // remembered focused tab index, per region name (single-select mode)
 let LAST_FOCUS_SECTIONS = []; // [{title, html}] for whichever region is currently shown
+
+// --- "Compare sections" premium multi-select ---------------------------------------------
+// Lets someone view several of a region's sections stacked together instead of one tab at a
+// time. multiSelectMode is a single global switch (not per-region) — turning it on/off applies
+// to whichever region is currently in view. Each region remembers its own set of chosen
+// section indices so switching regions and coming back preserves the selection.
+let multiSelectMode = false;
+let focusedSetByRegion = {};      // { regionName: Set<sectionIndex> }
+let lastSingleIdxByRegion = {};   // most recent single-tab click per region, used as the
+                                   // fallback to keep when multi-select is turned back off
+function getFocusedSet(name) {
+  if (!focusedSetByRegion[name]) focusedSetByRegion[name] = new Set();
+  return focusedSetByRegion[name];
+}
 
 function buildFocusedRegionBlock(region) {
   const html = renderRegionBlock(region);
@@ -1347,6 +1426,7 @@ function buildFocusedRegionBlock(region) {
     if (!(region.name in REGION_FOCUS_IDX)) REGION_FOCUS_IDX[region.name] = 0;
     if (REGION_FOCUS_IDX[region.name] >= sections.length) REGION_FOCUS_IDX[region.name] = 0;
     const idx = REGION_FOCUS_IDX[region.name];
+    const selected = getFocusedSet(region.name);
 
     // Carry the region's accent color (already set on .region-head by renderRegionBlock)
     // down onto the block itself so the active tab picks up the same accent tint.
@@ -1354,12 +1434,41 @@ function buildFocusedRegionBlock(region) {
     const accentColor = regionHead ? regionHead.style.getPropertyValue("--accent-color") : "";
     if (accentColor) block.style.setProperty("--accent-color", accentColor);
 
-    const tabsHtml = sections.map((s, i) =>
-      `<button type="button" class="focus-tab${i === idx ? " active" : ""}" data-idx="${i}" role="tab" aria-selected="${i === idx}">${s.title}</button>`
-    ).join("");
+    const toggleBar = `<div class="fs-multiselect-bar">
+      <div class="fs-multiselect-left">
+        <span class="fs-multiselect-label">Compare sections</span>
+        <span class="fs-ms-badge-pro">PRO</span>
+      </div>
+      <button type="button" class="fs-multiselect-toggle${multiSelectMode ? " on" : ""}" id="fsMultiSelectToggle" aria-pressed="${multiSelectMode}">
+        <span class="fs-ms-track"><span class="fs-ms-thumb"></span></span>
+      </button>
+    </div>`;
+
+    const tabsHtml = sections.map((s, i) => {
+      if (multiSelectMode) {
+        const checked = selected.has(i);
+        return `<button type="button" class="focus-tab fs-ms-item${checked ? " active" : ""}" data-idx="${i}" role="checkbox" aria-checked="${checked}">
+          <span class="fs-ms-check"></span>${s.title}</button>`;
+      }
+      return `<button type="button" class="focus-tab${i === idx ? " active" : ""}" data-idx="${i}" role="tab" aria-selected="${i === idx}">${s.title}</button>`;
+    }).join("");
+
+    const metaRow = (multiSelectMode && selected.size)
+      ? `<div class="fs-ms-meta">${selected.size} selected · <button type="button" class="fs-ms-clear" id="fsMsClear">Clear all</button></div>` : "";
+
+    const panelBody = multiSelectMode
+      ? (selected.size
+          ? `<div class="fs-compare-stack" id="focusCardArea">${[...selected].sort((a,b)=>a-b).map((i) =>
+              `<div class="fs-compare-item" data-idx="${i}">${sections[i].html}<button type="button" class="fs-compare-remove" data-idx="${i}" aria-label="Remove">×</button></div>`
+            ).join("")}</div>`
+          : `<div class="fs-compare-stack" id="focusCardArea"><div class="fs-compare-empty">Check one or more sections above to compare them side by side.</div></div>`)
+      : `<div class="focus-card-area" id="focusCardArea">${sections[idx].html}</div>`;
+
     block.insertAdjacentHTML("beforeend", `<div class="focus-panel">
-      <div class="focus-tabs" role="tablist">${tabsHtml}</div>
-      <div class="focus-card-area" id="focusCardArea">${sections[idx].html}</div>
+      ${toggleBar}
+      <div class="focus-tabs" role="${multiSelectMode ? "group" : "tablist"}">${tabsHtml}</div>
+      ${metaRow}
+      ${panelBody}
     </div>`);
   }
   return block.outerHTML;
@@ -1368,6 +1477,7 @@ function buildFocusedRegionBlock(region) {
 function updateFocusPanel(region, idx) {
   if (!LAST_FOCUS_SECTIONS[idx]) return;
   REGION_FOCUS_IDX[region.name] = idx;
+  lastSingleIdxByRegion[region.name] = idx;
   const area = document.getElementById("focusCardArea");
   if (area) {
     area.classList.add("focus-fade-out");
@@ -1382,10 +1492,46 @@ function updateFocusPanel(region, idx) {
   });
 }
 document.addEventListener("click", (e) => {
-  const tab = e.target.closest(".focus-tab");
-  if (!tab) return;
   const region = REGIONS.find((r) => r.name === selectedRegion);
   if (!region) return;
+
+  const msToggle = e.target.closest("#fsMultiSelectToggle");
+  if (msToggle) {
+    multiSelectMode = !multiSelectMode;
+    if (!multiSelectMode) {
+      // Turning compare mode off: collapse back to a single focused tab. Prefer whatever was
+      // last single-clicked; otherwise fall back to the first still-selected section, so a
+      // selection built entirely through checkboxes doesn't collapse to a blank panel.
+      const sel = getFocusedSet(region.name);
+      const keep = (region.name in lastSingleIdxByRegion) ? lastSingleIdxByRegion[region.name] : [...sel][0];
+      sel.clear();
+      if (keep != null) sel.add(keep);
+      if (keep != null) REGION_FOCUS_IDX[region.name] = keep;
+    }
+    render();
+    return;
+  }
+
+  const clearBtn = e.target.closest("#fsMsClear");
+  if (clearBtn) { getFocusedSet(region.name).clear(); render(); return; }
+
+  const removeBtn = e.target.closest(".fs-compare-remove");
+  if (removeBtn) {
+    getFocusedSet(region.name).delete(Number(removeBtn.dataset.idx));
+    render();
+    return;
+  }
+
+  const tab = e.target.closest(".focus-tab");
+  if (!tab) return;
+
+  if (multiSelectMode) {
+    const i = Number(tab.dataset.idx);
+    const sel = getFocusedSet(region.name);
+    if (sel.has(i)) sel.delete(i); else sel.add(i);
+    render();
+    return;
+  }
   updateFocusPanel(region, Number(tab.dataset.idx));
 });
 
