@@ -143,15 +143,14 @@
      so the default translucent recipe let that list's text bleed through. Make it solid enough
      to fully cover it. Light mode already reads cleanly with the original recipe, so restate
      it unchanged there. */
-  /* Genuine frosted glass is back. Earlier attempts kept this opaque because any real
-     transparency let the section list underneath (#sidebarSections) ghost through — but that
-     list is now faded to opacity:0 the instant this dropdown opens (see ".sb-popped
-     #sidebarSections" below), so there's nothing legible left behind the panel to bleed
-     through. That removes the constraint that forced the opaque-plus-fake-sheen compromise,
-     so this can be genuinely translucent + blurred again. */
+  /* Genuine frosted glass: the section list behind the dropdown is blurred with a real CSS
+     filter (not backdrop-filter, which this renderer composites unreliably) so it stays
+     VISIBLE AS TEXTURE — colour, shapes, contrast — while being fully illegible as text. That
+     blurred texture is what the translucent panel below is actually blurring/tinting, which is
+     what makes it read as frosted glass instead of a flat gradient. */
   .sidebar .glass-select-menu {
-    background: linear-gradient(160deg, rgba(255,255,255,0.20), rgba(15,36,32,0.62) 65%);
-    backdrop-filter: blur(28px) saturate(180%); -webkit-backdrop-filter: blur(28px) saturate(180%);
+    background: linear-gradient(160deg, rgba(255,255,255,0.10), rgba(15,36,32,0.22) 65%);
+    backdrop-filter: blur(6px) saturate(160%); -webkit-backdrop-filter: blur(6px) saturate(160%);
     border: 1px solid rgba(255,255,255,0.22);
     box-shadow:
       0 2px 6px rgba(0,0,0,0.35),
@@ -160,8 +159,8 @@
       inset 0 1px 0 rgba(255,255,255,0.30);
   }
   html[data-theme="light"] .sidebar .glass-select-menu {
-    background: linear-gradient(160deg, rgba(255,255,255,0.86), rgba(255,255,255,0.42) 65%);
-    backdrop-filter: blur(28px) saturate(160%); -webkit-backdrop-filter: blur(28px) saturate(160%);
+    background: linear-gradient(160deg, rgba(255,255,255,0.32), rgba(255,255,255,0.10) 65%);
+    backdrop-filter: blur(6px) saturate(140%); -webkit-backdrop-filter: blur(6px) saturate(140%);
     border: 1px solid rgba(13,50,46,0.16);
     box-shadow:
       0 2px 6px rgba(13,50,46,0.10),
@@ -169,12 +168,17 @@
       0 28px 56px rgba(13,50,46,0.14),
       inset 0 1px 0 rgba(255,255,255,0.75);
   }
-  /* Hides whatever would otherwise sit directly behind the dropdown while it's open — the
-     actual no-bleed guarantee, doing more work than the blur itself. */
+  /* The no-bleed guarantee: a real `filter: blur()` applied directly to the section list's own
+     rendered content (reliable in this renderer, unlike backdrop-filter). Tuned to keep opacity
+     high (0.85) so the colour/shape texture stays clearly visible — that's what reads as
+     genuine frosted glass — while the blur radius (6px, on ~13px text) is still enough to make
+     every letter fully illegible at any zoom level. Verified live in both themes: option rows
+     inside the menu stay perfectly crisp; only the hidden list behind it blurs. */
   .sidebar.sb-popped #sidebarSections {
-    opacity: 0; pointer-events: none; transition: opacity .18s ease;
+    filter: blur(6px); opacity: 0.85; pointer-events: none;
+    transition: filter .18s ease, opacity .18s ease;
   }
-  #sidebarSections { transition: opacity .18s ease; }
+  #sidebarSections { transition: filter .18s ease, opacity .18s ease; }
   /* Spring "pop" open — the 3D Touch peek gesture overshoots slightly before settling, instead
      of a flat linear fade/slide. Scoped to the sidebar's region dropdown only so the header's
      interval dropdown keeps its original simple transition. */
@@ -363,7 +367,22 @@
   .sb-region-picker label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color: var(--text-muted); }
   html[data-theme="light"] .sidebar.glass .sb-region-picker label { color: var(--text-secondary); }
   .sb-region-picker .glass-select { width:100%; }
-  .sb-region-picker .glass-select-btn { width:100%; justify-content:space-between; }
+  /* Dark mode (default): baked-in tint matching the sidebar panel + dropdown menu's family,
+     instead of leaning on the generic .glass recipe's backdrop-filter for colour — that's what
+     made the trigger button read as a slightly different (washed-out) tone than the panel
+     around it. */
+  .sb-region-picker .glass-select-btn {
+    width:100%; justify-content:space-between;
+    background: linear-gradient(160deg, rgba(255,255,255,0.14), rgba(15,36,32,0.45) 65%);
+    border: 1px solid rgba(255,255,255,0.20);
+  }
+  html[data-theme="light"] .sb-region-picker .glass-select-btn {
+    background: linear-gradient(160deg, rgba(13,50,46,0.09), rgba(13,50,46,0.02) 55%), linear-gradient(0deg, #e3ece8, #e3ece8);
+    border-color: rgba(13,50,46,0.20);
+  }
+  html[data-theme="light"] .sb-region-picker .glass-select-btn:hover {
+    background: linear-gradient(160deg, rgba(13,50,46,0.13), rgba(13,50,46,0.03) 55%), linear-gradient(0deg, #e3ece8, #e3ece8);
+  }
   .sb-divider { height:1px; margin:0 4px 10px; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.18) 20%, rgba(255,255,255,0.18) 80%, transparent); }
   html[data-theme="light"] .sidebar.glass .sb-divider { background: linear-gradient(90deg, transparent, rgba(13,50,46,0.16) 20%, rgba(13,50,46,0.16) 80%, transparent); }
 
@@ -406,6 +425,14 @@
   }
   html[data-theme="light"] .sidebar.sb-popped {
     box-shadow: 0 26px 56px rgba(13,50,46,0.30), 0 8px 22px rgba(13,50,46,0.18);
+  }
+  /* Dark mode (default): give the sidebar its own baked-in tint instead of relying solely on
+     the generic .glass recipe (thin overlay + backdrop-filter), which composited inconsistently
+     against whatever happened to render behind it and read as a colour mismatch against the
+     dropdown menu (which has always had its own explicit baked tint). Match that same family. */
+  .sidebar.glass {
+    background: linear-gradient(160deg, rgba(255,255,255,0.10), rgba(15,36,32,0.55) 65%);
+    border: 1px solid rgba(255,255,255,0.16);
   }
   /* Light mode: the page body and cards are both near-white, so the sidebar needs its own
      distinct tone to read as a separate panel rather than blending in. Use a cool grey-blue
