@@ -149,7 +149,7 @@
      blurred texture is what the translucent panel below is actually blurring/tinting, which is
      what makes it read as frosted glass instead of a flat gradient. */
   .sidebar .glass-select-menu {
-    background: linear-gradient(160deg, rgba(255,255,255,0.10), rgba(15,36,32,0.22) 65%);
+    background: linear-gradient(160deg, rgba(255,255,255,0.08), rgba(15,36,32,0.34) 65%);
     backdrop-filter: blur(6px) saturate(160%); -webkit-backdrop-filter: blur(6px) saturate(160%);
     border: 1px solid rgba(255,255,255,0.22);
     box-shadow:
@@ -169,14 +169,20 @@
       inset 0 1px 0 rgba(255,255,255,0.75);
   }
   /* The no-bleed guarantee: a real `filter: blur()` applied directly to the section list's own
-     rendered content (reliable in this renderer, unlike backdrop-filter). Tuned to keep opacity
-     high (0.85) so the colour/shape texture stays clearly visible — that's what reads as
-     genuine frosted glass — while the blur radius (6px, on ~13px text) is still enough to make
-     every letter fully illegible at any zoom level. Verified live in both themes: option rows
-     inside the menu stay perfectly crisp; only the hidden list behind it blurs. */
+     rendered content (reliable in this renderer, unlike backdrop-filter) — kept visible as soft
+     texture (not hidden at opacity:0) so the panel above reads as genuine frosted glass rather
+     than a flat gradient, while the blur radius (6px, on ~13px text) keeps every letter fully
+     illegible at any zoom level. Dark mode dials the opacity back further than light — on the
+     dark panel the blurred light-coloured smudges sat close enough to the menu's own white
+     option text to read as a faint distraction at the edges; muting it (plus a denser dark
+     background on the menu itself, above) keeps the frost cue without that noise. Light mode's
+     blurred texture already blended cleanly, so it keeps the fuller 0.85. */
   .sidebar.sb-popped #sidebarSections {
-    filter: blur(6px); opacity: 0.85; pointer-events: none;
+    filter: blur(6px); opacity: 0.6; pointer-events: none;
     transition: filter .18s ease, opacity .18s ease;
+  }
+  html[data-theme="light"] .sidebar.sb-popped #sidebarSections {
+    opacity: 0.85;
   }
   #sidebarSections { transition: filter .18s ease, opacity .18s ease; }
   /* Spring "pop" open — the 3D Touch peek gesture overshoots slightly before settling, instead
