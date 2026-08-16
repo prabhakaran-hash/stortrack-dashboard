@@ -483,9 +483,68 @@
   html[data-theme="light"] .sb-section-btn.selected { background: rgba(13,64,64,0.18); color: var(--text-primary) !important; }
   .sb-sections-empty { padding:8px 12px; font-size:11.5px; color: var(--text-muted); }
 
+  /* --- "Compare sections" — premium multi-select ---------------------------------------
+     Off by default (identical single-section behaviour to before). Switching it on lets
+     someone tick more than one section for the current region and see them all stacked in
+     the main panel at once, each individually removable, instead of the one-at-a-time view. */
+  .sb-multiselect-bar { padding:2px 4px 10px; display:flex; flex-direction:column; gap:6px; }
+  .sb-multiselect-toggle {
+    display:flex; align-items:center; gap:8px; width:100%; font:inherit; font-size:12.5px; font-weight:600;
+    color: var(--text-secondary); background:transparent; border:none; border-radius:8px; padding:6px 6px; cursor:pointer;
+    transition: background .12s ease;
+  }
+  .sb-multiselect-toggle:hover { background: rgba(255,255,255,0.10); }
+  html[data-theme="light"] .sb-multiselect-toggle:hover { background: rgba(13,50,46,0.06); }
+  .sb-ms-track {
+    flex:none; width:30px; height:17px; border-radius:999px; position:relative;
+    background: rgba(255,255,255,0.22); border:1px solid rgba(255,255,255,0.25); transition: background .18s ease, border-color .18s ease;
+  }
+  html[data-theme="light"] .sb-ms-track { background: rgba(13,50,46,0.14); border-color: rgba(13,50,46,0.22); }
+  .sb-ms-thumb {
+    position:absolute; top:1px; left:1px; width:13px; height:13px; border-radius:50%;
+    background:#fff; box-shadow:0 1px 3px rgba(0,0,0,0.35); transition: transform .18s cubic-bezier(.2,1.4,.4,1);
+  }
+  .sb-multiselect-toggle.on .sb-ms-track { background: var(--brand-lime, #98f387); border-color: var(--brand-lime, #98f387); }
+  .sb-multiselect-toggle.on .sb-ms-thumb { transform: translateX(13px); background:#0d2b22; }
+  .sb-ms-label { flex:1; }
+  .sb-multiselect-toggle.on .sb-ms-label { color: var(--text-primary); }
+  .sb-ms-badge-pro {
+    flex:none; font-size:9.5px; font-weight:800; letter-spacing:.06em; color:#0d2b22;
+    background: linear-gradient(120deg, var(--brand-lime, #98f387), #5fe3c0); border-radius:5px; padding:2px 5px;
+  }
+  .sb-ms-meta { display:flex; align-items:center; justify-content:space-between; padding:0 6px; font-size:11.5px; color: var(--text-muted); }
+  .sb-ms-clear { font:inherit; font-size:11.5px; font-weight:700; color: var(--brand-lime, #98f387); background:transparent; border:none; cursor:pointer; padding:0; }
+  html[data-theme="light"] .sb-ms-clear { color: var(--navy-2, #02756e); }
+  .sb-ms-check {
+    flex:none; width:15px; height:15px; border-radius:4px; margin-right:9px;
+    border:1.5px solid rgba(255,255,255,0.4); position:relative; transition: background .12s ease, border-color .12s ease;
+  }
+  html[data-theme="light"] .sb-ms-check { border-color: rgba(13,50,46,0.32); }
+  .sb-section-btn.sb-ms-item { display:flex; align-items:center; }
+  .sb-section-btn.sb-ms-item.selected .sb-ms-check {
+    background: var(--brand-lime, #98f387); border-color: var(--brand-lime, #98f387);
+  }
+  .sb-section-btn.sb-ms-item.selected .sb-ms-check::after {
+    content:""; position:absolute; left:4px; top:1px; width:4px; height:8px;
+    border:solid #0d2b22; border-width:0 2px 2px 0; transform:rotate(45deg);
+  }
+  .sb-ms-text { flex:1; min-width:0; }
+
   .main-panel { flex:1; min-width:0; }
   .mp-empty-state { min-height:160px; font-size:14px; }
   .mp-focused .card { margin:0; }
+  /* Stacked comparison view: each selected section keeps its own card, with a small remove
+     control so someone can back out of the comparison one item at a time. */
+  .mp-compare-stack { display:flex; flex-direction:column; gap:16px; }
+  .mp-compare-item { position:relative; }
+  .mp-compare-item .card, .mp-compare-item .chart-row { margin:0; }
+  .mp-compare-remove {
+    position:absolute; top:10px; right:10px; z-index:5; width:24px; height:24px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center; font-size:15px; line-height:1; font-weight:700;
+    color: var(--text-secondary); background: var(--surface-1); border:1px solid var(--border); cursor:pointer;
+    transition: background .12s ease, color .12s ease;
+  }
+  .mp-compare-remove:hover { background: rgba(229,96,95,0.16); color: var(--bad, #e5605f); }
 
   @media (max-width: 900px) {
     .region-strip, .kpi-row { grid-template-columns: repeat(2, 1fr); }
@@ -1502,9 +1561,19 @@ if (d.developments && d.developments.length) {
    duplicating any of the parsing/rendering logic above. -------------------------------- */
 
 // Which regions currently have their sidebar accordion expanded (starts with just the
-// selected region open), and which section title is currently focused per region.
+// selected region open), and which section title(s) are currently focused per region.
+// focusedSectionByRegion holds a Set per region rather than a single string so the same
+// state naturally supports both modes: single-select keeps that Set at size ≤ 1 (the
+// original one-at-a-time behaviour, untouched), while "Compare sections" (multiSelectMode)
+// lets it grow past 1 so several sections can be viewed stacked together at once.
 let expandedRegions = new Set([selectedRegion]);
 let focusedSectionByRegion = {};
+let lastSingleTitleByRegion = {};
+let multiSelectMode = false;
+function getFocusedSet(regionName) {
+  if (!focusedSectionByRegion[regionName]) focusedSectionByRegion[regionName] = new Set();
+  return focusedSectionByRegion[regionName];
+}
 
 // Parsing renderRegionBlock(region)'s HTML is a little work (a DOMParser pass), and the
 // region's underlying data object (region.data) only changes when a sync actually
@@ -1537,14 +1606,59 @@ function renderSidebar() {
   if (!r) { box.innerHTML = ""; return; }
   const parsed = getRegionParsed(r);
   const titles = parsed ? parsed.titles : [];
-  box.innerHTML = titles.length
-    ? `<ul class="sb-sections sb-sections-top">${titles.map((t) => `<li><button type="button" class="sb-section-btn${focusedSectionByRegion[r.name] === t ? " selected" : ""}" data-title="${encodeURIComponent(t)}">${t}</button></li>`).join("")}</ul>`
+  const selected = getFocusedSet(r.name);
+
+  const toggleBar = `<div class="sb-multiselect-bar">
+    <button type="button" class="sb-multiselect-toggle${multiSelectMode ? " on" : ""}" id="multiSelectToggle" aria-pressed="${multiSelectMode}">
+      <span class="sb-ms-track"><span class="sb-ms-thumb"></span></span>
+      <span class="sb-ms-label">Compare sections</span>
+      <span class="sb-ms-badge-pro">PRO</span>
+    </button>
+    ${multiSelectMode && selected.size ? `<div class="sb-ms-meta"><span>${selected.size} selected</span><button type="button" id="msClearAll" class="sb-ms-clear">Clear all</button></div>` : ""}
+  </div>`;
+
+  const listHtml = titles.length
+    ? `<ul class="sb-sections sb-sections-top">${titles.map((t) => {
+        const isOn = selected.has(t);
+        return `<li><button type="button" class="sb-section-btn${isOn ? " selected" : ""}${multiSelectMode ? " sb-ms-item" : ""}" data-title="${encodeURIComponent(t)}">${multiSelectMode ? `<span class="sb-ms-check" aria-hidden="true"></span>` : ""}<span class="sb-ms-text">${t}</span></button></li>`;
+      }).join("")}</ul>`
     : `<div class="sb-sections-empty">${r.status === "error" && !r.data ? "Sync failed — no sections available" : "Loading sections…"}</div>`;
+
+  box.innerHTML = toggleBar + listHtml;
+
+  document.getElementById("multiSelectToggle")?.addEventListener("click", () => {
+    multiSelectMode = !multiSelectMode;
+    if (!multiSelectMode) {
+      // Dropping back to single-select: keep whichever section was clicked most recently
+      // for this region (if any), drop the rest, so the original one-at-a-time view comes
+      // back exactly as it was rather than showing a stack of leftover picks. If someone
+      // built their whole selection through the multi-select checkboxes (never actually
+      // clicking a section while in single mode), lastSingleTitleByRegion stays empty —
+      // fall back to whatever's still ticked so switching off compare mode never surprises
+      // them with a blank panel when they clearly had something selected.
+      const sel = getFocusedSet(selectedRegion);
+      const keep = lastSingleTitleByRegion[selectedRegion] || [...sel][0] || null;
+      sel.clear();
+      if (keep) sel.add(keep);
+    }
+    render();
+  });
+  document.getElementById("msClearAll")?.addEventListener("click", () => {
+    getFocusedSet(selectedRegion).clear();
+    render();
+  });
 
   box.querySelectorAll(".sb-section-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       const title = decodeURIComponent(btn.dataset.title);
-      focusedSectionByRegion[selectedRegion] = title;
+      const sel = getFocusedSet(selectedRegion);
+      if (multiSelectMode) {
+        if (sel.has(title)) sel.delete(title); else sel.add(title);
+      } else {
+        sel.clear();
+        sel.add(title);
+        lastSingleTitleByRegion[selectedRegion] = title;
+      }
       render();
     });
   });
@@ -1563,18 +1677,45 @@ function renderMainPanel() {
     return;
   }
   const parsed = getRegionParsed(region);
-  const focusedTitle = focusedSectionByRegion[region.name];
+  const selected = getFocusedSet(region.name);
   let focusedHtml;
-  if (focusedTitle) {
-    const idx = parsed.titles.indexOf(focusedTitle);
-    const card = idx >= 0 ? parsed.cards[idx] : null;
-    focusedHtml = card
-      ? `<div class="mp-focused">${card.outerHTML}</div>`
-      : `<div class="card empty mp-empty-state">That section isn't available for ${region.name} right now — pick another from the sidebar.</div>`;
+  if (multiSelectMode) {
+    // Compare mode: every ticked section gets its own card, stacked, each with a small "×"
+    // to drop just that one — this is the only branch that differs from the original
+    // one-section-at-a-time behaviour below.
+    if (!selected.size) {
+      focusedHtml = `<div class="card empty mp-empty-state">Compare mode is on — tick as many sections as you like from the sidebar to view them together.</div>`;
+    } else {
+      const items = [...selected].map((title) => {
+        const idx = parsed.titles.indexOf(title);
+        const card = idx >= 0 ? parsed.cards[idx] : null;
+        if (!card) return "";
+        return `<div class="mp-compare-item">
+          <button type="button" class="mp-compare-remove" data-title="${encodeURIComponent(title)}" aria-label="Remove ${title} from comparison">×</button>
+          ${card.outerHTML}
+        </div>`;
+      }).join("");
+      focusedHtml = `<div class="mp-compare-stack">${items}</div>`;
+    }
   } else {
-    focusedHtml = `<div class="card empty mp-empty-state">Pick a section from the sidebar to view its data.</div>`;
+    const focusedTitle = selected.size ? [...selected][0] : null;
+    if (focusedTitle) {
+      const idx = parsed.titles.indexOf(focusedTitle);
+      const card = idx >= 0 ? parsed.cards[idx] : null;
+      focusedHtml = card
+        ? `<div class="mp-focused">${card.outerHTML}</div>`
+        : `<div class="card empty mp-empty-state">That section isn't available for ${region.name} right now — pick another from the sidebar.</div>`;
+    } else {
+      focusedHtml = `<div class="card empty mp-empty-state">Pick a section from the sidebar to view its data.</div>`;
+    }
   }
   body.innerHTML = `${parsed.headHtml}${parsed.kpiHtml}${focusedHtml}`;
+  body.querySelectorAll(".mp-compare-remove").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      getFocusedSet(selectedRegion).delete(decodeURIComponent(btn.dataset.title));
+      render();
+    });
+  });
 }
 
 function render() {
