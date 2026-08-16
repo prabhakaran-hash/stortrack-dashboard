@@ -332,9 +332,14 @@
 
   .bar-row { display:flex; align-items:center; gap:10px; margin:9px 0; }
   .bar-row .bar-label { width:150px; flex:none; font-size:12.5px; color: var(--text-secondary); text-align:right; }
-  .bar-track { flex:1; border-bottom:1px solid var(--gridline); position:relative; }
+  /* The value label sits past the bar's own right edge (bar-value, below), so the track needs
+     dedicated room reserved for it — otherwise the longest bar in a chart (whichever one hits
+     100% width) pushes its number flush against the card's edge, since nothing else was holding
+     space open for it. This right margin is that reserved space; it applies to every bar chart
+     built through barList(), i.e. every region and every tab that uses one. */
+  .bar-track { flex:1; margin-right:56px; border-bottom:1px solid var(--gridline); position:relative; }
   .bar-fill { height:13px; margin-top:2px; border-radius:4px; position:relative; transition:width .4s ease; }
-  .bar-value { position:absolute; left:calc(100% + 8px); top:50%; transform:translateY(-50%); font-size:12px; font-weight:600; white-space:nowrap; }
+  .bar-value { position:absolute; left:calc(100% + 10px); top:50%; transform:translateY(-50%); font-size:12px; font-weight:600; white-space:nowrap; }
 
   .stack-track { flex:1; height:15px; border-radius:4px; margin-top:2px; overflow:hidden; display:flex; background: var(--gridline); }
   .stack-seg { height:100%; transition: width .4s ease; }
