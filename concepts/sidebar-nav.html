@@ -580,13 +580,17 @@
   .cb-launcher {
     position: fixed; right: 22px; bottom: 22px; z-index: 200;
     width: 52px; height: 52px; border-radius: 50%; display:flex; align-items:center; justify-content:center;
-    color: #fff; cursor:pointer; border:none; padding:0;
+    color: #fff; cursor:grab; border:none; padding:0;
     background: linear-gradient(135deg, var(--navy-2), var(--accent));
     box-shadow: 0 8px 24px rgba(0,0,0,0.35);
     transition: transform .15s ease, box-shadow .15s ease;
+    /* Draggable: user can pick this up and drop it anywhere on screen. touch-action:none stops
+       the browser from treating the drag as a page-scroll gesture on touch devices. */
+    touch-action: none;
   }
   .cb-launcher:hover { transform: scale(1.06); box-shadow: 0 10px 28px rgba(0,0,0,0.4); }
-  .cb-launcher svg { display:block; }
+  .cb-launcher.cb-dragging { cursor: grabbing; transition: none; box-shadow: 0 14px 34px rgba(0,0,0,0.45); }
+  .cb-launcher svg { display:block; pointer-events:none; }
   .cb-panel {
     position: fixed; right: 22px; bottom: 86px; z-index: 200;
     width: 348px; max-width: calc(100vw - 32px); height: 468px; max-height: calc(100vh - 130px);
@@ -597,10 +601,15 @@
     transition: opacity .18s ease, transform .18s ease;
   }
   .cb-panel.open { opacity:1; transform: translateY(0) scale(1); pointer-events:auto; }
+  .cb-panel.cb-dragging { transition: none; }
   .cb-header {
     display:flex; align-items:center; justify-content:space-between; padding:14px 16px;
     border-bottom:1px solid var(--gridline); flex:none;
+    /* Draggable handle for repositioning the whole panel — grab anywhere on the header
+       except the close button (that keeps its own pointer cursor + click behavior). */
+    cursor: grab; touch-action: none;
   }
+  .cb-header.cb-dragging { cursor: grabbing; }
   .cb-title { font-weight:700; font-size:14px; color: var(--text-primary); }
   .cb-title-sub { display:block; font-weight:500; font-size:11px; color: var(--text-muted); margin-top:1px; }
   .cb-close {
@@ -2149,6 +2158,103 @@ function cbAnswer(rawText) {
   return cbRegionSummary(region);
 }
 
+/* ------------------------------ Draggable launcher + panel ------------------------------
+   Both the floating launcher and the open chat panel can be picked up and dropped anywhere
+   on screen. Positions persist across reloads (per browser, via localStorage) so the user
+   only has to place them once. Pointer Events cover mouse, touch, and pen with one code path. */
+function cbClampNum(val, min, max) { return Math.min(Math.max(val, min), max); }
+
+function cbLoadPos(key) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const pos = JSON.parse(raw);
+    if (typeof pos.left === "number" && typeof pos.top === "number") return pos;
+  } catch (e) {}
+  return null;
+}
+
+function cbSavePos(key, left, top) {
+  try { localStorage.setItem(key, JSON.stringify({ left: left, top: top })); } catch (e) {}
+}
+
+function cbApplyPos(el, left, top) {
+  const w = el.offsetWidth, h = el.offsetHeight;
+  const maxLeft = Math.max(0, window.innerWidth - w);
+  const maxTop = Math.max(0, window.innerHeight - h);
+  const clampedLeft = cbClampNum(left, 0, maxLeft);
+  const clampedTop = cbClampNum(top, 0, maxTop);
+  el.style.left = clampedLeft + "px";
+  el.style.top = clampedTop + "px";
+  el.style.right = "auto";
+  el.style.bottom = "auto";
+  return { left: clampedLeft, top: clampedTop };
+}
+
+function cbMakeDraggable(el, handle, storageKey) {
+  let dragging = false, moved = false, startX = 0, startY = 0, startLeft = 0, startTop = 0;
+
+  handle.addEventListener("pointerdown", (e) => {
+    if (e.button != null && e.button !== 0) return; // primary mouse button / touch / pen only
+    if (e.target.closest(".cb-close")) return; // let the close button's own click through untouched
+    const rect = el.getBoundingClientRect();
+    startX = e.clientX; startY = e.clientY;
+    startLeft = rect.left; startTop = rect.top;
+    dragging = true; moved = false;
+    try { handle.setPointerCapture(e.pointerId); } catch (e2) {}
+  });
+
+  handle.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    const dx = e.clientX - startX, dy = e.clientY - startY;
+    if (!moved && Math.hypot(dx, dy) > 4) { moved = true; el.classList.add("cb-dragging"); handle.classList.add("cb-dragging"); }
+    if (!moved) return;
+    e.preventDefault();
+    cbApplyPos(el, startLeft + dx, startTop + dy);
+  });
+
+  function endDrag(e) {
+    if (!dragging) return;
+    dragging = false;
+    el.classList.remove("cb-dragging");
+    handle.classList.remove("cb-dragging");
+    if (moved) {
+      const rect = el.getBoundingClientRect();
+      cbSavePos(storageKey, rect.left, rect.top);
+      // Swallow the click that follows this pointerup so a drag never also toggles/re-opens.
+      el.dataset.cbJustDragged = "1";
+      setTimeout(() => { delete el.dataset.cbJustDragged; }, 0);
+    }
+  }
+  handle.addEventListener("pointerup", endDrag);
+  handle.addEventListener("pointercancel", endDrag);
+
+  // Restore a previously-saved position immediately, if the user has moved this before.
+  const saved = cbLoadPos(storageKey);
+  if (saved) cbApplyPos(el, saved.left, saved.top);
+
+  // Keep it on-screen across window resizes / orientation changes.
+  window.addEventListener("resize", () => {
+    const rect = el.getBoundingClientRect();
+    cbApplyPos(el, rect.left, rect.top);
+  });
+}
+
+// Only re-anchor the panel next to the launcher when the user hasn't dragged the panel
+// itself to a custom spot before — once they have, that placement always wins.
+function cbPositionPanelNearLauncher() {
+  if (cbLoadPos("cb_panel_pos")) return;
+  const launcher = document.getElementById("cbLauncher");
+  const panel = document.getElementById("cbPanel");
+  const lRect = launcher.getBoundingClientRect();
+  const pw = panel.offsetWidth || 348, ph = panel.offsetHeight || 468;
+  let left = lRect.right - pw;
+  let top = lRect.top - ph - 12;
+  if (top < 8) top = lRect.bottom + 12; // not enough room above the launcher — drop it below instead
+  if (left < 8) left = lRect.left;
+  cbApplyPos(panel, left, top);
+}
+
 /* ------------------------------ UI wiring ------------------------------ */
 const CB_STARTER_CHIPS = [
   "Which region has the most stores?",
@@ -2202,11 +2308,12 @@ function cbSubmitQuery(q) {
 
 function cbOpenPanel() {
   const panel = document.getElementById("cbPanel");
+  cbPositionPanelNearLauncher();
   panel.classList.add("open");
   panel.setAttribute("aria-hidden", "false");
   if (!cbHistoryStarted) {
     cbHistoryStarted = true;
-    cbAppendMessage("bot", "Hi — I'm the Dashboard Assistant. Ask me about stores, pricing, operators, or facility mix for any region.");
+    cbAppendMessage("bot", "Hi — I'm the Dashboard Assistant. Ask me about stores, pricing, operators, or facility mix for any region. Drag me by this icon or the panel's header to move me anywhere on screen.");
     cbRenderChips();
   }
   setTimeout(() => document.getElementById("cbInput").focus(), 50);
@@ -2218,9 +2325,15 @@ function cbClosePanel() {
   panel.setAttribute("aria-hidden", "true");
 }
 
-document.getElementById("cbLauncher").addEventListener("click", () => {
-  const panel = document.getElementById("cbPanel");
-  if (panel.classList.contains("open")) cbClosePanel(); else cbOpenPanel();
+const cbLauncherEl = document.getElementById("cbLauncher");
+const cbPanelEl = document.getElementById("cbPanel");
+const cbHeaderEl = cbPanelEl.querySelector(".cb-header");
+cbMakeDraggable(cbLauncherEl, cbLauncherEl, "cb_launcher_pos");
+cbMakeDraggable(cbPanelEl, cbHeaderEl, "cb_panel_pos");
+
+cbLauncherEl.addEventListener("click", () => {
+  if (cbLauncherEl.dataset.cbJustDragged) return; // that click was really the end of a drag
+  if (cbPanelEl.classList.contains("open")) cbClosePanel(); else cbOpenPanel();
 });
 document.getElementById("cbClose").addEventListener("click", cbClosePanel);
 document.getElementById("cbForm").addEventListener("submit", (e) => {
