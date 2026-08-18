@@ -2035,7 +2035,7 @@ function cbDetectSuperlative(textLower) {
 }
 
 function cbIsComparison(textLower) {
-  return ["compare", " vs", "versus", "difference between", "compared to"].some((w) => textLower.includes(w));
+  return ["compare", " vs", "versus", "difference between", "compared to", "across regions", "across all regions", "all regions", "every region", "each region"].some((w) => textLower.includes(w));
 }
 
 function cbIsGreeting(textLower) {
@@ -2104,23 +2104,62 @@ function cbSuperlative(direction, metric) {
   return `**${winner.name}** has the ${direction === "high" ? "highest" : "lowest"} ${metric.label.toLowerCase()} at ${fmtNum(winner.val)}.${rest ? " (" + rest + ")" : ""}`;
 }
 
-function cbBreakdown(region, type) {
+// Field-presence checks + labels, shared by cbBreakdown and cbMissingFieldMessage below.
+// When a region lacks a field, we don't just say so — we point at (and show) whichever
+// other regions DO have it, so the reply is never a dead end.
+const CB_FIELD_CHECKS = {
+  operator: (d) => !!(d && d.operatorType && d.operatorType.length),
+  facility: (d) => !!(d && d.facilityType && Object.keys(d.facilityType).length),
+  regionSplit: (d) => !!(d && d.regionSplit && d.regionSplit.length),
+  units: (d) => !!(d && d.units)
+};
+
+const CB_FIELD_LABELS = {
+  operator: "operator-type",
+  facility: "facility-type",
+  regionSplit: "sub-region split",
+  units: "unit-count"
+};
+
+function cbMissingFieldMessage(region, type) {
+  const check = CB_FIELD_CHECKS[type];
+  const label = CB_FIELD_LABELS[type] || type;
+  const base = `${region.name} doesn't have ${label} data available`;
+  const others = check ? REGIONS.filter((r) => r.name !== region.name && check(r.data)) : [];
+  if (!others.length) return `${base}, and no other region has it either.`;
+  const lines = [`${base}. This data is available for ${others.map((r) => r.name).join(", ")} — here it is:`, ""];
+  others.forEach((r, i) => {
+    if (i > 0) lines.push("");
+    lines.push(cbBreakdown(r, type));
+  });
+  return lines.join("\n");
+}
+
+function cbBareMissingMessage(region, type) {
+  return `${region.name} doesn't have ${CB_FIELD_LABELS[type] || type} data available.`;
+}
+
+// opts.bare=true skips the "here's what other regions have" lookup — used when the caller
+// (e.g. a multi-region comparison) is already about to show every region side by side, so
+// embedding other regions' full breakdowns inside a single entry would just duplicate them.
+function cbBreakdown(region, type, opts) {
+  const bare = !!(opts && opts.bare);
   const d = region.data;
   if (!d) return `I don't have data loaded for ${region.name} yet.`;
   if (type === "operator") {
-    if (!d.operatorType || !d.operatorType.length) return `${region.name} doesn't have operator-type data available.`;
+    if (!CB_FIELD_CHECKS.operator(d)) return bare ? cbBareMissingMessage(region, "operator") : cbMissingFieldMessage(region, "operator");
     const lines = [`**Operator breakdown — ${region.name}:**`];
     d.operatorType.forEach((o) => lines.push(`• ${o.label}: ${fmtNum(o.stores)} stores (${fmtNum(o.yes)} yes / ${fmtNum(o.no)} no pricing)`));
     return lines.join("\n");
   }
   if (type === "facility") {
-    if (!d.facilityType) return `${region.name} doesn't have facility-type data available.`;
+    if (!CB_FIELD_CHECKS.facility(d)) return bare ? cbBareMissingMessage(region, "facility") : cbMissingFieldMessage(region, "facility");
     const lines = [`**Facility mix — ${region.name}:**`];
     Object.entries(d.facilityType).forEach(([k, v]) => lines.push(`• ${k}: ${fmtNum(v)} stores`));
     return lines.join("\n");
   }
   if (type === "regionSplit") {
-    if (!d.regionSplit || !d.regionSplit.length) return `${region.name} doesn't have a sub-region split available.`;
+    if (!CB_FIELD_CHECKS.regionSplit(d)) return bare ? cbBareMissingMessage(region, "regionSplit") : cbMissingFieldMessage(region, "regionSplit");
     const label = d.regionLabel || "Sub-region";
     const top = d.regionSplit.slice().sort((a, b) => (b.total || 0) - (a.total || 0)).slice(0, 5);
     const lines = [`**Top ${label.toLowerCase()}s by store count — ${region.name}:**`];
@@ -2128,7 +2167,7 @@ function cbBreakdown(region, type) {
     return lines.join("\n");
   }
   if (type === "units") {
-    if (!d.units) return `${region.name} doesn't have unit-count data available.`;
+    if (!CB_FIELD_CHECKS.units(d)) return bare ? cbBareMissingMessage(region, "units") : cbMissingFieldMessage(region, "units");
     return `**Units — ${region.name}:** ${fmtNum(d.units.actual)} actual, ${fmtNum(d.units.estimated)} estimated, ${fmtNum(d.units.notAvailable)} not available (of ${fmtNum(d.units.totalStoresInUnitsTab)} stores in the units tab).`;
   }
   if (type === "summary") return cbRegionSummary(region);
@@ -2154,7 +2193,7 @@ function cbAnswer(rawText) {
   if (wantsComparison) {
     const regionsToCompare = mentionedRegions.length >= 2 ? mentionedRegions : REGIONS;
     if (breakdownType && breakdownType !== "summary") {
-      return regionsToCompare.map((r) => cbBreakdown(r, breakdownType)).join("\n\n");
+      return regionsToCompare.map((r) => cbBreakdown(r, breakdownType, { bare: true })).join("\n\n");
     }
     return cbCompareScalar(regionsToCompare, metric || CB_METRICS[0]);
   }
