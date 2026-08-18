@@ -1972,6 +1972,11 @@ function cbDetectMetric(textLower) {
   for (const m of CB_METRICS) {
     if (m.keywords.some((k) => textLower.includes(k))) return m;
   }
+  // Bare "price"/"pricing" with no yes/no qualifier — default to the "available" side as the
+  // general pricing-coverage metric, checked only after every more specific phrase above.
+  if (textLower.includes("pricing") || textLower.includes("price")) {
+    return CB_METRICS.find((m) => m.key === "priceYes");
+  }
   return null;
 }
 
@@ -2108,6 +2113,11 @@ function cbAnswer(rawText) {
     }
     return cbCompareScalar(regionsToCompare, metric || CB_METRICS[0]);
   }
+
+  // Nothing recognizable was detected at all — don't silently guess at a region summary,
+  // since that reads like a non-answer to an unrelated question. Only fall through to a
+  // summary when the query at least named a region explicitly.
+  if (mentionedRegions.length === 0 && !metric && !breakdownType) return cbFallback();
 
   const region = mentionedRegions.length === 1 ? mentionedRegions[0] : cbGetRegionByName(selectedRegion);
   if (!region) return cbFallback();
