@@ -564,17 +564,37 @@
      any edge or corner — not just a shared boundary between two neighbours. Each remove ("×")
      control backs a single section out of the comparison. */
   .grid-stack { background: transparent; }
+  /* `contain` fences off each panel's own layout/paint work so dragging or resizing one panel
+     doesn't force the browser to re-measure the whole page (real chart/table content is heavy)
+     on every mouse-move tick — that per-frame cost was the main source of the stutter reported
+     when moving panels quickly. `will-change` puts the panel on its own GPU layer so the browser
+     can move it without repainting its neighbours at all. */
+  .grid-stack-item { contain: layout style; }
   .grid-stack-item-content {
     overflow:auto; border-radius:10px;
     box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+    contain: layout style paint;
+    will-change: transform;
   }
   .grid-stack-item-content .card { height:100%; margin:0; box-shadow:none; border-radius:10px; }
   .grid-stack-item-content .card.chart-row { height:100%; }
-  /* GridStack's own resize handles, restyled to match the dashboard's accent colour instead of
-     its default look. */
-  .ui-resizable-handle { z-index:6; }
-  .ui-resizable-e, .ui-resizable-w { width:8px !important; }
-  .ui-resizable-n, .ui-resizable-s { height:8px !important; }
+  /* GridStack's own resize handles. Its stock look draws a small diagonal "resize" glyph inside
+     each one (most visible at the corners) — that read as a stray arrow icon sitting on top of
+     the data, so every handle is stripped down to a plain invisible hit-area: the resize cursor
+     on hover is the only cue, nothing drawn on the panel itself. */
+  .ui-resizable-handle { z-index:6; background:none !important; }
+  .ui-resizable-handle::before, .ui-resizable-handle::after { content:none !important; display:none !important; }
+  .ui-resizable-e, .ui-resizable-w { width:10px !important; }
+  .ui-resizable-n, .ui-resizable-s { height:10px !important; }
+  /* Never let a panel's own position/size transition fight the mouse while it's actively being
+     dragged or resized — that tug-of-war (transition easing toward a spot the pointer has
+     already moved past) was the other half of the "glitchy" movement. */
+  .grid-stack-item.ui-draggable-dragging,
+  .grid-stack-item.ui-resizable-resizing,
+  .grid-stack-item.ui-draggable-dragging .grid-stack-item-content,
+  .grid-stack-item.ui-resizable-resizing .grid-stack-item-content {
+    transition: none !important;
+  }
   .grid-stack-item:hover > .grid-stack-item-content { outline: 1px solid var(--accent); outline-offset:-1px; }
   .mp-compare-remove {
     position:absolute; top:10px; right:10px; z-index:7; width:24px; height:24px; border-radius:50%;
@@ -1850,11 +1870,12 @@ function renderMainPanel() {
         const card = idx >= 0 ? parsed.cards[idx] : null;
         if (!card) return "";
         const pos = layout[title];
-        // A remembered position/size wins; otherwise let GridStack auto-place a sensible
-        // default (roughly a third of the row, tall enough for most charts/tables).
+        // A remembered position/size wins. Otherwise default to the same full-width, stacked
+        // top-to-bottom look the old one-at-a-time view had — familiar at a glance — while
+        // still leaving every panel free to be dragged/resized into a side-by-side layout.
         const posAttrs = pos
           ? `gs-x="${pos.x}" gs-y="${pos.y}" gs-w="${pos.w}" gs-h="${pos.h}"`
-          : `gs-w="4" gs-h="6" gs-auto-position="true"`;
+          : `gs-x="0" gs-y="${i * 6}" gs-w="12" gs-h="6"`;
         return `<div class="grid-stack-item" gs-id="${encodeURIComponent(title)}" ${posAttrs}>
           <div class="grid-stack-item-content">
             <button type="button" class="mp-compare-remove" data-title="${encodeURIComponent(title)}" aria-label="Remove ${title} from comparison">×</button>
@@ -1902,6 +1923,11 @@ function wireCompareGrid(gridEl, regionName) {
     margin: 8,
     float: true, // let panels sit wherever they're dropped instead of auto-packing upward
     minRow: 1,
+    // Neighbours snapping into their new spot with their own little slide (the default) fights
+    // with a panel that's still being actively dragged — every recalculated collision restarts
+    // that transition, which is what read as "glitchy" movement. Turning it off makes every
+    // reflow instant instead, so nothing is ever mid-animation while the mouse is still moving.
+    animate: false,
     draggable: { cancel: ".mp-compare-remove" }, // don't start a drag from the remove button
     resizable: { handles: "e, se, s, sw, w, nw, n, ne" }, // every side + corner, not just one shared edge
   }, gridEl);
