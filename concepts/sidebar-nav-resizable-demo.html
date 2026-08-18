@@ -586,9 +586,33 @@
   .ui-resizable-handle::before, .ui-resizable-handle::after { content:none !important; display:none !important; }
   .ui-resizable-e, .ui-resizable-w { width:10px !important; }
   .ui-resizable-n, .ui-resizable-s { height:10px !important; }
-  /* Never let a panel's own position/size transition fight the mouse while it's actively being
-     dragged or resized — that tug-of-war (transition easing toward a spot the pointer has
-     already moved past) was the other half of the "glitchy" movement. */
+  /* Every OTHER panel that has to shift out of the way glides into its new spot on a real,
+     deliberately-tuned easing curve instead of snapping there instantly — an instant jump is
+     what read as "shaking"/glitchy when several panels had to move at once. This is the one
+     motion budget for the whole grid; everything below keys off the same duration/curve so
+     nothing feels like it's racing something else. */
+  .grid-stack {
+    --gs-move-duration: .28s;
+    --gs-move-ease: cubic-bezier(.22,.8,.28,1);
+  }
+  .grid-stack-item,
+  .grid-stack-item-content {
+    transition:
+      left var(--gs-move-duration) var(--gs-move-ease),
+      top var(--gs-move-duration) var(--gs-move-ease),
+      width var(--gs-move-duration) var(--gs-move-ease),
+      height var(--gs-move-duration) var(--gs-move-ease) !important;
+  }
+  /* The drop-target "shadow" — restyled from GridStack's flat grey blob into a bordered,
+     accent-tinted slot so it reads as a deliberate landing zone. It still needs to track the
+     dragged panel with zero delay (any easing here is what caused the "shadow following"
+     glitch — it was chasing a target that had already moved on), so it's the one thing in the
+     grid explicitly exempted from the shared transition above. */
+  .grid-stack-placeholder > .placeholder-content {
+    background: rgba(33,163,126,0.12); border: 2px dashed var(--accent); border-radius:10px;
+    inset: 4px !important; margin:0;
+  }
+  .grid-stack-item.grid-stack-placeholder,
   .grid-stack-item.ui-draggable-dragging,
   .grid-stack-item.ui-resizable-resizing,
   .grid-stack-item.ui-draggable-dragging .grid-stack-item-content,
@@ -1875,7 +1899,7 @@ function renderMainPanel() {
         // still leaving every panel free to be dragged/resized into a side-by-side layout.
         const posAttrs = pos
           ? `gs-x="${pos.x}" gs-y="${pos.y}" gs-w="${pos.w}" gs-h="${pos.h}"`
-          : `gs-x="0" gs-y="${i * 6}" gs-w="12" gs-h="6"`;
+          : `gs-x="0" gs-y="${i * 10}" gs-w="12" gs-h="10"`;
         return `<div class="grid-stack-item" gs-id="${encodeURIComponent(title)}" ${posAttrs}>
           <div class="grid-stack-item-content">
             <button type="button" class="mp-compare-remove" data-title="${encodeURIComponent(title)}" aria-label="Remove ${title} from comparison">×</button>
@@ -1919,15 +1943,17 @@ function wireCompareGrid(gridEl, regionName) {
   if (activeCompareGrid) { try { activeCompareGrid.destroy(false); } catch (e) {} activeCompareGrid = null; }
   const grid = GridStack.init({
     column: 12,
-    cellHeight: 64,
+    // A finer row grid (was 64px) means each time a colliding panel has to hop down a row, that
+    // hop is a smaller distance — combined with the eased transition below, small frequent hops
+    // read as a smooth glide instead of the larger, instant jumps that felt like shaking.
+    cellHeight: 40,
     margin: 8,
     float: true, // let panels sit wherever they're dropped instead of auto-packing upward
     minRow: 1,
-    // Neighbours snapping into their new spot with their own little slide (the default) fights
-    // with a panel that's still being actively dragged — every recalculated collision restarts
-    // that transition, which is what read as "glitchy" movement. Turning it off makes every
-    // reflow instant instead, so nothing is ever mid-animation while the mouse is still moving.
-    animate: false,
+    // animate:true is what actually gives every displaced panel its own eased slide into place
+    // (see the shared --gs-move-duration/--gs-move-ease transition in the CSS above) rather than
+    // teleporting there — that instant teleport, not the animation, was what read as "shaking".
+    animate: true,
     draggable: { cancel: ".mp-compare-remove" }, // don't start a drag from the remove button
     resizable: { handles: "e, se, s, sw, w, nw, n, ne" }, // every side + corner, not just one shared edge
   }, gridEl);
