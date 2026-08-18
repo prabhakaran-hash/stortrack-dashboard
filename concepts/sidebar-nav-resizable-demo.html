@@ -444,6 +444,11 @@
   .sidebar {
     flex:none; width:252px; border-radius:16px; padding:10px; align-self:flex-start;
     position:sticky; top:16px; z-index:20;
+    /* Explicitly decoupled from the main panel's height — a very tall stack of comparison
+       panels next to it should never be able to pull the sidebar taller than its own content.
+       It caps at the viewport (scrolling internally past that) and sizes to its own content
+       otherwise, regardless of what the flex sibling next to it is doing. */
+    height: max-content; max-height: calc(100vh - 32px); overflow-y: auto;
     /* Contains this panel's own backdrop-filter blur to its own compositing layer, so it can't
        intermittently repaint a frame out of sync with elements sitting on top of it (like the
        region button below) — the cause of the reported flicker on this panel's controls. */
@@ -592,8 +597,14 @@
      motion budget for the whole grid; everything below keys off the same duration/curve so
      nothing feels like it's racing something else. */
   .grid-stack {
-    --gs-move-duration: .32s;
+    --gs-move-duration: .55s;
     --gs-move-ease: cubic-bezier(.33,1,.68,1);
+    /* Keeps a panel from visually escaping upward into the KPI tiles/region cards above while
+       it's being dragged. GridStack's own drag ghost isn't clamped to the grid's top edge on
+       its own — without this, dragging up far enough let the panel render on top of the page
+       content above the comparison area instead of staying confined to it. */
+    position: relative;
+    overflow: hidden;
   }
   .grid-stack-item,
   .grid-stack-item-content {
@@ -1897,9 +1908,12 @@ function renderMainPanel() {
         // A remembered position/size wins. Otherwise default to the same full-width, stacked
         // top-to-bottom look the old one-at-a-time view had — familiar at a glance — while
         // still leaving every panel free to be dragged/resized into a side-by-side layout.
+        // A placeholder height/position here — wireCompareGrid re-measures each freshly-added
+        // panel's actual content right after mount and gives it a height that hugs that content
+        // instead of this guess, so a short chart doesn't sit in a box padded with empty space.
         const posAttrs = pos
           ? `gs-x="${pos.x}" gs-y="${pos.y}" gs-w="${pos.w}" gs-h="${pos.h}"`
-          : `gs-x="0" gs-y="${i * 5}" gs-w="12" gs-h="5"`;
+          : `gs-x="0" gs-y="${i * 5}" gs-w="12" gs-h="5" data-auto-h="1"`;
         return `<div class="grid-stack-item" gs-id="${encodeURIComponent(title)}" ${posAttrs}>
           <div class="grid-stack-item-content">
             <button type="button" class="mp-compare-remove" data-title="${encodeURIComponent(title)}" aria-label="Remove ${title} from comparison">×</button>
@@ -1939,6 +1953,9 @@ function renderMainPanel() {
 // instance has to be torn down first or GridStack's internal listeners would pile up.
 let activeCompareGrid = null;
 
+const GS_CELL_HEIGHT = 90;
+const GS_MARGIN = 8;
+
 function wireCompareGrid(gridEl, regionName) {
   if (activeCompareGrid) { try { activeCompareGrid.destroy(false); } catch (e) {} activeCompareGrid = null; }
   const grid = GridStack.init({
@@ -1948,8 +1965,8 @@ function wireCompareGrid(gridEl, regionName) {
     // ordinary drag, restarting the "settle" animation before it ever finished, which is what
     // read as "too fast"/twitchy motion. A coarser row makes that recalculation fire far less
     // often, so each move actually gets to play out its full eased glide before the next one.
-    cellHeight: 90,
-    margin: 8,
+    cellHeight: GS_CELL_HEIGHT,
+    margin: GS_MARGIN,
     float: true, // let panels sit wherever they're dropped instead of auto-packing upward
     minRow: 1,
     // animate:true is what actually gives every displaced panel its own eased slide into place
@@ -1960,6 +1977,25 @@ function wireCompareGrid(gridEl, regionName) {
     resizable: { handles: "e, se, s, sw, w, nw, n, ne" }, // every side + corner, not just one shared edge
   }, gridEl);
   activeCompareGrid = grid;
+
+  // Freshly-added panels (no saved size yet — marked with data-auto-h) start at a placeholder
+  // height. Measure what each one's content actually needs and shrink/grow it to fit, so a
+  // three-row bar chart doesn't sit in a box padded with a screen's worth of empty space below
+  // it, and a long data table doesn't get clipped down to the same guess. Stacked in order,
+  // starting below whatever already has a saved (user-chosen) position.
+  const autoEls = Array.from(gridEl.querySelectorAll('[data-auto-h="1"]'));
+  if (autoEls.length) {
+    let nextY = 0;
+    grid.engine.nodes.forEach((n) => { if (!autoEls.includes(n.el)) nextY = Math.max(nextY, n.y + n.h); });
+    autoEls.forEach((el) => {
+      const contentEl = el.querySelector(".grid-stack-item-content");
+      const rowSpan = GS_CELL_HEIGHT + GS_MARGIN;
+      const needed = Math.min(14, Math.max(3, Math.ceil((contentEl.scrollHeight + 20) / rowSpan)));
+      grid.update(el, { y: nextY, h: needed });
+      nextY += needed;
+      el.removeAttribute("data-auto-h");
+    });
+  }
 
   const layout = getCompareLayout(regionName);
   const persist = (items) => {
