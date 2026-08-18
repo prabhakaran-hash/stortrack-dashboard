@@ -551,6 +551,67 @@
     .dash-shell { flex-direction:column; }
     .sidebar { width:100%; position:static; }
   }
+
+  /* --- Dashboard Assistant — rule-based chat, answers computed entirely from data already
+     loaded in the browser (REGIONS/SHEETS). No external API calls, no per-query cost. Sits as
+     a floating launcher so it's reachable from any region/section, not scoped to one tab. --- */
+  .cb-launcher {
+    position: fixed; right: 22px; bottom: 22px; z-index: 200;
+    width: 52px; height: 52px; border-radius: 50%; display:flex; align-items:center; justify-content:center;
+    color: #fff; cursor:pointer; border:none; padding:0;
+    background: linear-gradient(135deg, var(--navy-2), var(--accent));
+    box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+    transition: transform .15s ease, box-shadow .15s ease;
+  }
+  .cb-launcher:hover { transform: scale(1.06); box-shadow: 0 10px 28px rgba(0,0,0,0.4); }
+  .cb-launcher svg { display:block; }
+  .cb-panel {
+    position: fixed; right: 22px; bottom: 86px; z-index: 200;
+    width: 348px; max-width: calc(100vw - 32px); height: 468px; max-height: calc(100vh - 130px);
+    display:flex; flex-direction:column;
+    background: var(--surface-1); border:1px solid var(--border); border-radius:16px;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.35);
+    opacity:0; transform: translateY(12px) scale(.97); pointer-events:none;
+    transition: opacity .18s ease, transform .18s ease;
+  }
+  .cb-panel.open { opacity:1; transform: translateY(0) scale(1); pointer-events:auto; }
+  .cb-header {
+    display:flex; align-items:center; justify-content:space-between; padding:14px 16px;
+    border-bottom:1px solid var(--gridline); flex:none;
+  }
+  .cb-title { font-weight:700; font-size:14px; color: var(--text-primary); }
+  .cb-title-sub { display:block; font-weight:500; font-size:11px; color: var(--text-muted); margin-top:1px; }
+  .cb-close {
+    background:none; border:none; font-size:20px; line-height:1; color: var(--text-muted);
+    cursor:pointer; padding:2px 6px; border-radius:6px;
+  }
+  .cb-close:hover { background: var(--gridline); color: var(--text-primary); }
+  .cb-messages { flex:1; overflow-y:auto; padding:14px 16px; display:flex; flex-direction:column; gap:10px; }
+  .cb-msg { max-width:88%; font-size:13px; line-height:1.55; padding:9px 12px; border-radius:12px; }
+  .cb-msg.bot { align-self:flex-start; background: var(--gridline); color: var(--text-primary); border-bottom-left-radius:4px; }
+  .cb-msg.user { align-self:flex-end; background: var(--accent); color:#fff; border-bottom-right-radius:4px; }
+  .cb-chips { display:flex; flex-wrap:wrap; gap:6px; padding:0 16px 10px; flex:none; }
+  .cb-chip {
+    font: inherit; font-size:11.5px; font-weight:600; color: var(--text-secondary);
+    background: var(--gridline); border:none; border-radius:999px; padding:6px 11px; cursor:pointer;
+    white-space:nowrap; transition: background .12s ease, color .12s ease;
+  }
+  .cb-chip:hover { background: var(--baseline); color: var(--text-primary); }
+  .cb-inputrow { display:flex; gap:8px; padding:12px 14px; border-top:1px solid var(--gridline); flex:none; }
+  .cb-input {
+    flex:1; min-width:0; font: inherit; font-size:13px; background: var(--page);
+    border:1px solid var(--border); border-radius:10px; padding:9px 12px; color: var(--text-primary);
+  }
+  .cb-input:focus { outline:2px solid var(--accent); outline-offset:1px; }
+  .cb-send {
+    width:36px; height:36px; border-radius:10px; border:none; background: var(--accent); color:#fff;
+    display:flex; align-items:center; justify-content:center; cursor:pointer; flex:none;
+  }
+  .cb-send:hover { filter: brightness(1.08); }
+  @media (max-width: 480px) {
+    .cb-panel { right:12px; left:12px; width:auto; bottom:80px; }
+    .cb-launcher { right:16px; bottom:16px; }
+  }
 </style>
 </head>
 <body>
@@ -625,6 +686,32 @@
   </div>
 
   <footer class="foot" id="footNote">Sources: live Google Sheets, polled client-side. Loading…</footer>
+  </div>
+
+  <button class="cb-launcher" id="cbLauncher" aria-label="Open Dashboard Assistant" title="Dashboard Assistant">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M4 5.5C4 4.67 4.67 4 5.5 4h13c.83 0 1.5.67 1.5 1.5v10c0 .83-.67 1.5-1.5 1.5H9l-4 3.3v-3.3H5.5A1.5 1.5 0 0 1 4 15.5v-10Z" fill="currentColor" fill-opacity="0.95"/>
+      <circle cx="8.2" cy="10.4" r="1.15" fill="#0d2b20"/>
+      <circle cx="12" cy="10.4" r="1.15" fill="#0d2b20"/>
+      <circle cx="15.8" cy="10.4" r="1.15" fill="#0d2b20"/>
+    </svg>
+  </button>
+
+  <div class="cb-panel" id="cbPanel" role="dialog" aria-label="Dashboard Assistant" aria-hidden="true">
+    <div class="cb-header">
+      <div>
+        <div class="cb-title">Dashboard Assistant<span class="cb-title-sub">Ask about any region — data only, no external AI</span></div>
+      </div>
+      <button class="cb-close" id="cbClose" aria-label="Close">&times;</button>
+    </div>
+    <div class="cb-messages" id="cbMessages"></div>
+    <div class="cb-chips" id="cbChips"></div>
+    <form class="cb-inputrow" id="cbForm">
+      <input class="cb-input" id="cbInput" type="text" autocomplete="off" placeholder="e.g. Which region has the most stores?" />
+      <button class="cb-send" type="submit" aria-label="Send">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 11.5 20.5 3 15 20.5l-3.6-7.4L3 11.5Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+      </button>
+    </form>
   </div>
 </div>
 
@@ -1839,6 +1926,287 @@ document.getElementById("hardRefreshBtn").addEventListener("click", (e) => {
 
 let pollTimer = null;
 function restartPolling() { if (pollTimer) clearInterval(pollTimer); pollTimer = setInterval(syncAll, REFRESH_MS); }
+
+/* =====================================================================================
+   DASHBOARD ASSISTANT — fully rule-based / client-side. Answers are computed directly
+   from the live REGIONS array (never FALLBACK_SNAPSHOTS directly, so answers always
+   reflect the latest successful sync). No network calls, no external AI, no per-query
+   cost. Reachable from anywhere via the floating launcher (top-level, not scoped to a
+   single region/tab).
+   ===================================================================================== */
+const CB_REGION_ALIASES = {
+  "canada": "Canada", "ca": "Canada",
+  "united kingdom": "United Kingdom", "uk": "United Kingdom", "britain": "United Kingdom", "great britain": "United Kingdom", "england": "United Kingdom",
+  "australia": "Australia", "aus": "Australia", "au": "Australia",
+  "new zealand": "New Zealand", "nz": "New Zealand"
+};
+
+const CB_METRICS = [
+  { key: "totalStores", label: "Total Stores", keywords: ["total store", "number of store", "how many store", "store count", "stores"], get: (d) => d.totalStores },
+  { key: "priceYes", label: "Stores with Price Available", keywords: ["price available", "pricing yes", "yes price", "with pricing", "price yes", "has pricing"], get: (d) => d.pricing ? d.pricing.yes : null },
+  { key: "priceNo", label: "Stores without Price Available", keywords: ["no price", "without pricing", "price not available", "price no", "missing pricing"], get: (d) => d.pricing ? d.pricing.no : null },
+  { key: "unitsActual", label: "Actual Unit Counts", keywords: ["actual unit"], get: (d) => d.units ? d.units.actual : null },
+  { key: "unitsEstimated", label: "Estimated Unit Counts", keywords: ["estimated unit"], get: (d) => d.units ? d.units.estimated : null },
+  { key: "unitsNotAvailable", label: "Units Not Available", keywords: ["unit not available", "units not available", "unit unavailable"], get: (d) => d.units ? d.units.notAvailable : null },
+  { key: "sqft", label: "Total Square Footage", keywords: ["square footage", "square feet", "sq ft", "sqft", "total sq"], get: (d) => d.sqftTotal }
+];
+
+function cbGetRegionByName(name) {
+  return REGIONS.find((r) => r.name === name) || null;
+}
+
+function cbDetectRegions(textLower) {
+  const found = [];
+  Object.keys(CB_REGION_ALIASES).forEach((alias) => {
+    if (textLower.includes(alias)) {
+      const canonical = CB_REGION_ALIASES[alias];
+      if (!found.includes(canonical)) found.push(canonical);
+    }
+  });
+  // longer aliases first would be more precise, but "uk"/"nz" as standalone words is fine here
+  // since region names don't otherwise collide with common query words.
+  return found.map(cbGetRegionByName).filter(Boolean);
+}
+
+function cbDetectMetric(textLower) {
+  for (const m of CB_METRICS) {
+    if (m.keywords.some((k) => textLower.includes(k))) return m;
+  }
+  // Bare "price"/"pricing" with no yes/no qualifier — default to the "available" side as the
+  // general pricing-coverage metric, checked only after every more specific phrase above.
+  if (textLower.includes("pricing") || textLower.includes("price")) {
+    return CB_METRICS.find((m) => m.key === "priceYes");
+  }
+  return null;
+}
+
+const CB_HIGH_WORDS = ["most", "highest", "largest", "biggest", "top", "greatest", "max"];
+const CB_LOW_WORDS = ["least", "lowest", "smallest", "fewest", "bottom", "min"];
+
+function cbDetectSuperlative(textLower) {
+  if (CB_HIGH_WORDS.some((w) => textLower.includes(w))) return "high";
+  if (CB_LOW_WORDS.some((w) => textLower.includes(w))) return "low";
+  return null;
+}
+
+function cbIsComparison(textLower) {
+  return ["compare", " vs", "versus", "difference between", "compared to"].some((w) => textLower.includes(w));
+}
+
+function cbIsGreeting(textLower) {
+  const phrases = ["hello", "hey", "help", "what can you do", "what can i ask", "how do you work", "what can this bot do"];
+  if (phrases.some((w) => textLower === w || textLower.startsWith(w + " ") || textLower.endsWith(" " + w) || textLower.includes(" " + w + " "))) return true;
+  // "hi" is short enough to collide with words like "which"/"this" — match only as a standalone word.
+  return /(^|[^a-z])hi([^a-z]|$)/.test(textLower);
+}
+
+function cbBreakdownType(textLower) {
+  if (textLower.includes("operator")) return "operator";
+  if (textLower.includes("facility")) return "facility";
+  if (textLower.includes("province") || textLower.includes("state") || textLower.includes("region split") || textLower.includes("split by")) return "regionSplit";
+  if (textLower.includes("unit")) return "units";
+  if (textLower.includes("summary") || textLower.includes("overview") || textLower.includes("snapshot")) return "summary";
+  return null;
+}
+
+function cbHelpMessage() {
+  return "I can answer questions about the data already loaded in this dashboard — no external AI, just your live numbers. Try things like:\n" +
+    "• \"Which region has the most stores?\"\n" +
+    "• \"Compare pricing between Canada and the UK\"\n" +
+    "• \"Show operator breakdown for Australia\"\n" +
+    "• \"What's the facility mix in New Zealand?\"\n" +
+    "If I don't mention a region, I'll use whichever one is currently selected.";
+}
+
+function cbFallback() {
+  return "I couldn't quite match that to a data question. Try naming a region (Canada, UK, Australia, New Zealand) and a metric — stores, pricing, operator type, facility type, or units — or ask \"help\" for examples.";
+}
+
+function cbRegionSummary(region) {
+  const d = region.data;
+  if (!d) return `I don't have data loaded for ${region.name} yet.`;
+  const lines = [`**${region.name}** — ${fmtNum(d.totalStores)} total stores.`];
+  if (d.pricing) lines.push(`Pricing available: ${fmtNum(d.pricing.yes)} yes / ${fmtNum(d.pricing.no)} no (${pct(d.pricing.yes, d.pricing.yes + d.pricing.no)}% covered).`);
+  if (d.units) lines.push(`Units: ${fmtNum(d.units.actual)} actual, ${fmtNum(d.units.estimated)} estimated, ${fmtNum(d.units.notAvailable)} not available.`);
+  if (d.sqftTotal) lines.push(`Total square footage: ${fmtNum(d.sqftTotal)} sq ft.`);
+  if (d.facilityType) lines.push(`Facility mix: ${Object.entries(d.facilityType).map(([k, v]) => `${k} ${fmtNum(v)}`).join(", ")}.`);
+  return lines.join("\n");
+}
+
+function cbSingleScalar(region, metric) {
+  const d = region.data;
+  if (!d) return `I don't have data loaded for ${region.name} yet.`;
+  const val = metric.get(d);
+  if (val == null) return `${region.name} doesn't report "${metric.label}" — that field isn't available for this region.`;
+  return `${region.name}: ${metric.label} is ${fmtNum(val)}.`;
+}
+
+function cbCompareScalar(regions, metric) {
+  const rows = regions.map((r) => ({ name: r.name, val: r.data ? metric.get(r.data) : null }));
+  const lines = [`**${metric.label}** by region:`];
+  rows.forEach((r) => lines.push(`• ${r.name}: ${r.val == null ? "—" : fmtNum(r.val)}`));
+  const ranked = rows.filter((r) => r.val != null).sort((a, b) => b.val - a.val);
+  if (ranked.length > 1) lines.push(`Highest: ${ranked[0].name}. Lowest: ${ranked[ranked.length - 1].name}.`);
+  return lines.join("\n");
+}
+
+function cbSuperlative(direction, metric) {
+  const rows = REGIONS.map((r) => ({ name: r.name, val: r.data ? metric.get(r.data) : null })).filter((r) => r.val != null);
+  if (!rows.length) return `I don't have "${metric.label}" data available across regions right now.`;
+  rows.sort((a, b) => direction === "high" ? b.val - a.val : a.val - b.val);
+  const winner = rows[0];
+  const rest = rows.slice(1).map((r) => `${r.name} ${fmtNum(r.val)}`).join(", ");
+  return `**${winner.name}** has the ${direction === "high" ? "highest" : "lowest"} ${metric.label.toLowerCase()} at ${fmtNum(winner.val)}.${rest ? " (" + rest + ")" : ""}`;
+}
+
+function cbBreakdown(region, type) {
+  const d = region.data;
+  if (!d) return `I don't have data loaded for ${region.name} yet.`;
+  if (type === "operator") {
+    if (!d.operatorType || !d.operatorType.length) return `${region.name} doesn't have operator-type data available.`;
+    const lines = [`**Operator breakdown — ${region.name}:**`];
+    d.operatorType.forEach((o) => lines.push(`• ${o.label}: ${fmtNum(o.stores)} stores (${fmtNum(o.yes)} yes / ${fmtNum(o.no)} no pricing)`));
+    return lines.join("\n");
+  }
+  if (type === "facility") {
+    if (!d.facilityType) return `${region.name} doesn't have facility-type data available.`;
+    const lines = [`**Facility mix — ${region.name}:**`];
+    Object.entries(d.facilityType).forEach(([k, v]) => lines.push(`• ${k}: ${fmtNum(v)} stores`));
+    return lines.join("\n");
+  }
+  if (type === "regionSplit") {
+    if (!d.regionSplit || !d.regionSplit.length) return `${region.name} doesn't have a sub-region split available.`;
+    const label = d.regionLabel || "Sub-region";
+    const top = d.regionSplit.slice().sort((a, b) => (b.total || 0) - (a.total || 0)).slice(0, 5);
+    const lines = [`**Top ${label.toLowerCase()}s by store count — ${region.name}:**`];
+    top.forEach((s) => lines.push(`• ${s.label}: ${fmtNum(s.total)} stores`));
+    return lines.join("\n");
+  }
+  if (type === "units") {
+    if (!d.units) return `${region.name} doesn't have unit-count data available.`;
+    return `**Units — ${region.name}:** ${fmtNum(d.units.actual)} actual, ${fmtNum(d.units.estimated)} estimated, ${fmtNum(d.units.notAvailable)} not available (of ${fmtNum(d.units.totalStoresInUnitsTab)} stores in the units tab).`;
+  }
+  if (type === "summary") return cbRegionSummary(region);
+  return cbFallback();
+}
+
+function cbAnswer(rawText) {
+  const text = rawText.trim();
+  const lower = text.toLowerCase();
+  if (!text) return cbFallback();
+  if (cbIsGreeting(lower)) return cbHelpMessage();
+
+  const mentionedRegions = cbDetectRegions(lower);
+  const metric = cbDetectMetric(lower);
+  const superlative = cbDetectSuperlative(lower);
+  const breakdownType = cbBreakdownType(lower);
+  const wantsComparison = cbIsComparison(lower) || mentionedRegions.length >= 2;
+
+  if (superlative) {
+    return cbSuperlative(superlative, metric || CB_METRICS[0]);
+  }
+
+  if (wantsComparison) {
+    const regionsToCompare = mentionedRegions.length >= 2 ? mentionedRegions : REGIONS;
+    if (breakdownType && breakdownType !== "summary") {
+      return regionsToCompare.map((r) => cbBreakdown(r, breakdownType)).join("\n\n");
+    }
+    return cbCompareScalar(regionsToCompare, metric || CB_METRICS[0]);
+  }
+
+  // Nothing recognizable was detected at all — don't silently guess at a region summary,
+  // since that reads like a non-answer to an unrelated question. Only fall through to a
+  // summary when the query at least named a region explicitly.
+  if (mentionedRegions.length === 0 && !metric && !breakdownType) return cbFallback();
+
+  const region = mentionedRegions.length === 1 ? mentionedRegions[0] : cbGetRegionByName(selectedRegion);
+  if (!region) return cbFallback();
+
+  if (breakdownType) return cbBreakdown(region, breakdownType);
+  if (metric) return cbSingleScalar(region, metric);
+  return cbRegionSummary(region);
+}
+
+/* ------------------------------ UI wiring ------------------------------ */
+const CB_STARTER_CHIPS = [
+  "Which region has the most stores?",
+  "Compare pricing across regions",
+  "Show operator breakdown for Canada",
+  "What's the facility mix in the UK?"
+];
+
+let cbHistoryStarted = false;
+
+function cbEscapeHtml(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function cbRenderMarkdownish(text) {
+  // Minimal, safe formatting: escape first, then re-enable **bold** and line breaks only.
+  return cbEscapeHtml(text)
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\n/g, "<br>");
+}
+
+function cbAppendMessage(role, text) {
+  const wrap = document.getElementById("cbMessages");
+  const bubble = document.createElement("div");
+  bubble.className = "cb-msg " + (role === "user" ? "user" : "bot");
+  bubble.innerHTML = cbRenderMarkdownish(text);
+  wrap.appendChild(bubble);
+  wrap.scrollTop = wrap.scrollHeight;
+}
+
+function cbRenderChips() {
+  const wrap = document.getElementById("cbChips");
+  wrap.innerHTML = "";
+  CB_STARTER_CHIPS.forEach((q) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "cb-chip";
+    btn.textContent = q;
+    btn.addEventListener("click", () => cbSubmitQuery(q));
+    wrap.appendChild(btn);
+  });
+}
+
+function cbSubmitQuery(q) {
+  const query = (q || "").trim();
+  if (!query) return;
+  cbAppendMessage("user", query);
+  const answer = cbAnswer(query);
+  setTimeout(() => cbAppendMessage("bot", answer), 120);
+}
+
+function cbOpenPanel() {
+  const panel = document.getElementById("cbPanel");
+  panel.classList.add("open");
+  panel.setAttribute("aria-hidden", "false");
+  if (!cbHistoryStarted) {
+    cbHistoryStarted = true;
+    cbAppendMessage("bot", "Hi — I'm the Dashboard Assistant. Ask me about stores, pricing, operators, or facility mix for any region.");
+    cbRenderChips();
+  }
+  setTimeout(() => document.getElementById("cbInput").focus(), 50);
+}
+
+function cbClosePanel() {
+  const panel = document.getElementById("cbPanel");
+  panel.classList.remove("open");
+  panel.setAttribute("aria-hidden", "true");
+}
+
+document.getElementById("cbLauncher").addEventListener("click", () => {
+  const panel = document.getElementById("cbPanel");
+  if (panel.classList.contains("open")) cbClosePanel(); else cbOpenPanel();
+});
+document.getElementById("cbClose").addEventListener("click", cbClosePanel);
+document.getElementById("cbForm").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const input = document.getElementById("cbInput");
+  cbSubmitQuery(input.value);
+  input.value = "";
+});
 
 render();
 syncAll();
