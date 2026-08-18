@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Analyst View — 4 layout options (demo only)</title>
+<style>
+  :root {
+    --surface-1:      #ffffff;
+    --page:           #f5f3e9;
+    --text-primary:   #162331;
+    --text-secondary: #45566b;
+    --text-muted:     #74897f;
+    --gridline:       #e6e2d5;
+    --border:         rgba(13,40,38,0.12);
+    --good:           #3ddc91;
+    --bad:            #e5605f;
+    --navy:           #0d4040;
+    --navy-2:         #02756e;
+    --accent:         #21a37e;
+    --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 28px 28px 80px;
+    background: var(--page); color: var(--text-primary);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .intro { color: var(--text-secondary); font-size: 14px; max-width: 780px; line-height: 1.55; margin-bottom: 34px; }
+  .intro strong { color: var(--text-primary); }
+  .option-block { margin-bottom: 52px; }
+  .option-head { display:flex; align-items:baseline; gap:10px; margin-bottom:6px; }
+  .option-num {
+    display:inline-flex; align-items:center; justify-content:center;
+    width:24px; height:24px; border-radius:50%; background: var(--navy); color:#fff;
+    font-size:12px; font-weight:800; flex:none;
+  }
+  .option-title { font-size:16px; font-weight:800; margin:0; }
+  .option-desc { color: var(--text-secondary); font-size:13px; margin: 0 0 16px; max-width: 700px; line-height:1.5; }
+  .stage {
+    background: repeating-linear-gradient(45deg, rgba(0,0,0,0.025) 0, rgba(0,0,0,0.025) 10px, transparent 10px, transparent 20px);
+    border: 1px dashed var(--border); border-radius: 12px; padding: 20px;
+  }
+
+  /* ---- shared "card" look, matching the live dashboard's .card style ---- */
+  .card {
+    background: var(--surface-1); border:1px solid var(--border); border-radius:10px;
+    padding:16px 18px 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  .card h3 { margin:0 0 2px; font-size:14px; font-weight:700; }
+  .card .card-sub { font-size:11.5px; color: var(--text-muted); margin-bottom:12px; }
+  .bars { display:flex; flex-direction:column; gap:8px; }
+  .bar-row { display:flex; align-items:center; gap:8px; font-size:12px; }
+  .bar-label { width:92px; flex:none; color: var(--text-secondary); }
+  .bar-track { flex:1; height:12px; background: var(--gridline); border-radius:6px; overflow:hidden; }
+  .bar-fill { height:100%; border-radius:6px; }
+  .bar-val { width:42px; flex:none; text-align:right; font-weight:700; font-size:11.5px; }
+  .legend-row { display:flex; align-items:center; gap:8px; font-size:12px; margin-top:6px; }
+  .dot { width:9px; height:9px; border-radius:50%; flex:none; }
+
+  /* ===== Option 1: auto side-by-side grid ===== */
+  .grid-demo { display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:14px; }
+
+  /* ===== Option 2: resizable split columns (draggable handle) ===== */
+  .split-demo { display:flex; align-items:stretch; gap:0; height: 260px; }
+  .split-pane { background: var(--surface-1); border:1px solid var(--border); border-radius:10px; padding:16px 18px; overflow:hidden; }
+  .split-pane:first-child { border-top-right-radius:0; border-bottom-right-radius:0; }
+  .split-pane:last-child { border-top-left-radius:0; border-bottom-left-radius:0; }
+  .split-handle {
+    flex:none; width:14px; margin:0 -1px; cursor: col-resize; position:relative; z-index:2;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .split-handle::before {
+    content:""; width:4px; height:44px; border-radius:3px; background: var(--border);
+  }
+  .split-handle:hover::before, .split-handle.dragging::before { background: var(--accent); }
+  .split-hint { font-size:11.5px; color: var(--text-muted); margin-top:8px; }
+
+  /* ===== Option 3: horizontal scroll strip ===== */
+  .scroll-demo { display:flex; gap:14px; overflow-x:auto; padding-bottom:10px; scroll-snap-type:x proximity; }
+  .scroll-demo .card { flex: 0 0 300px; scroll-snap-align:start; }
+  .scroll-hint { font-size:11.5px; color: var(--text-muted); margin-top:6px; }
+
+  /* ===== Option 4: pin 2 side-by-side, rest stack below ===== */
+  .pinned-demo { display:flex; flex-direction:column; gap:14px; }
+  .pinned-top { display:grid; grid-template-columns: 1fr 1fr; gap:14px; }
+  .pinned-badge {
+    display:inline-block; font-size:10px; font-weight:800; letter-spacing:.04em; text-transform:uppercase;
+    color: var(--navy-2); background: rgba(2,117,110,0.1); border-radius:5px; padding:2px 6px; margin-bottom:6px;
+  }
+  .pinned-rest { display:flex; flex-direction:column; gap:10px; opacity:.75; }
+  .pinned-rest .card { padding:10px 14px; }
+
+  .banner {
+    background: rgba(2,117,110,0.08); border:1px solid var(--border); border-radius:10px;
+    padding: 12px 16px; font-size:12.5px; color: var(--navy-2); margin-bottom: 30px; max-width: 780px; line-height:1.5;
+  }
+  .banner strong { color: var(--navy); }
+
+  footer.note {
+    max-width: 780px; font-size:12.5px; color: var(--text-muted); line-height:1.6;
+    border-top:1px solid var(--border); padding-top:18px; margin-top:10px;
+  }
+</style>
+</head>
+<body>
+
+  <h1>Analyst View — 4 layout options (demo)</h1>
+  <p class="intro">
+    Quick, temporary demo — this page will be taken down once you've had a look.
+    Nothing on the live dashboard has been changed. Each option below shows how ticking
+    multiple sections in Analyst View could lay out instead of always stacking vertically.
+  </p>
+  <div class="banner"><strong>Note:</strong> this is a standalone demo page with placeholder data — not connected to your live dashboard.</div>
+
+  <div class="option-block">
+    <div class="option-head"><span class="option-num">1</span><h2 class="option-title">Side-by-side grid</h2></div>
+    <p class="option-desc">Cards flow into columns automatically based on how many you've ticked and how wide your screen is — two or three sit next to each other instead of stacking. No manual resizing, it just reflows.</p>
+    <div class="stage">
+      <div class="grid-demo">
+        <div class="card">
+          <h3>Stores by Operator Type</h3>
+          <div class="card-sub">United Kingdom</div>
+          <div class="bars">
+            <div class="bar-row"><span class="bar-label">Independent</span><span class="bar-track"><span class="bar-fill" style="width:72%;background:var(--series-1)"></span></span><span class="bar-val">2,140</span></div>
+            <div class="bar-row"><span class="bar-label">Regional</span><span class="bar-track"><span class="bar-fill" style="width:44%;background:var(--series-2)"></span></span><span class="bar-val">1,308</span></div>
+          </div>
+        </div>
+        <div class="card">
+          <h3>Pricing Yes/No</h3>
+          <div class="card-sub">United Kingdom</div>
+          <div class="legend-row"><span class="dot" style="background:var(--good)"></span>Available — 61%</div>
+          <div class="legend-row"><span class="dot" style="background:var(--bad)"></span>Unavailable — 39%</div>
+        </div>
+        <div class="card">
+          <h3>Facility Mix</h3>
+          <div class="card-sub">United Kingdom</div>
+          <div class="legend-row"><span class="dot" style="background:var(--series-1)"></span>Self Storage — 2,029</div>
+          <div class="legend-row"><span class="dot" style="background:var(--series-2)"></span>Container — 1,293</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option-block">
+    <div class="option-head"><span class="option-num">2</span><h2 class="option-title">Resizable split (drag the handle — this one actually works)</h2></div>
+    <p class="option-desc">Two panels sit side-by-side with a drag handle between them, like splitting a code editor. Drag it to give one section more room than the other. Best for comparing exactly two things closely.</p>
+    <div class="stage">
+      <div class="split-demo" id="splitDemo">
+        <div class="split-pane" id="splitLeft" style="flex: 1 1 50%;">
+          <h3>Stores by Operator Type</h3>
+          <div class="card-sub">United Kingdom</div>
+          <div class="bars">
+            <div class="bar-row"><span class="bar-label">Independent</span><span class="bar-track"><span class="bar-fill" style="width:72%;background:var(--series-1)"></span></span><span class="bar-val">2,140</span></div>
+            <div class="bar-row"><span class="bar-label">Regional</span><span class="bar-track"><span class="bar-fill" style="width:44%;background:var(--series-2)"></span></span><span class="bar-val">1,308</span></div>
+            <div class="bar-row"><span class="bar-label">National</span><span class="bar-track"><span class="bar-fill" style="width:29%;background:var(--series-3)"></span></span><span class="bar-val">856</span></div>
+          </div>
+        </div>
+        <div class="split-handle" id="splitHandle"></div>
+        <div class="split-pane" id="splitRight" style="flex: 1 1 50%;">
+          <h3>Pricing Yes/No by Operator Type</h3>
+          <div class="card-sub">United Kingdom</div>
+          <div class="legend-row"><span class="dot" style="background:var(--good)"></span>Price available — 61%</div>
+          <div class="legend-row"><span class="dot" style="background:var(--bad)"></span>Price unavailable — 39%</div>
+        </div>
+      </div>
+    </div>
+    <div class="split-hint">↔ try dragging the little handle between the two cards above.</div>
+  </div>
+
+  <div class="option-block">
+    <div class="option-head"><span class="option-num">3</span><h2 class="option-title">Horizontal scroll strip</h2></div>
+    <p class="option-desc">Every ticked section keeps a fixed, comfortable width and sits in a row you scroll sideways through. Good when you've selected four or five sections at once and don't want any of them squeezed.</p>
+    <div class="stage">
+      <div class="scroll-demo">
+        <div class="card">
+          <h3>Stores by Operator Type</h3>
+          <div class="card-sub">United Kingdom</div>
+          <div class="bars">
+            <div class="bar-row"><span class="bar-label">Independent</span><span class="bar-track"><span class="bar-fill" style="width:72%;background:var(--series-1)"></span></span><span class="bar-val">2,140</span></div>
+            <div class="bar-row"><span class="bar-label">Regional</span><span class="bar-track"><span class="bar-fill" style="width:44%;background:var(--series-2)"></span></span><span class="bar-val">1,308</span></div>
+          </div>
+        </div>
+        <div class="card">
+          <h3>Pricing Yes/No</h3>
+          <div class="card-sub">United Kingdom</div>
+          <div class="legend-row"><span class="dot" style="background:var(--good)"></span>Available — 61%</div>
+          <div class="legend-row"><span class="dot" style="background:var(--bad)"></span>Unavailable — 39%</div>
+        </div>
+        <div class="card">
+          <h3>Facility Mix</h3>
+          <div class="card-sub">United Kingdom</div>
+          <div class="legend-row"><span class="dot" style="background:var(--series-1)"></span>Self Storage — 2,029</div>
+          <div class="legend-row"><span class="dot" style="background:var(--series-2)"></span>Container — 1,293</div>
+        </div>
+        <div class="card">
+          <h3>Units Coverage</h3>
+          <div class="card-sub">United Kingdom</div>
+          <div class="legend-row"><span class="dot" style="background:var(--good)"></span>Actual — 152</div>
+          <div class="legend-row"><span class="dot" style="background:var(--series-4)"></span>Estimated — 3,204</div>
+        </div>
+      </div>
+      <div class="scroll-hint">← scroll sideways to see all the ticked sections →</div>
+    </div>
+  </div>
+
+  <div class="option-block">
+    <div class="option-head"><span class="option-num">4</span><h2 class="option-title">Pin two to compare, rest stay stacked (and smaller)</h2></div>
+    <p class="option-desc">Hybrid: the first two sections you tick get pinned side-by-side at full size for direct comparison; anything else you add stacks below at a smaller, glanceable size.</p>
+    <div class="stage">
+      <div class="pinned-demo">
+        <div class="pinned-top">
+          <div class="card">
+            <span class="pinned-badge">Pinned</span>
+            <h3>Stores by Operator Type</h3>
+            <div class="card-sub">United Kingdom</div>
+            <div class="bars">
+              <div class="bar-row"><span class="bar-label">Independent</span><span class="bar-track"><span class="bar-fill" style="width:72%;background:var(--series-1)"></span></span><span class="bar-val">2,140</span></div>
+              <div class="bar-row"><span class="bar-label">Regional</span><span class="bar-track"><span class="bar-fill" style="width:44%;background:var(--series-2)"></span></span><span class="bar-val">1,308</span></div>
+            </div>
+          </div>
+          <div class="card">
+            <span class="pinned-badge">Pinned</span>
+            <h3>Pricing Yes/No by Operator Type</h3>
+            <div class="card-sub">United Kingdom</div>
+            <div class="legend-row"><span class="dot" style="background:var(--good)"></span>Price available — 61%</div>
+            <div class="legend-row"><span class="dot" style="background:var(--bad)"></span>Price unavailable — 39%</div>
+          </div>
+        </div>
+        <div class="pinned-rest">
+          <div class="card"><h3 style="font-size:12.5px;">Facility Mix — United Kingdom</h3></div>
+          <div class="card"><h3 style="font-size:12.5px;">Units Coverage — United Kingdom</h3></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="note">
+    This demo page is temporary and will be removed shortly after you've reviewed it.
+    Tell me which number (or a mix, e.g. "2 for two sections, 3 once I pick more than two")
+    and I'll build that into the actual Analyst View on the dashboard.
+  </footer>
+
+<script>
+  // Only the resizable-split demo (Option 2) has real behaviour — everything else here is static.
+  (function () {
+    var handle = document.getElementById("splitHandle");
+    var left = document.getElementById("splitLeft");
+    var right = document.getElementById("splitRight");
+    var container = document.getElementById("splitDemo");
+    var dragging = false;
+
+    handle.addEventListener("pointerdown", function (e) {
+      dragging = true;
+      handle.classList.add("dragging");
+      handle.setPointerCapture(e.pointerId);
+    });
+    handle.addEventListener("pointermove", function (e) {
+      if (!dragging) return;
+      var rect = container.getBoundingClientRect();
+      var pct = ((e.clientX - rect.left) / rect.width) * 100;
+      pct = Math.min(80, Math.max(20, pct));
+      left.style.flex = "1 1 " + pct + "%";
+      right.style.flex = "1 1 " + (100 - pct) + "%";
+    });
+    handle.addEventListener("pointerup", function () { dragging = false; handle.classList.remove("dragging"); });
+    handle.addEventListener("pointercancel", function () { dragging = false; handle.classList.remove("dragging"); });
+  })();
+</script>
+</body>
+</html>
