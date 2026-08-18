@@ -2035,7 +2035,10 @@ function cbDetectSuperlative(textLower) {
 }
 
 function cbIsComparison(textLower) {
-  return ["compare", " vs", "versus", "difference between", "compared to", "across regions", "across all regions", "all regions", "every region", "each region"].some((w) => textLower.includes(w));
+  // Singular stems ("across region", "all region") so this matches "region" AND "regions" —
+  // a user typing "units across region" (no trailing s) was falling through to the single
+  // currently-selected-region answer instead of the intended all-regions comparison.
+  return ["compare", " vs", "versus", "difference between", "compared to", "across region", "across all region", "all region", "every region", "each region"].some((w) => textLower.includes(w));
 }
 
 function cbIsGreeting(textLower) {
