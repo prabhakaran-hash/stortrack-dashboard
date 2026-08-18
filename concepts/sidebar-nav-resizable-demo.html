@@ -592,8 +592,8 @@
      motion budget for the whole grid; everything below keys off the same duration/curve so
      nothing feels like it's racing something else. */
   .grid-stack {
-    --gs-move-duration: .28s;
-    --gs-move-ease: cubic-bezier(.22,.8,.28,1);
+    --gs-move-duration: .32s;
+    --gs-move-ease: cubic-bezier(.33,1,.68,1);
   }
   .grid-stack-item,
   .grid-stack-item-content {
@@ -1899,7 +1899,7 @@ function renderMainPanel() {
         // still leaving every panel free to be dragged/resized into a side-by-side layout.
         const posAttrs = pos
           ? `gs-x="${pos.x}" gs-y="${pos.y}" gs-w="${pos.w}" gs-h="${pos.h}"`
-          : `gs-x="0" gs-y="${i * 10}" gs-w="12" gs-h="10"`;
+          : `gs-x="0" gs-y="${i * 5}" gs-w="12" gs-h="5"`;
         return `<div class="grid-stack-item" gs-id="${encodeURIComponent(title)}" ${posAttrs}>
           <div class="grid-stack-item-content">
             <button type="button" class="mp-compare-remove" data-title="${encodeURIComponent(title)}" aria-label="Remove ${title} from comparison">×</button>
@@ -1943,10 +1943,12 @@ function wireCompareGrid(gridEl, regionName) {
   if (activeCompareGrid) { try { activeCompareGrid.destroy(false); } catch (e) {} activeCompareGrid = null; }
   const grid = GridStack.init({
     column: 12,
-    // A finer row grid (was 64px) means each time a colliding panel has to hop down a row, that
-    // hop is a smaller distance — combined with the eased transition below, small frequent hops
-    // read as a smooth glide instead of the larger, instant jumps that felt like shaking.
-    cellHeight: 40,
+    // Every pixel the mouse crosses into a new row is a moment GridStack recalculates who has
+    // to move — a fine-grained grid (40px) meant that recalculation fired constantly during an
+    // ordinary drag, restarting the "settle" animation before it ever finished, which is what
+    // read as "too fast"/twitchy motion. A coarser row makes that recalculation fire far less
+    // often, so each move actually gets to play out its full eased glide before the next one.
+    cellHeight: 90,
     margin: 8,
     float: true, // let panels sit wherever they're dropped instead of auto-packing upward
     minRow: 1,
