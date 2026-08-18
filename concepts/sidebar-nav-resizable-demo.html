@@ -16,6 +16,11 @@
   })();
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<!-- GridStack powers the free-form drag/resize layout in Analyst View's compare mode: any
+     side or corner is resizable, and panels can be dragged anywhere, including swapping a
+     bottom panel above a top one. -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gridstack@9.5.1/dist/gridstack.min.css" />
+<script src="https://cdn.jsdelivr.net/npm/gridstack@9.5.1/dist/gridstack-all.js"></script>
 <style>
   .viz-root {
     color-scheme: dark;
@@ -554,27 +559,31 @@
   .main-panel { flex:1; min-width:0; }
   .mp-empty-state { min-height:160px; font-size:14px; }
   .mp-focused .card { margin:0; }
-  /* Resizable side-by-side comparison view: every ticked section gets its own pane in a row,
-     with a drag handle between each adjacent pair so you can give one section more room than
-     the rest — like splitting a code editor. Each remove ("×") control lets you back a single
-     section out of the comparison. Panes share a fixed min-width and the row scrolls
-     horizontally once there's no more room to shrink further. */
-  .mp-compare-row { display:flex; align-items:stretch; gap:0; overflow-x:auto; padding-bottom:2px; }
-  .mp-compare-pane { position:relative; min-width:240px; padding:0 2px; }
-  .mp-compare-pane .card, .mp-compare-pane .chart-row { margin:0; height:100%; }
-  .mp-split-handle {
-    flex:none; width:14px; margin:0 -1px; cursor: col-resize; position:relative; z-index:4;
-    display:flex; align-items:center; justify-content:center; touch-action:none;
+  /* Free-form comparison view: every ticked section becomes its own GridStack widget that can
+     be dragged anywhere (including swapping a bottom panel above a top one) and resized from
+     any edge or corner — not just a shared boundary between two neighbours. Each remove ("×")
+     control backs a single section out of the comparison. */
+  .grid-stack { background: transparent; }
+  .grid-stack-item-content {
+    overflow:auto; border-radius:10px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.12);
   }
-  .mp-split-handle::before { content:""; width:4px; height:44px; border-radius:3px; background: var(--border); transition: background .12s ease; }
-  .mp-split-handle:hover::before, .mp-split-handle.dragging::before { background: var(--accent); }
+  .grid-stack-item-content .card { height:100%; margin:0; box-shadow:none; border-radius:10px; }
+  .grid-stack-item-content .card.chart-row { height:100%; }
+  /* GridStack's own resize handles, restyled to match the dashboard's accent colour instead of
+     its default look. */
+  .ui-resizable-handle { z-index:6; }
+  .ui-resizable-e, .ui-resizable-w { width:8px !important; }
+  .ui-resizable-n, .ui-resizable-s { height:8px !important; }
+  .grid-stack-item:hover > .grid-stack-item-content { outline: 1px solid var(--accent); outline-offset:-1px; }
   .mp-compare-remove {
-    position:absolute; top:10px; right:10px; z-index:5; width:24px; height:24px; border-radius:50%;
+    position:absolute; top:10px; right:10px; z-index:7; width:24px; height:24px; border-radius:50%;
     display:flex; align-items:center; justify-content:center; font-size:15px; line-height:1; font-weight:700;
     color: var(--text-secondary); background: var(--surface-1); border:1px solid var(--border); cursor:pointer;
     transition: background .12s ease, color .12s ease;
   }
   .mp-compare-remove:hover { background: rgba(229,96,95,0.16); color: var(--bad, #e5605f); }
+  .mp-compare-hint { font-size:11.5px; color: var(--text-muted); margin: -4px 0 12px; }
 
   @media (max-width: 900px) {
     .region-strip, .kpi-row { grid-template-columns: repeat(2, 1fr); }
@@ -1715,6 +1724,15 @@ function getFocusedSet(regionName) {
   return focusedSectionByRegion[regionName];
 }
 
+// Remembers each ticked section's free-form position/size (GridStack x/y/w/h, in grid units)
+// per region, so dragging or resizing a panel survives re-renders (region syncs, theme
+// toggles, etc.) instead of snapping back to a default layout every time.
+const compareLayoutByRegion = {};
+function getCompareLayout(regionName) {
+  if (!compareLayoutByRegion[regionName]) compareLayoutByRegion[regionName] = {};
+  return compareLayoutByRegion[regionName];
+}
+
 // Parsing renderRegionBlock(region)'s HTML is a little work (a DOMParser pass), and the
 // region's underlying data object (region.data) only changes when a sync actually
 // replaces it — so cache the parsed result keyed by that object reference. A fresh sync
@@ -1819,28 +1837,32 @@ function renderMainPanel() {
   const selected = getFocusedSet(region.name);
   let focusedHtml;
   if (multiSelectMode) {
-    // Compare mode: every ticked section gets its own resizable pane, side by side, each with
-    // a small "×" to drop just that one, and a drag handle between each adjacent pair so you
-    // can give one section more room than the rest — this is the only branch that differs from
-    // the original one-section-at-a-time behaviour below.
+    // Compare mode: every ticked section becomes a free-form widget — drag it anywhere
+    // (including below/above other widgets) and resize it from any edge or corner, each with
+    // its own "×" to drop just that one — this is the only branch that differs from the
+    // original one-section-at-a-time behaviour below.
     if (!selected.size) {
       focusedHtml = `<div class="card empty mp-empty-state">Compare mode is on — tick as many sections as you like from the sidebar to view them together.</div>`;
     } else {
-      const panes = [...selected].map((title) => {
+      const layout = getCompareLayout(region.name);
+      const items = [...selected].map((title, i) => {
         const idx = parsed.titles.indexOf(title);
         const card = idx >= 0 ? parsed.cards[idx] : null;
         if (!card) return "";
-        return `<div class="mp-compare-pane" style="flex:1 1 0;">
-          <button type="button" class="mp-compare-remove" data-title="${encodeURIComponent(title)}" aria-label="Remove ${title} from comparison">×</button>
-          ${card.outerHTML}
+        const pos = layout[title];
+        // A remembered position/size wins; otherwise let GridStack auto-place a sensible
+        // default (roughly a third of the row, tall enough for most charts/tables).
+        const posAttrs = pos
+          ? `gs-x="${pos.x}" gs-y="${pos.y}" gs-w="${pos.w}" gs-h="${pos.h}"`
+          : `gs-w="4" gs-h="6" gs-auto-position="true"`;
+        return `<div class="grid-stack-item" gs-id="${encodeURIComponent(title)}" ${posAttrs}>
+          <div class="grid-stack-item-content">
+            <button type="button" class="mp-compare-remove" data-title="${encodeURIComponent(title)}" aria-label="Remove ${title} from comparison">×</button>
+            ${card.outerHTML}
+          </div>
         </div>`;
       }).filter(Boolean);
-      const rowParts = [];
-      panes.forEach((paneHtml, i) => {
-        rowParts.push(paneHtml);
-        if (i < panes.length - 1) rowParts.push(`<div class="mp-split-handle" role="separator" aria-orientation="vertical" aria-label="Resize panes"></div>`);
-      });
-      focusedHtml = `<div class="mp-compare-row" id="mpCompareRow">${rowParts.join("")}</div>`;
+      focusedHtml = `<p class="mp-compare-hint">Drag any panel by its body to move it, or grab an edge/corner to resize it.</p><div class="grid-stack" id="mpCompareGrid">${items.join("")}</div>`;
     }
   } else {
     const focusedTitle = selected.size ? [...selected][0] : null;
@@ -1857,56 +1879,46 @@ function renderMainPanel() {
   body.innerHTML = `${parsed.headHtml}${parsed.kpiHtml}${focusedHtml}`;
   body.querySelectorAll(".mp-compare-remove").forEach((btn) => {
     btn.addEventListener("click", () => {
-      getFocusedSet(selectedRegion).delete(decodeURIComponent(btn.dataset.title));
+      const title = decodeURIComponent(btn.dataset.title);
+      getFocusedSet(selectedRegion).delete(title);
+      delete getCompareLayout(selectedRegion)[title];
       render();
     });
   });
-  const compareRow = body.querySelector("#mpCompareRow");
-  if (compareRow) wireCompareRowResize(compareRow);
+  const compareGridEl = body.querySelector("#mpCompareGrid");
+  if (compareGridEl) wireCompareGrid(compareGridEl, region.name);
 }
 
-// Wires up drag-to-resize for the side-by-side compare panes. Each handle sits between two
-// adjacent panes; dragging it only ever redistributes flex-grow between that one pair, so
-// every other pane's width stays exactly where it was — the classic split-pane trick.
-function wireCompareRowResize(row) {
-  const panes = Array.from(row.querySelectorAll(".mp-compare-pane"));
-  const handles = Array.from(row.querySelectorAll(".mp-split-handle"));
-  const MIN_PANE_PX = 220;
-  handles.forEach((handle, i) => {
-    const left = panes[i], right = panes[i + 1];
-    if (!left || !right) return;
-    let dragging = false, startX = 0, startLeftPx = 0, startRightPx = 0;
+// A single live GridStack instance at a time — each render() rebuilds the compare grid's DOM
+// from scratch (region switch, a data sync, a theme toggle all call render()), so the old
+// instance has to be torn down first or GridStack's internal listeners would pile up.
+let activeCompareGrid = null;
 
-    handle.addEventListener("pointerdown", (e) => {
-      dragging = true;
-      handle.classList.add("dragging");
-      startX = e.clientX;
-      startLeftPx = left.getBoundingClientRect().width;
-      startRightPx = right.getBoundingClientRect().width;
-      try { handle.setPointerCapture(e.pointerId); } catch (e2) {}
+function wireCompareGrid(gridEl, regionName) {
+  if (activeCompareGrid) { try { activeCompareGrid.destroy(false); } catch (e) {} activeCompareGrid = null; }
+  const grid = GridStack.init({
+    column: 12,
+    cellHeight: 64,
+    margin: 8,
+    float: true, // let panels sit wherever they're dropped instead of auto-packing upward
+    minRow: 1,
+    draggable: { cancel: ".mp-compare-remove" }, // don't start a drag from the remove button
+    resizable: { handles: "e, se, s, sw, w, nw, n, ne" }, // every side + corner, not just one shared edge
+  }, gridEl);
+  activeCompareGrid = grid;
+
+  const layout = getCompareLayout(regionName);
+  const persist = (items) => {
+    (items || grid.engine.nodes).forEach((node) => {
+      const el = node.el || node;
+      const id = el && el.getAttribute ? el.getAttribute("gs-id") : node.id;
+      if (!id) return;
+      layout[decodeURIComponent(id)] = { x: node.x, y: node.y, w: node.w, h: node.h };
     });
-
-    handle.addEventListener("pointermove", (e) => {
-      if (!dragging) return;
-      e.preventDefault();
-      const dx = e.clientX - startX;
-      let newLeft = startLeftPx + dx;
-      let newRight = startRightPx - dx;
-      if (newLeft < MIN_PANE_PX) { newRight -= (MIN_PANE_PX - newLeft); newLeft = MIN_PANE_PX; }
-      if (newRight < MIN_PANE_PX) { newLeft -= (MIN_PANE_PX - newRight); newRight = MIN_PANE_PX; }
-      if (newLeft < MIN_PANE_PX || newRight < MIN_PANE_PX) return; // not enough combined room
-      const total = newLeft + newRight;
-      const prevPairFlex = (parseFloat(left.style.flexGrow) || 1) + (parseFloat(right.style.flexGrow) || 1);
-      left.style.flexGrow = String(prevPairFlex * (newLeft / total));
-      left.style.flexBasis = "0";
-      right.style.flexGrow = String(prevPairFlex * (newRight / total));
-      right.style.flexBasis = "0";
-    });
-
-    function endDrag() { dragging = false; handle.classList.remove("dragging"); }
-    handle.addEventListener("pointerup", endDrag);
-    handle.addEventListener("pointercancel", endDrag);
-  });
+  };
+  // Fires after any drag or resize finishes — save the new position/size so it survives the
+  // next re-render instead of resetting to the default layout.
+  grid.on("change", (event, items) => persist(items));
 }
 
 function render() {
