@@ -396,10 +396,28 @@
     width:100%; justify-content:space-between;
     background: linear-gradient(160deg, rgba(255,255,255,0.14), rgba(15,36,32,0.45) 65%);
     border: 1px solid rgba(255,255,255,0.20);
+    /* Glitch fix: this button sits inside .sidebar, which is ALSO a .glass element (its own
+       backdrop-filter blur). Two nested backdrop-filter layers compositing on top of each
+       other is what caused the intermittent double-shaded / seam-line flicker reported on
+       this control — the browser occasionally repaints the two blur layers a frame apart.
+       This button's own background is already opaque enough to read clearly without a blur
+       of its own, so the fix is to drop the inner blur entirely rather than deal with two
+       layers fighting each other. */
+    backdrop-filter: none; -webkit-backdrop-filter: none;
+    /* Belt-and-suspenders: pin this button to its own compositing layer so its (now flat)
+       background can never be caught mid-repaint with the sidebar's blur behind it. */
+    transform: translateZ(0);
   }
   html[data-theme="light"] .sb-region-picker .glass-select-btn {
     background: linear-gradient(160deg, rgba(13,50,46,0.09), rgba(13,50,46,0.02) 55%), linear-gradient(0deg, #e3ece8, #e3ece8);
     border-color: rgba(13,50,46,0.20);
+  }
+  /* Explicit hover backgrounds for both themes so this control's hover state is never left to
+     the generic .glass:hover rule — that rule has the exact same CSS specificity as the base
+     rule above it, so which one "won" on hover depended on browser tie-breaking rather than a
+     deliberate design, which is what produced the momentary two-tone flash some hovers showed. */
+  .sb-region-picker .glass-select-btn:hover {
+    background: linear-gradient(160deg, rgba(255,255,255,0.19), rgba(15,36,46,0.45) 65%);
   }
   html[data-theme="light"] .sb-region-picker .glass-select-btn:hover {
     background: linear-gradient(160deg, rgba(13,50,46,0.13), rgba(13,50,46,0.03) 55%), linear-gradient(0deg, #e3ece8, #e3ece8);
@@ -421,6 +439,10 @@
   .sidebar {
     flex:none; width:252px; border-radius:16px; padding:10px; align-self:flex-start;
     position:sticky; top:16px; z-index:20;
+    /* Contains this panel's own backdrop-filter blur to its own compositing layer, so it can't
+       intermittently repaint a frame out of sync with elements sitting on top of it (like the
+       region button below) — the cause of the reported flicker on this panel's controls. */
+    isolation: isolate;
     /* Dark-mode (default) look: sits on the dark navy page, so the standard frosted-glass
        recipe (from .glass) already reads as a clearly separate floating panel — just add
        a slightly stronger drop shadow than buttons get, since this is a much larger surface. */
