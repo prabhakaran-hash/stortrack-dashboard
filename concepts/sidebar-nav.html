@@ -585,7 +585,7 @@
     position: fixed; right: 22px; bottom: 22px; z-index: 200;
     width: 52px; height: 52px; border-radius: 50%; display:flex; align-items:center; justify-content:center;
     color: #eafff2; cursor:grab; border:1px solid rgba(255,255,255,0.22); padding:0;
-    background: linear-gradient(160deg, rgba(255,255,255,0.16), rgba(10,36,30,0.62) 65%);
+    background: linear-gradient(160deg, rgba(255,255,255,0.12), rgba(10,36,30,0.82) 65%);
     backdrop-filter: blur(16px) saturate(180%); -webkit-backdrop-filter: blur(16px) saturate(180%);
     box-shadow: 0 10px 26px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.16);
     transition: transform .15s ease, box-shadow .15s ease;
@@ -600,7 +600,13 @@
     position: fixed; right: 22px; bottom: 86px; z-index: 200;
     width: 348px; max-width: calc(100vw - 32px); height: 468px; max-height: calc(100vh - 130px);
     display:flex; flex-direction:column;
-    background: linear-gradient(165deg, rgba(255,255,255,0.10), rgba(9,32,27,0.82) 60%);
+    /* Deliberately near-opaque (not a translucent 10%→82% ramp): on the light theme, the
+       dashboard behind this panel is mostly white cards, and a low-opacity corner let that
+       brightness bleed through unevenly — a patchy, banded look, worse right where message
+       text sits. Both gradient stops now stay in a tight, dark, near-solid range so the panel
+       reads as a uniform tone in either theme; backdrop-filter still supplies the frosted
+       blur/texture without needing the background itself to be very see-through. */
+    background: linear-gradient(165deg, rgba(24,58,49,0.88), rgba(8,30,25,0.94) 60%);
     backdrop-filter: blur(24px) saturate(180%); -webkit-backdrop-filter: blur(24px) saturate(180%);
     border:1px solid rgba(255,255,255,0.16); border-radius:16px;
     box-shadow: 0 20px 50px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.12);
@@ -626,18 +632,21 @@
   .cb-close:hover { background: rgba(255,255,255,0.14); color: #eafff2; }
   .cb-messages { flex:1; overflow-y:auto; padding:14px 16px; display:flex; flex-direction:column; gap:10px; }
   .cb-msg { max-width:88%; font-size:13px; line-height:1.55; padding:9px 12px; border-radius:12px; }
-  .cb-msg.bot { align-self:flex-start; background: rgba(255,255,255,0.12); color: #eafff2; border-bottom-left-radius:4px; }
+  /* Bumped from 0.12 to a near-opaque 0.22 for the same reason as the panel background above:
+     at low opacity, a bright (light-theme) backdrop showed through each bubble/chip unevenly
+     instead of reading as a flat, uniform surface. */
+  .cb-msg.bot { align-self:flex-start; background: rgba(255,255,255,0.22); color: #eafff2; border-bottom-left-radius:4px; }
   .cb-msg.user { align-self:flex-end; background: var(--accent); color:#fff; border-bottom-right-radius:4px; }
   .cb-chips { display:flex; flex-wrap:wrap; gap:6px; padding:0 16px 10px; flex:none; }
   .cb-chip {
     font: inherit; font-size:11.5px; font-weight:600; color: rgba(234,255,242,0.78);
-    background: rgba(255,255,255,0.12); border:none; border-radius:999px; padding:6px 11px; cursor:pointer;
+    background: rgba(255,255,255,0.22); border:none; border-radius:999px; padding:6px 11px; cursor:pointer;
     white-space:nowrap; transition: background .12s ease, color .12s ease;
   }
-  .cb-chip:hover { background: rgba(255,255,255,0.2); color: #eafff2; }
+  .cb-chip:hover { background: rgba(255,255,255,0.32); color: #eafff2; }
   .cb-inputrow { display:flex; gap:8px; padding:12px 14px; border-top:1px solid rgba(255,255,255,0.14); flex:none; }
   .cb-input {
-    flex:1; min-width:0; font: inherit; font-size:13px; background: rgba(7,24,20,0.4);
+    flex:1; min-width:0; font: inherit; font-size:13px; background: rgba(7,24,20,0.55);
     border:1px solid rgba(255,255,255,0.16); border-radius:10px; padding:9px 12px; color: #eafff2;
   }
   .cb-input::placeholder { color: rgba(234,255,242,0.45); }
