@@ -1989,7 +1989,10 @@ function cbIsComparison(textLower) {
 }
 
 function cbIsGreeting(textLower) {
-  return ["hi", "hello", "hey", "help", "what can you do", "what can i ask"].some((w) => textLower === w || textLower.startsWith(w + " ") || textLower.includes(w));
+  const phrases = ["hello", "hey", "help", "what can you do", "what can i ask", "how do you work", "what can this bot do"];
+  if (phrases.some((w) => textLower === w || textLower.startsWith(w + " ") || textLower.endsWith(" " + w) || textLower.includes(" " + w + " "))) return true;
+  // "hi" is short enough to collide with words like "which"/"this" — match only as a standalone word.
+  return /(^|[^a-z])hi([^a-z]|$)/.test(textLower);
 }
 
 function cbBreakdownType(textLower) {
