@@ -687,32 +687,32 @@
 
   <footer class="foot" id="footNote">Sources: live Google Sheets, polled client-side. Loading…</footer>
   </div>
-</div>
 
-<button class="cb-launcher" id="cbLauncher" aria-label="Open Dashboard Assistant" title="Dashboard Assistant">
-  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M4 5.5C4 4.67 4.67 4 5.5 4h13c.83 0 1.5.67 1.5 1.5v10c0 .83-.67 1.5-1.5 1.5H9l-4 3.3v-3.3H5.5A1.5 1.5 0 0 1 4 15.5v-10Z" fill="currentColor" fill-opacity="0.95"/>
-    <circle cx="8.2" cy="10.4" r="1.15" fill="#0d2b20"/>
-    <circle cx="12" cy="10.4" r="1.15" fill="#0d2b20"/>
-    <circle cx="15.8" cy="10.4" r="1.15" fill="#0d2b20"/>
-  </svg>
-</button>
+  <button class="cb-launcher" id="cbLauncher" aria-label="Open Dashboard Assistant" title="Dashboard Assistant">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M4 5.5C4 4.67 4.67 4 5.5 4h13c.83 0 1.5.67 1.5 1.5v10c0 .83-.67 1.5-1.5 1.5H9l-4 3.3v-3.3H5.5A1.5 1.5 0 0 1 4 15.5v-10Z" fill="currentColor" fill-opacity="0.95"/>
+      <circle cx="8.2" cy="10.4" r="1.15" fill="#0d2b20"/>
+      <circle cx="12" cy="10.4" r="1.15" fill="#0d2b20"/>
+      <circle cx="15.8" cy="10.4" r="1.15" fill="#0d2b20"/>
+    </svg>
+  </button>
 
-<div class="cb-panel" id="cbPanel" role="dialog" aria-label="Dashboard Assistant" aria-hidden="true">
-  <div class="cb-header">
-    <div>
-      <div class="cb-title">Dashboard Assistant<span class="cb-title-sub">Ask about any region — data only, no external AI</span></div>
+  <div class="cb-panel" id="cbPanel" role="dialog" aria-label="Dashboard Assistant" aria-hidden="true">
+    <div class="cb-header">
+      <div>
+        <div class="cb-title">Dashboard Assistant<span class="cb-title-sub">Ask about any region — data only, no external AI</span></div>
+      </div>
+      <button class="cb-close" id="cbClose" aria-label="Close">&times;</button>
     </div>
-    <button class="cb-close" id="cbClose" aria-label="Close">&times;</button>
+    <div class="cb-messages" id="cbMessages"></div>
+    <div class="cb-chips" id="cbChips"></div>
+    <form class="cb-inputrow" id="cbForm">
+      <input class="cb-input" id="cbInput" type="text" autocomplete="off" placeholder="e.g. Which region has the most stores?" />
+      <button class="cb-send" type="submit" aria-label="Send">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 11.5 20.5 3 15 20.5l-3.6-7.4L3 11.5Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+      </button>
+    </form>
   </div>
-  <div class="cb-messages" id="cbMessages"></div>
-  <div class="cb-chips" id="cbChips"></div>
-  <form class="cb-inputrow" id="cbForm">
-    <input class="cb-input" id="cbInput" type="text" autocomplete="off" placeholder="e.g. Which region has the most stores?" />
-    <button class="cb-send" type="submit" aria-label="Send">
-      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 11.5 20.5 3 15 20.5l-3.6-7.4L3 11.5Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
-    </button>
-  </form>
 </div>
 
 <script>
