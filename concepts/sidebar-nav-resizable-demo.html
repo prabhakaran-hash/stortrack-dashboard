@@ -1899,6 +1899,15 @@ function renderSidebar() {
 function renderMainPanel() {
   const region = REGIONS.find((r) => r.name === selectedRegion);
   const body = document.getElementById("mainPanelBody");
+  // Tear down the previous compare grid HERE — while its container is still attached to the
+  // document — not after body.innerHTML below has already ripped that container out. GridStack
+  // registers a ResizeObserver (and other listeners) against that container on init; destroying
+  // it only after the container is already detached let that observer silently fail to clean
+  // itself up, so every add/remove/re-render cycle left one more of them permanently watching a
+  // dead node. That's what was accumulating into the page eventually seizing up — confirmed by
+  // reproducing a real freeze after ~15 rapid add/remove cycles, and gone once destroy() runs
+  // against a still-live container.
+  if (activeCompareGrid) { try { activeCompareGrid.destroy(false); } catch (e) {} activeCompareGrid = null; }
   if (region.status === "loading") {
     body.innerHTML = `<div class="card" style="text-align:center;padding:30px;color:var(--text-muted);">Loading ${region.name}…</div>`;
     return;
@@ -1984,7 +1993,9 @@ const GS_CELL_HEIGHT = 150;
 const GS_MARGIN = 8;
 
 function wireCompareGrid(gridEl, regionName) {
-  if (activeCompareGrid) { try { activeCompareGrid.destroy(false); } catch (e) {} activeCompareGrid = null; }
+  // The previous grid instance (if any) was already torn down in renderMainPanel, before its
+  // container got removed from the document — see the comment there for why that ordering
+  // matters. Nothing to destroy here.
   const grid = GridStack.init({
     column: 12,
     // Every pixel the mouse crosses into a new row is a moment GridStack recalculates who has
