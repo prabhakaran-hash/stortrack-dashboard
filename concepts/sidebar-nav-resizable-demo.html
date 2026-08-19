@@ -597,7 +597,7 @@
      motion budget for the whole grid; everything below keys off the same duration/curve so
      nothing feels like it's racing something else. */
   .grid-stack {
-    --gs-move-duration: .55s;
+    --gs-move-duration: .9s;
     --gs-move-ease: cubic-bezier(.33,1,.68,1);
     /* Keeps a panel from visually escaping upward into the KPI tiles/region cards above while
        it's being dragged. GridStack's own drag ghost isn't clamped to the grid's top edge on
@@ -1953,7 +1953,7 @@ function renderMainPanel() {
 // instance has to be torn down first or GridStack's internal listeners would pile up.
 let activeCompareGrid = null;
 
-const GS_CELL_HEIGHT = 90;
+const GS_CELL_HEIGHT = 150;
 const GS_MARGIN = 8;
 
 function wireCompareGrid(gridEl, regionName) {
@@ -1978,24 +1978,71 @@ function wireCompareGrid(gridEl, regionName) {
   }, gridEl);
   activeCompareGrid = grid;
 
-  // Freshly-added panels (no saved size yet — marked with data-auto-h) start at a placeholder
-  // height. Measure what each one's content actually needs and shrink/grow it to fit, so a
-  // three-row bar chart doesn't sit in a box padded with a screen's worth of empty space below
-  // it, and a long data table doesn't get clipped down to the same guess. Stacked in order,
-  // starting below whatever already has a saved (user-chosen) position.
-  const autoEls = Array.from(gridEl.querySelectorAll('[data-auto-h="1"]'));
-  if (autoEls.length) {
-    let nextY = 0;
-    grid.engine.nodes.forEach((n) => { if (!autoEls.includes(n.el)) nextY = Math.max(nextY, n.y + n.h); });
-    autoEls.forEach((el) => {
-      const contentEl = el.querySelector(".grid-stack-item-content");
-      const rowSpan = GS_CELL_HEIGHT + GS_MARGIN;
-      const needed = Math.min(14, Math.max(3, Math.ceil((contentEl.scrollHeight + 20) / rowSpan)));
-      grid.update(el, { y: nextY, h: needed });
+  const rowSpan = GS_CELL_HEIGHT + GS_MARGIN;
+  // A couple of "lines" worth of slack added on top of a raw content measurement, so a panel
+  // reads as having a little breathing room rather than being shrink-wrapped pixel-tight to its
+  // last row of data.
+  const BREATHING_PX = 46;
+
+  // Measures how tall a panel's content genuinely is. `capScrollTables` true = respect a data
+  // table's own internal scrollbar (its normal capped height) — this is what the DEFAULT size
+  // should hug. false = temporarily lift that cap so the measurement reflects the table's true,
+  // full, uncapped height — this is what the RESIZE CEILING should be based on, so "make it
+  // bigger" always tops out at "all the data is visible" rather than growing indefinitely.
+  function measureContentPx(el, capScrollTables) {
+    const contentEl = el.querySelector(".grid-stack-item-content");
+    const card = contentEl.querySelector(":scope > .card");
+    const scrollTables = Array.from(contentEl.querySelectorAll(".scroll-table"));
+    // The card is styled height:100% of its panel (so it fills whatever size GridStack gives
+    // it) — measuring scrollHeight while that rule is active just reports back the box's
+    // current height, not what the chart/table actually needs, which is what made every panel
+    // size itself to its own placeholder guess instead of its real content. Freeing the card to
+    // its natural height just for this one measurement is what makes the fit real.
+    const prevCardHeight = card ? card.style.height : null;
+    if (card) card.style.height = "auto";
+    const prevMaxHeights = capScrollTables ? null : scrollTables.map((t) => t.style.maxHeight);
+    if (!capScrollTables) scrollTables.forEach((t) => { t.style.maxHeight = "none"; });
+    const px = contentEl.scrollHeight;
+    if (card) card.style.height = prevCardHeight || "";
+    if (!capScrollTables) scrollTables.forEach((t, i) => { t.style.maxHeight = prevMaxHeights[i] || ""; });
+    return px;
+  }
+
+  // Every panel — freshly added or previously saved — gets a resize ceiling based on its true
+  // full content height, so dragging it bigger always stops at "all the data plus a little
+  // breathing room," never beyond. Freshly-added panels (marked data-auto-h) additionally get
+  // their starting height fit to that same content (respecting any table's own scrollbar for the
+  // default look), stacked in order below whatever already has a saved position.
+  let nextY = 0;
+  grid.engine.nodes.forEach((n) => { if (!n.el.hasAttribute("data-auto-h")) nextY = Math.max(nextY, n.y + n.h); });
+  grid.engine.nodes.slice().forEach((n) => {
+    const el = n.el;
+    const isAuto = el.hasAttribute("data-auto-h");
+    const fullPx = measureContentPx(el, false);
+    const maxH = Math.max(2, Math.ceil((fullPx + BREATHING_PX) / rowSpan));
+    if (isAuto) {
+      const compactPx = measureContentPx(el, true);
+      const needed = Math.min(maxH, Math.max(2, Math.ceil((compactPx + BREATHING_PX) / rowSpan)));
+      grid.update(el, { y: nextY, h: needed, maxH });
       nextY += needed;
       el.removeAttribute("data-auto-h");
+    } else {
+      grid.update(el, { maxH });
+    }
+  });
+
+  // Growing a panel is pointless if the data table inside it is still clamped to its own short
+  // internal scrollbar — so as soon as a panel is resized, that table's cap comes off and it's
+  // free to fill the extra room (right up to the maxH ceiling set above, which already accounts
+  // for the table's true full height).
+  grid.on("resize", (event, itemsOrEl) => {
+    const nodes = Array.isArray(itemsOrEl) ? itemsOrEl : [itemsOrEl];
+    nodes.forEach((n) => {
+      const el = n && (n.el || n);
+      if (!el || !el.querySelectorAll) return;
+      el.querySelectorAll(".scroll-table").forEach((t) => { t.style.maxHeight = "none"; });
     });
-  }
+  });
 
   const layout = getCompareLayout(regionName);
   const persist = (items) => {
