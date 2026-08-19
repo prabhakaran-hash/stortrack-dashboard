@@ -203,11 +203,15 @@
   }
   #sidebarSections {
     transition: filter .18s ease, opacity .18s ease;
+  }
+  .sidebar.sb-analyst-active #sidebarSections {
     flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0;
   }
   /* The actual scrollable region: only the section list scrolls, the toggle bar above it
-     (region picker/Analyst View live outside this box already) stays put. */
-  .sb-scroll-list { flex: 1 1 auto; overflow-y: auto; min-height: 0; }
+     (region picker/Analyst View live outside this box already) stays put. Scoped to Analyst
+     View being on — outside it, the sidebar isn't height-capped so there's nothing to scroll
+     and this should behave like a plain block, not force a scroll container. */
+  .sidebar.sb-analyst-active .sb-scroll-list { flex: 1 1 auto; overflow-y: auto; min-height: 0; }
   /* Scrollbar track/corner default to opaque white in Chrome, which reads as a hard seam against
      the sidebar's translucent glass panel. Leaving the thumb/arrow-button styling untouched (they
      already read fine per feedback) and blending the track to the sidebar's own glass tint
@@ -217,10 +221,10 @@
      without that width rule, -track color gets ignored and the native white gutter shows through
      regardless of alpha. Declaring the width switches it to the custom-drawn scrollbar so the
      track color actually takes effect and merges into the glass panel with no visible frame. */
-  .sb-scroll-list::-webkit-scrollbar { width: 12px; }
-  .sb-scroll-list::-webkit-scrollbar-track { background: rgba(180,196,188,0.55); }
-  .sb-scroll-list::-webkit-scrollbar-corner { background: transparent; }
-  html[data-theme="light"] .sb-scroll-list::-webkit-scrollbar-track { background: rgba(200,210,200,0.6); }
+  .sidebar.sb-analyst-active .sb-scroll-list::-webkit-scrollbar { width: 12px; }
+  .sidebar.sb-analyst-active .sb-scroll-list::-webkit-scrollbar-track { background: rgba(180,196,188,0.55); }
+  .sidebar.sb-analyst-active .sb-scroll-list::-webkit-scrollbar-corner { background: transparent; }
+  html[data-theme="light"] .sidebar.sb-analyst-active .sb-scroll-list::-webkit-scrollbar-track { background: rgba(200,210,200,0.6); }
   .sb-ms-actions { display: flex; align-items: center; gap: 10px; }
   /* Spring "pop" open — the 3D Touch peek gesture overshoots slightly before settling, instead
      of a flat linear fade/slide. Scoped to the sidebar's region dropdown only so the header's
@@ -469,14 +473,6 @@
   .sidebar {
     flex:none; width:252px; border-radius:16px; padding:10px; align-self:flex-start;
     position:sticky; top:16px; z-index:20;
-    /* Caps the whole panel to the viewport height and turns it into a column so the region
-       picker + Analyst View toggle (fixed-height content above) and the section list (the part
-       that can genuinely get long) can be told apart: the list gets the one flexible slot below
-       them and scrolls on its own, while everything above it never moves. See #sidebarSections
-       and .sb-scroll-list below, not on this outer box. display:flex + flex-direction:column lets
-       a single flex-basis:auto child (#sidebarSections) claim exactly the remaining height. */
-    height: max-content; max-height: calc(100vh - 32px);
-    display: flex; flex-direction: column; overflow: hidden;
     /* Contains this panel's own backdrop-filter blur to its own compositing layer, so it can't
        intermittently repaint a frame out of sync with elements sitting on top of it (like the
        region button below) — the cause of the reported flicker on this panel's controls. */
@@ -487,7 +483,21 @@
     box-shadow: 0 14px 34px rgba(0,0,0,0.35), 0 2px 10px rgba(0,0,0,0.22);
     transition: box-shadow .32s cubic-bezier(.2,1.4,.4,1), transform .32s cubic-bezier(.2,1.4,.4,1);
   }
-  .sidebar > .region-picker, .sidebar > .sb-divider { flex: none; }
+  /* The fixed-header/scrolling-list treatment is only relevant once Analyst View's checklist can
+     get long — outside Analyst View the original behavior (panel just grows with its content,
+     no cap, no inner scrollbar) is what's wanted, so all of this is scoped to this class rather
+     than the bare .sidebar. renderSidebar() toggles it based on multiSelectMode. Caps the whole
+     panel to the viewport height and turns it into a column so the region picker + Analyst View
+     toggle (fixed-height content above) and the section list (the part that can genuinely get
+     long) can be told apart: the list gets the one flexible slot below them and scrolls on its
+     own, while everything above it never moves. See #sidebarSections and .sb-scroll-list below.
+     display:flex + flex-direction:column lets a single flex-basis:auto child (#sidebarSections)
+     claim exactly the remaining height. */
+  .sidebar.sb-analyst-active {
+    height: max-content; max-height: calc(100vh - 32px);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .sidebar.sb-analyst-active > .region-picker, .sidebar.sb-analyst-active > .sb-divider { flex: none; }
   /* The real "3D Touch" signature isn't just a shadow on the dropdown — it's the rest of the
      screen dimming so the popped element reads as physically lifted forward by contrast, not
      just by its own shadow. #sbDropdownScrim is a fixed full-page veil, explicitly stacked
@@ -1772,6 +1782,10 @@ function renderSidebar() {
   // current region's section list below it, instead of looping over all 4 regions with
   // their own expand/collapse chevrons.
   const box = document.getElementById("sidebarSections");
+  // The height-capped/scrolling treatment only makes sense once Analyst View's checklist is
+  // showing — outside it the panel should just grow with its content like before, no inner
+  // scrollbar. Toggling this class is what CSS above keys off of.
+  document.getElementById("sidebarNav")?.classList.toggle("sb-analyst-active", multiSelectMode);
   const r = REGIONS.find((x) => x.name === selectedRegion);
   if (!r) { box.innerHTML = ""; return; }
   const parsed = getRegionParsed(r);
