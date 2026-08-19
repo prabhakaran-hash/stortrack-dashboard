@@ -2298,8 +2298,18 @@ function toggleRefreshMenu() {
 }
 refreshCaret.addEventListener("click", (e) => { e.stopPropagation(); toggleRefreshMenu(); });
 document.addEventListener("click", (e) => {
-  if (!e.target.closest(".refresh-group")) closeRefreshMenu();
-  if (!e.target.closest(".glass-select")) closeAllGlassSelects();
+  // Multi-select rows inside the full-screen table dropdown call render() on every click, which
+  // rebuilds that dropdown's option list (innerHTML) — so by the time this bubbles up to
+  // document, e.target is already a detached node with no parent chain, and
+  // e.target.closest(...) silently returns null even though the click was genuinely inside the
+  // dropdown. That falsely triggered closeAllGlassSelects() on every single checkbox tick.
+  // composedPath() captures the path at dispatch time, before that rebuild happens, so it still
+  // reports the click's real ancestry even once the target itself has been torn out.
+  const path = typeof e.composedPath === "function" ? e.composedPath() : [e.target];
+  const insideGlassSelect = path.some((el) => el.classList && el.classList.contains("glass-select"));
+  const insideRefreshGroup = path.some((el) => el.classList && el.classList.contains("refresh-group"));
+  if (!insideRefreshGroup) closeRefreshMenu();
+  if (!insideGlassSelect) closeAllGlassSelects();
 });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeRefreshMenu(); closeAllGlassSelects(); } });
 
