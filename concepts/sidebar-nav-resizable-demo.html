@@ -614,23 +614,21 @@
       width var(--gs-move-duration) var(--gs-move-ease),
       height var(--gs-move-duration) var(--gs-move-ease) !important;
   }
-  /* The drop-target marker — deliberately small and centered in the landing slot instead of
-     filling it edge-to-edge. A full-size shadow tracking the cursor at speed is what read as a
-     big shape "flying" around the grid; a small fixed marker just says "it'll land about here"
-     without dragging a large shape across the screen. The panel itself only grows to full size
-     once you actually drop it. It still needs to track the dragged panel with zero delay (any
-     easing here is what caused the "shadow following" glitch — it was chasing a target that had
-     already moved on), so it's the one thing in the grid explicitly exempted from the shared
-     transition above. */
+  /* The drop-target marker — a plain, borderless tint with no dashed-line graphic, since that
+     bordered shape itself read as a distracting "symbol" while dragging. It's also genuinely
+     small now: while a panel is being dragged, its own grid footprint (see the dragstart/dragstop
+     handlers in wireCompareGrid) is temporarily shrunk to a couple of rows, so this reserved slot
+     naturally stays small too — no matter how far down the page you drag it — instead of a full-
+     size gap opening up. The panel only expands back to its real, content-fit size once you drop
+     it. This still needs to track the dragged panel with zero delay (any easing here is what
+     caused the "shadow following" glitch — it was chasing a target that had already moved on), so
+     it's the one thing in the grid explicitly exempted from the shared transition above. */
   .grid-stack-placeholder > .placeholder-content {
-    position: absolute !important;
-    inset: auto !important;
-    top: 50% !important; left: 50% !important;
-    width: 46px; height: 46px;
-    max-width: calc(100% - 12px); max-height: calc(100% - 12px);
-    transform: translate(-50%, -50%);
-    background: rgba(33,163,126,0.18); border: 2px dashed var(--accent); border-radius:10px;
-    margin:0;
+    background: rgba(33,163,126,0.14);
+    border: none;
+    border-radius: 8px;
+    inset: 3px !important;
+    margin: 0;
   }
   .grid-stack-item.grid-stack-placeholder,
   .grid-stack-item.ui-draggable-dragging,
@@ -2085,6 +2083,42 @@ function wireCompareGrid(gridEl, regionName) {
       const el = n && (n.el || n);
       if (!el || !el.querySelectorAll) return;
       el.querySelectorAll(".scroll-table").forEach((t) => { t.style.maxHeight = "none"; });
+    });
+  });
+
+  // Normalizes what different GridStack events hand back (a bare element, a node with an .el,
+  // or an array of either) into a plain list of the actual grid-item elements involved.
+  function toElements(itemsOrEl) {
+    const arr = Array.isArray(itemsOrEl) ? itemsOrEl : [itemsOrEl];
+    return arr.map((item) => (item && item.el) || item).filter((el) => el && el.nodeType === 1);
+  }
+  function findNode(el) {
+    return grid.engine.nodes.find((n) => n.el === el);
+  }
+
+  // While a panel is actually being picked up and moved, its own footprint shrinks to a couple
+  // of rows — "a few lines" of reserved space — no matter how tall it really is or how far down
+  // the page it travels, instead of a full-size gap trailing the cursor the whole way. This is
+  // what was still making drags feel heavy: the grid was recalculating collisions against a
+  // full-size block on every mouse movement. The instant it's dropped, it snaps back to a
+  // height that hugs its real content (the same fit logic used when a panel is first added),
+  // landing at its actual size right where it was placed.
+  const DRAG_SHRINK_H = 2;
+  grid.on("dragstart", (event, itemsOrEl) => {
+    toElements(itemsOrEl).forEach((el) => {
+      const node = findNode(el);
+      if (!node || node.h <= DRAG_SHRINK_H) return;
+      grid.update(el, { h: DRAG_SHRINK_H });
+    });
+  });
+  grid.on("dragstop", (event, itemsOrEl) => {
+    toElements(itemsOrEl).forEach((el) => {
+      const node = findNode(el);
+      if (!node) return;
+      const compactPx = measureContentPx(el, true);
+      const ceiling = node.maxH || Infinity;
+      const needed = Math.min(ceiling, Math.max(2, Math.ceil((compactPx + BREATHING_PX) / rowSpan)));
+      grid.update(el, { h: needed });
     });
   });
 
