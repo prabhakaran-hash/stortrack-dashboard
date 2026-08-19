@@ -221,7 +221,10 @@
      without that width rule, -track color gets ignored and the native white gutter shows through
      regardless of alpha. Declaring the width switches it to the custom-drawn scrollbar so the
      track color actually takes effect and merges into the glass panel with no visible frame. */
-  .sidebar.sb-analyst-active .sb-scroll-list::-webkit-scrollbar { width: 12px; }
+  /* 16px keeps room for the native up/down arrow glyphs to render fully — the narrower 12px
+     used earlier was clipping them, which is why the arrows/thumb looked like they'd vanished
+     rather than just having their white backing blended away. */
+  .sidebar.sb-analyst-active .sb-scroll-list::-webkit-scrollbar { width: 16px; }
   .sidebar.sb-analyst-active .sb-scroll-list::-webkit-scrollbar-track { background: rgba(180,196,188,0.55); }
   .sidebar.sb-analyst-active .sb-scroll-list::-webkit-scrollbar-corner { background: transparent; }
   html[data-theme="light"] .sidebar.sb-analyst-active .sb-scroll-list::-webkit-scrollbar-track { background: rgba(200,210,200,0.6); }
