@@ -198,6 +198,13 @@
   /* The actual scrollable region: only the section list scrolls, the toggle bar above it
      (region picker/Analyst View live outside this box already) stays put. */
   .sb-scroll-list { flex: 1 1 auto; overflow-y: auto; min-height: 0; }
+  /* Scrollbar track/corner default to opaque white in Chrome, which reads as a hard seam against
+     the sidebar's translucent glass panel. Leaving the thumb/arrow-button styling untouched (they
+     already read fine per feedback) and only dropping the track to transparent lets the glass
+     background show through behind the thumb instead of a white strip. */
+  .sb-scroll-list::-webkit-scrollbar { width: 14px; }
+  .sb-scroll-list::-webkit-scrollbar-track { background: transparent; }
+  .sb-scroll-list::-webkit-scrollbar-corner { background: transparent; }
   .sb-ms-actions { display: flex; align-items: center; gap: 10px; }
   /* Spring "pop" open — the 3D Touch peek gesture overshoots slightly before settling, instead
      of a flat linear fade/slide. Scoped to the sidebar's region dropdown only so the header's
