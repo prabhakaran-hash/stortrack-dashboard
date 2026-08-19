@@ -2263,20 +2263,51 @@ function wireCompareGrid(gridEl, regionName) {
   // Auto-scrolls the page while a drag nears the top/bottom edge of the visible viewport, so
   // dragging a panel toward the bottom of a long stack doesn't require also manually scrolling
   // with the other hand — the page just smoothly keeps up as you keep pushing past the edge.
+  //
+  // GridStack fires "drag" once per raw mousemove — often far more often than the screen can
+  // actually repaint — and this handler used to do its edge check (getBoundingClientRect, a
+  // forced layout) and its window.scrollBy on every single one of those. Right after a scroll
+  // just invalidated layout, that forced layout is genuinely expensive on a page full of real
+  // data tables, and doing it dozens of times a second is what read as the panel dragging
+  // sluggishly/lagging behind the cursor in general — and then, once the panel got near the
+  // top/bottom edge, every one of those frequent mousemove events added its own extra
+  // scrollBy(16px) on top, so the page could rack up a burst of scrolling far faster than the
+  // cursor was actually moving. Coalescing the edge check to once per animation frame, and
+  // driving the scroll itself off a steady once-per-frame loop instead of raw mousemove count,
+  // fixes both: the check/scroll cost is now capped at 60/sec no matter how fast mousemove
+  // fires, and the scroll speed near an edge is constant instead of accelerating with input rate.
   const AUTOSCROLL_EDGE_PX = 80;
-  const AUTOSCROLL_STEP_PX = 16;
-  grid.on("drag", (event, itemsOrEl) => {
-    const el = toElements(itemsOrEl)[0];
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    const vh = window.innerHeight;
-    if (rect.bottom > vh - AUTOSCROLL_EDGE_PX) {
-      window.scrollBy(0, AUTOSCROLL_STEP_PX);
-    } else if (rect.top < AUTOSCROLL_EDGE_PX) {
-      window.scrollBy(0, -AUTOSCROLL_STEP_PX);
+  const AUTOSCROLL_STEP_PX = 12;
+  let dragAutoScrollDir = 0; // -1 = scrolling up, 1 = scrolling down, 0 = not scrolling
+  let dragAutoScrollRAF = null;
+  let dragFrameQueued = false;
+  let latestDragEl = null;
+  function autoScrollTick() {
+    if (dragAutoScrollDir !== 0) {
+      window.scrollBy(0, dragAutoScrollDir * AUTOSCROLL_STEP_PX);
+      dragAutoScrollRAF = requestAnimationFrame(autoScrollTick);
+    } else {
+      dragAutoScrollRAF = null;
     }
+  }
+  grid.on("drag", (event, itemsOrEl) => {
+    latestDragEl = toElements(itemsOrEl)[0] || null;
+    if (dragFrameQueued) return;
+    dragFrameQueued = true;
+    requestAnimationFrame(() => {
+      dragFrameQueued = false;
+      const el = latestDragEl;
+      if (!el) { dragAutoScrollDir = 0; return; }
+      const rect = el.getBoundingClientRect();
+      const vh = window.innerHeight;
+      dragAutoScrollDir = rect.bottom > vh - AUTOSCROLL_EDGE_PX ? 1 : rect.top < AUTOSCROLL_EDGE_PX ? -1 : 0;
+      if (dragAutoScrollDir !== 0 && !dragAutoScrollRAF) dragAutoScrollRAF = requestAnimationFrame(autoScrollTick);
+    });
   });
   grid.on("dragstop", (event, itemsOrEl) => {
+    dragAutoScrollDir = 0;
+    latestDragEl = null;
+    if (dragAutoScrollRAF) { cancelAnimationFrame(dragAutoScrollRAF); dragAutoScrollRAF = null; }
     const els = toElements(itemsOrEl);
     // GridStack hasn't necessarily removed its own "ui-draggable-dragging" class yet at the
     // exact moment this fires — and that class is what forces transitions off (see the CSS
@@ -2300,7 +2331,11 @@ function wireCompareGrid(gridEl, regionName) {
       const el = node.el || node;
       const id = el && el.getAttribute ? el.getAttribute("gs-id") : node.id;
       if (!id) return;
-      layout[decodeURIComponent(id)] = { x: node.x, y: node.y, w: node.w, h: node.h };
+      // Keep whatever cached maxH/dataRef this title already had (see ensurePanelMaxH) —
+      // a drag/resize doesn't change the panel's content, so there's no reason to throw that
+      // cache away and force a needless remeasure next time this region's grid is rebuilt.
+      const title = decodeURIComponent(id);
+      layout[title] = Object.assign({}, layout[title], { x: node.x, y: node.y, w: node.w, h: node.h });
     });
   };
   // Fires after any drag or resize finishes — save the new position/size so it survives the
