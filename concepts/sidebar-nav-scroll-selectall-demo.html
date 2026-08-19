@@ -765,6 +765,25 @@
   .mp-fs-grid .card, .mp-fs-grid .chart-row { margin:0; }
   @media (max-width: 900px) { .mp-fs-grid { grid-template-columns: 1fr; } .mp-fs-controls .glass-select-btn { min-width:130px; } }
 
+  /* --- Benchmark View: a second mode inside the same full-screen popup, for comparing the
+     same table(s) across up to all 4 regions at once. The toggle reuses the sidebar's own
+     "Analyst View" switch component so it reads as the same design language; the single-pick
+     region dropdown swaps for a multi-pick one (same checkbox/select-all/clear-all pattern as
+     the table dropdown) while benchmark mode is on, and each comparison card gets a small
+     region-colored tag in its own top-left corner rather than a separate labeled row. */
+  .mp-fs-controls .sb-multiselect-toggle { width:auto; padding:6px 10px; }
+  .mp-fs-panel.benchmark-mode #mpFsRegionSelectWrap { display:none; }
+  .mp-fs-panel:not(.benchmark-mode) #mpFsBmRegionSelectWrap { display:none; }
+  #mpFsBmRegionSelectWrap .glass-select-menu { left:auto; right:0; }
+  .mp-fs-bm-region-menu { width:min(260px, 90vw); max-height:min(340px, 60vh); }
+  .mp-bm-cell { position:relative; }
+  .mp-bm-cell .card, .mp-bm-cell .chart-row { margin:0; }
+  .mp-bm-region-tag {
+    position:absolute; top:10px; left:14px; z-index:3; font-size:10.5px; font-weight:800;
+    letter-spacing:.03em; text-transform:uppercase; padding:3px 10px; border-radius:999px;
+    color:#06231c; box-shadow:0 2px 8px rgba(0,0,0,0.28); pointer-events:none;
+  }
+
   /* --- Dashboard Assistant — rule-based chat, answers computed entirely from data already
      loaded in the browser (REGIONS/SHEETS). No external API calls, no per-query cost. Sits as
      a floating launcher so it's reachable from any region/section, not scoped to one tab. --- */
@@ -926,10 +945,31 @@
 
   <div class="mp-fs-overlay" id="mpFsOverlay" hidden>
     <div class="mp-fs-backdrop" id="mpFsBackdrop"></div>
-    <div class="mp-fs-panel" role="dialog" aria-modal="true" aria-label="Full screen table view">
+    <div class="mp-fs-panel" role="dialog" aria-modal="true" aria-label="Full screen table view" id="mpFsPanel">
       <div class="mp-fs-topbar">
         <div class="mp-fs-title" id="mpFsTitle"></div>
         <div class="mp-fs-controls">
+          <button type="button" class="sb-multiselect-toggle" id="mpFsBenchmarkToggle" aria-pressed="false">
+            <span class="sb-ms-track" aria-hidden="true"><span class="sb-ms-thumb"></span></span>
+            <span class="sb-ms-label">Benchmark View</span>
+          </button>
+          <div class="glass-select" id="mpFsBmRegionSelectWrap">
+            <button type="button" class="glass-select-btn glass" id="mpFsBmRegionSelectBtn" aria-haspopup="listbox" aria-expanded="false">
+              <span id="mpFsBmRegionSelectLabel">Select regions</span>
+              <svg class="gs-caret" viewBox="0 0 12 8" fill="none"><path d="M1 1.5L6 6.5L11 1.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <div class="glass-select-menu mp-fs-table-menu mp-fs-bm-region-menu" id="mpFsBmRegionSelectMenu" role="listbox">
+              <div class="mp-fs-menu-actions">
+                <button type="button" id="mpFsBmRegionSelectAll" class="mp-fs-select-all">
+                  <span class="mp-fs-select-all-glyph" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none"><path d="M3 8.5L6.5 12L13 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+                  Select all
+                </button>
+                <button type="button" id="mpFsBmRegionClearAll" class="mp-fs-clear-all">Clear all</button>
+              </div>
+              <div class="mp-fs-menu-divider"></div>
+              <div class="mp-fs-table-options" id="mpFsBmRegionOptions"></div>
+            </div>
+          </div>
           <div class="glass-select" id="mpFsRegionSelectWrap">
             <button type="button" class="glass-select-btn glass" id="mpFsRegionSelectBtn" aria-haspopup="listbox" aria-expanded="false">
               <span id="mpFsRegionSelectLabel">Region</span>
@@ -2106,18 +2146,31 @@ function renderMainPanel() {
 // sidebar uses, so selecting a table here or in the sidebar keeps both in sync live — no
 // separate state, no snapshot to go stale while the overlay is open.
 let fsOverlayOpen = false;
+// Benchmark View: a second mode inside this same popup for comparing the same table(s) across
+// up to all 4 regions at once. Kept as its own state (not the sidebar's per-region
+// getFocusedSet) since a comparison spans multiple regions at once and isn't "this region's
+// current selection" in the way the rest of the app models selection.
+let benchmarkMode = false;
+let benchmarkRegionSet = new Set();
+let benchmarkTableSet = new Set();
 
 function renderFullscreenOverlay() {
   if (!fsOverlayOpen) return;
   const region = REGIONS.find((r) => r.name === selectedRegion);
   const parsed = region ? getRegionParsed(region) : null;
-  const titles = parsed ? parsed.titles : [];
   const selected = getFocusedSet(selectedRegion);
 
-  document.getElementById("mpFsTitle").textContent = `${region ? region.name : ""} — Full Screen View`;
+  document.getElementById("mpFsPanel").classList.toggle("benchmark-mode", benchmarkMode);
+  document.getElementById("mpFsTitle").textContent = benchmarkMode
+    ? "Benchmark View — Cross-Region Comparison"
+    : `${region ? region.name : ""} — Full Screen View`;
 
-  // Region dropdown: lets someone switch regions from inside full screen. Reuses the same
-  // .gs-option markup/behavior as the header's own region picker (renderRegionPicker()) —
+  const bmToggle = document.getElementById("mpFsBenchmarkToggle");
+  bmToggle.classList.toggle("on", benchmarkMode);
+  bmToggle.setAttribute("aria-pressed", String(benchmarkMode));
+
+  // Single-region dropdown: lets someone switch regions from inside full screen (non-benchmark
+  // mode only). Reuses the same .gs-option markup/behavior as the header's own region picker —
   // picking here updates the one shared selectedRegion, so the sidebar and main panel change
   // right along with it once this closes (or even while it's open, since render() repaints
   // this overlay too).
@@ -2133,14 +2186,49 @@ function renderFullscreenOverlay() {
     };
   });
 
-  // Table dropdown: genuinely per-region (parsed.titles for whichever region is picked above,
-  // never a fixed/shared list) with checkbox rows plus the "select all" pill at the top.
-  // Clicking a row toggles it without closing the menu, since this is a multi-select.
-  const onCount = titles.filter((t) => selected.has(t)).length;
-  document.getElementById("mpFsTableSelectLabel").textContent = onCount ? `${onCount} of ${titles.length} tables` : "Select tables";
+  // Benchmark region dropdown: multi-pick, up to all 4 regions, same checkbox/select-all/
+  // clear-all pattern as the table dropdown (and inherits the same "stay open across multiple
+  // picks, close on outside click" composedPath fix).
+  const bmCount = benchmarkRegionSet.size;
+  document.getElementById("mpFsBmRegionSelectLabel").textContent = bmCount ? `${bmCount} of ${REGIONS.length} regions` : "Select regions";
+  const bmOptionsBox = document.getElementById("mpFsBmRegionOptions");
+  bmOptionsBox.innerHTML = REGIONS.map((r) => {
+    const on = benchmarkRegionSet.has(r.name);
+    return `<button type="button" class="mp-fs-table-option${on ? " on" : ""}" data-region="${encodeURIComponent(r.name)}">
+      <span class="mp-fs-check" aria-hidden="true"></span><span>${r.name}</span>
+    </button>`;
+  }).join("");
+  bmOptionsBox.querySelectorAll(".mp-fs-table-option").forEach((opt) => {
+    opt.addEventListener("click", () => {
+      const name = decodeURIComponent(opt.dataset.region);
+      if (benchmarkRegionSet.has(name)) benchmarkRegionSet.delete(name); else benchmarkRegionSet.add(name);
+      render();
+    });
+  });
+
+  // Table dropdown: in benchmark mode the list is the union of titles across every currently
+  // selected benchmark region (genuinely dynamic — never a fixed/shared list), so picking a
+  // table that only exists in some of those regions is still visible and selectable; outside
+  // benchmark mode it's just the active region's own titles, exactly as before.
+  let tableTitles;
+  if (benchmarkMode) {
+    const activeRegions = REGIONS.filter((r) => benchmarkRegionSet.has(r.name));
+    const seen = new Set();
+    tableTitles = [];
+    activeRegions.forEach((r) => {
+      const p = getRegionParsed(r);
+      if (!p) return;
+      p.titles.forEach((t) => { if (!seen.has(t)) { seen.add(t); tableTitles.push(t); } });
+    });
+  } else {
+    tableTitles = parsed ? parsed.titles : [];
+  }
+  const tableSelSet = benchmarkMode ? benchmarkTableSet : selected;
+  const onCount = tableTitles.filter((t) => tableSelSet.has(t)).length;
+  document.getElementById("mpFsTableSelectLabel").textContent = onCount ? `${onCount} of ${tableTitles.length} tables` : "Select tables";
   const optionsBox = document.getElementById("mpFsTableOptions");
-  optionsBox.innerHTML = titles.map((t) => {
-    const on = selected.has(t);
+  optionsBox.innerHTML = tableTitles.map((t) => {
+    const on = tableSelSet.has(t);
     return `<button type="button" class="mp-fs-table-option${on ? " on" : ""}" data-title="${encodeURIComponent(t)}">
       <span class="mp-fs-check" aria-hidden="true"></span><span>${t}</span>
     </button>`;
@@ -2148,19 +2236,51 @@ function renderFullscreenOverlay() {
   optionsBox.querySelectorAll(".mp-fs-table-option").forEach((opt) => {
     opt.addEventListener("click", () => {
       const title = decodeURIComponent(opt.dataset.title);
-      if (selected.has(title)) selected.delete(title); else selected.add(title);
+      if (tableSelSet.has(title)) tableSelSet.delete(title); else tableSelSet.add(title);
       render();
     });
   });
 
   const grid = document.getElementById("mpFsGrid");
+
+  if (benchmarkMode) {
+    // Comparison grid: one column per selected region (up to 4), rows grouped implicitly by
+    // table since cells are emitted table-by-table, region-by-region within each table. Each
+    // cell carries its own small region-colored tag in the available top-left space rather
+    // than a separate labeled row, per the confirmed design.
+    const activeRegions = REGIONS.filter((r) => benchmarkRegionSet.has(r.name));
+    if (!activeRegions.length || !benchmarkTableSet.size) {
+      grid.style.gridTemplateColumns = "1fr";
+      grid.innerHTML = `<div class="card empty mp-empty-state">Pick two or more regions and at least one table above to compare them side by side.</div>`;
+    } else {
+      grid.style.gridTemplateColumns = `repeat(${Math.min(activeRegions.length, 4)}, 1fr)`;
+      const cells = [];
+      tableTitles.filter((t) => benchmarkTableSet.has(t)).forEach((title) => {
+        activeRegions.forEach((r) => {
+          const p = getRegionParsed(r);
+          const idx = p ? p.titles.indexOf(title) : -1;
+          const card = idx >= 0 ? p.cards[idx] : null;
+          const tag = `<span class="mp-bm-region-tag" style="background:${accentFor(r.name)}">${r.name}</span>`;
+          if (card) {
+            cells.push(`<div class="mp-bm-cell">${tag}${card.outerHTML}</div>`);
+          } else {
+            cells.push(`<div class="mp-bm-cell">${tag}${emptyCard(`No "${title}" data for ${r.name}.`)}</div>`);
+          }
+        });
+      });
+      grid.innerHTML = cells.join("");
+    }
+    return;
+  }
+
+  grid.style.gridTemplateColumns = "";
   if (!selected.size) {
     grid.innerHTML = `<div class="card empty mp-empty-state">Pick one or more tables from the dropdown above (or from the sidebar) to view them here.</div>`;
   } else {
-    const filled = titles
+    const filled = tableTitles
       .filter((t) => selected.has(t))
       .map((t) => {
-        const idx = titles.indexOf(t);
+        const idx = tableTitles.indexOf(t);
         const card = idx >= 0 ? parsed.cards[idx] : null;
         return card ? card.outerHTML : "";
       })
@@ -2196,6 +2316,20 @@ document.addEventListener("keydown", (e) => {
 });
 document.getElementById("mpFsRegionSelectBtn").addEventListener("click", (e) => { e.stopPropagation(); toggleGlassSelect(document.getElementById("mpFsRegionSelectWrap")); });
 document.getElementById("mpFsTableSelectBtn").addEventListener("click", (e) => { e.stopPropagation(); toggleGlassSelect(document.getElementById("mpFsTableSelectWrap")); });
+document.getElementById("mpFsBenchmarkToggle").addEventListener("click", () => {
+  benchmarkMode = !benchmarkMode;
+  closeAllGlassSelects();
+  render();
+});
+document.getElementById("mpFsBmRegionSelectBtn").addEventListener("click", (e) => { e.stopPropagation(); toggleGlassSelect(document.getElementById("mpFsBmRegionSelectWrap")); });
+document.getElementById("mpFsBmRegionSelectAll").addEventListener("click", () => {
+  REGIONS.forEach((r) => benchmarkRegionSet.add(r.name));
+  render();
+});
+document.getElementById("mpFsBmRegionClearAll").addEventListener("click", () => {
+  benchmarkRegionSet.clear();
+  render();
+});
 document.getElementById("mpFsMenuSelectAll").addEventListener("click", () => {
   const region = REGIONS.find((r) => r.name === selectedRegion);
   const parsed = region ? getRegionParsed(region) : null;
