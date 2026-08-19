@@ -614,13 +614,15 @@
   }
   .sb-ms-text { flex:1; min-width:0; }
 
-  .main-panel { flex:1; min-width:0; position:relative; }
+  .main-panel { flex:1; min-width:0; }
   .mp-empty-state { min-height:160px; font-size:14px; }
-  /* Fullscreen toggle: sits pinned at the top-right of the whole main panel (not inside
-     #mainPanelBody, which gets fully re-rendered on every selection change) so it never needs
-     re-wiring — one listener, attached once. */
+  /* Fullscreen toggle: only rendered as part of the actual table-viewing area, and only once
+     something is actually selected — no button shows over the top KPI/region cards, and none
+     shows on the "pick a section" empty state. Sits in a small toolbar row directly above
+     whichever content is currently showing (the single focused card, or the compare stack). */
+  .mp-viewer-toolbar { display:flex; justify-content:flex-end; margin-bottom:8px; }
   .mp-fs-toggle {
-    position:absolute; top:0; right:0; z-index:6; width:32px; height:32px; border-radius:8px;
+    width:30px; height:30px; border-radius:8px;
     display:flex; align-items:center; justify-content:center; cursor:pointer;
     color: var(--text-secondary); background: var(--surface-1); border:1px solid var(--border);
     transition: background .15s ease, color .15s ease;
@@ -843,11 +845,6 @@
     </aside>
     <div class="dash-divider" aria-hidden="true"></div>
     <main class="main-panel">
-      <button type="button" id="mpFullscreenBtn" class="mp-fs-toggle" aria-label="View full screen" title="View full screen">
-        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M9 4H5a1 1 0 0 0-1 1v4M15 4h4a1 1 0 0 1 1 1v4M9 20H5a1 1 0 0 1-1-1v-4M15 20h4a1 1 0 0 0 1-1v-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </button>
       <section class="region-strip" id="regionStrip"></section>
       <div id="mainPanelBody"></div>
     </main>
@@ -1954,6 +1951,7 @@ function renderMainPanel() {
   const parsed = getRegionParsed(region);
   const selected = getFocusedSet(region.name);
   let focusedHtml;
+  let hasSelection = false;
   if (multiSelectMode) {
     // Compare mode: every ticked section gets its own card, stacked, each with a small "×"
     // to drop just that one — this is the only branch that differs from the original
@@ -1961,6 +1959,7 @@ function renderMainPanel() {
     if (!selected.size) {
       focusedHtml = `<div class="card empty mp-empty-state">Compare mode is on — tick as many sections as you like from the sidebar to view them together.</div>`;
     } else {
+      hasSelection = true;
       const items = [...selected].map((title) => {
         const idx = parsed.titles.indexOf(title);
         const card = idx >= 0 ? parsed.cards[idx] : null;
@@ -1977,20 +1976,33 @@ function renderMainPanel() {
     if (focusedTitle) {
       const idx = parsed.titles.indexOf(focusedTitle);
       const card = idx >= 0 ? parsed.cards[idx] : null;
-      focusedHtml = card
-        ? `<div class="mp-focused">${card.outerHTML}</div>`
-        : `<div class="card empty mp-empty-state">That section isn't available for ${region.name} right now — pick another from the sidebar.</div>`;
+      if (card) {
+        hasSelection = true;
+        focusedHtml = `<div class="mp-focused">${card.outerHTML}</div>`;
+      } else {
+        focusedHtml = `<div class="card empty mp-empty-state">That section isn't available for ${region.name} right now — pick another from the sidebar.</div>`;
+      }
     } else {
       focusedHtml = `<div class="card empty mp-empty-state">Pick a section from the sidebar to view its data.</div>`;
     }
   }
-  body.innerHTML = `${parsed.headHtml}${parsed.kpiHtml}${focusedHtml}`;
+  // The full-screen toggle only ever shows once there's actually something selected to view —
+  // never over the top region/KPI cards, and never on the "pick a section" empty state.
+  const toolbarHtml = hasSelection ? `<div class="mp-viewer-toolbar">
+    <button type="button" id="mpFullscreenBtn" class="mp-fs-toggle" aria-label="View full screen" title="View full screen">
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M9 4H5a1 1 0 0 0-1 1v4M15 4h4a1 1 0 0 1 1 1v4M9 20H5a1 1 0 0 1-1-1v-4M15 20h4a1 1 0 0 0 1-1v-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+  </div>` : "";
+  body.innerHTML = `${parsed.headHtml}${parsed.kpiHtml}${toolbarHtml}${focusedHtml}`;
   body.querySelectorAll(".mp-compare-remove").forEach((btn) => {
     btn.addEventListener("click", () => {
       getFocusedSet(selectedRegion).delete(decodeURIComponent(btn.dataset.title));
       render();
     });
   });
+  document.getElementById("mpFullscreenBtn")?.addEventListener("click", openFullscreenOverlay);
 }
 
 // --- Full-screen table viewer -------------------------------------------------------------
@@ -2051,10 +2063,11 @@ function openFullscreenOverlay() {
 function closeFullscreenOverlay() {
   fsOverlayOpen = false;
   document.getElementById("mpFsOverlay").hidden = true;
-  document.getElementById("mpFullscreenBtn").focus();
+  // The toggle button now only exists in the DOM while something's selected (rebuilt on every
+  // renderMainPanel() call), so it may not be present to refocus — fall back to the body.
+  (document.getElementById("mpFullscreenBtn") || document.body).focus();
 }
 
-document.getElementById("mpFullscreenBtn").addEventListener("click", openFullscreenOverlay);
 document.getElementById("mpFsClose").addEventListener("click", closeFullscreenOverlay);
 document.getElementById("mpFsBackdrop").addEventListener("click", closeFullscreenOverlay);
 document.addEventListener("keydown", (e) => {
