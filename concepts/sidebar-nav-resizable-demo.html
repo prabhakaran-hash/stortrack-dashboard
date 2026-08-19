@@ -2250,6 +2250,7 @@ function wireCompareGrid(gridEl, regionName) {
   // for a side-by-side layout — rather than recomputing a fresh "hug the content" height that
   // would silently undo that custom sizing.
   const DRAG_SHRINK_H = 3;
+  const DRAG_SHRINK_PX = DRAG_SHRINK_H * GS_CELL_HEIGHT + (DRAG_SHRINK_H - 1) * GS_MARGIN;
   const realHBeforeDrag = new WeakMap();
   grid.on("dragstart", (event, itemsOrEl) => {
     toElements(itemsOrEl).forEach((el) => {
@@ -2258,6 +2259,18 @@ function wireCompareGrid(gridEl, regionName) {
       realHBeforeDrag.set(el, node.h);
       if (node.h <= DRAG_SHRINK_H) return;
       grid.update(el, { h: DRAG_SHRINK_H });
+      // grid.update() above only changes the grid engine's bookkeeping (the gs-h attribute it
+      // reads to decide where OTHER panels need to shift out of the way) — it does nothing to
+      // what's actually visible under the cursor. The moment a drag starts, GridStack's own drag
+      // engine locks the panel you're holding to a `position:fixed` box with its ORIGINAL,
+      // pre-shrink pixel height written directly into its inline style — set once, right before
+      // this handler even runs — and update() never touches that. So the panel kept rendering at
+      // full size the entire time it was being dragged, no matter what "h" we asked for above,
+      // which is exactly why it was hard to see or aim at the small reserved gap while placing it.
+      // Overwriting that inline height ourselves, right here, is what actually shrinks what you
+      // see and drag around. GridStack restores the original inline value on its own the instant
+      // the drag ends (before "dragstop" fires), so there's nothing to clean up on our side.
+      el.style.height = DRAG_SHRINK_PX + "px";
     });
   });
   // Auto-scrolls the page while a drag nears the top/bottom edge of the visible viewport, so
