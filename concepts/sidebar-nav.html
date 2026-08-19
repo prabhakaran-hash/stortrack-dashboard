@@ -73,6 +73,16 @@
   #themeToggle[aria-pressed="true"] svg { transform: rotate(180deg); }
   * { box-sizing: border-box; }
   html, body { margin:0; padding:0; background: #071614; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; transition: background .2s ease; }
+  /* The page's own (outer) scrollbar — the strip running the full window height on the right
+     edge — defaults to Chrome's plain white track, which reads as a hard seam against the dark
+     glassy page. Earlier this got confused with the sidebar's own internal list scrollbar
+     (.sb-scroll-list below); this is the actual one the feedback screenshots were pointing at.
+     Blending means matching the track to the surrounding page background — not making it
+     transparent (that leaves nothing behind it but flat white from the OS chrome) — while
+     leaving the thumb/arrow-button rendering exactly as the browser default, since that already
+     reads fine. */
+  html::-webkit-scrollbar-track { background: #071614; }
+  html[data-theme="light"]::-webkit-scrollbar-track { background: #f5f3e9; }
   .wrap { max-width: 1240px; margin: 0 auto; padding: 0 24px 60px; }
 
   /* Tightened from the original (22/20 padding, 24 margin, 4px accent bar) — that much air plus
@@ -191,7 +201,45 @@
   html[data-theme="light"] .sidebar.sb-popped #sidebarSections {
     opacity: 0.85;
   }
-  #sidebarSections { transition: filter .18s ease, opacity .18s ease; }
+  #sidebarSections {
+    transition: filter .18s ease, opacity .18s ease;
+  }
+  .sidebar.sb-analyst-active #sidebarSections {
+    flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0;
+  }
+  /* The actual scrollable region: only the section list scrolls, the toggle bar above it
+     (region picker/Analyst View live outside this box already) stays put. Scoped to Analyst
+     View being on — outside it, the sidebar isn't height-capped so there's nothing to scroll
+     and this should behave like a plain block, not force a scroll container. */
+  .sidebar.sb-analyst-active .sb-scroll-list { flex: 1 1 auto; overflow-y: auto; min-height: 0; }
+  /* Scrollbar track/corner default to opaque white in Chrome, which reads as a hard seam against
+     the sidebar's translucent glass panel. Leaving the thumb/arrow-button styling untouched (they
+     already read fine per feedback) and blending the track to the sidebar's own glass tint
+     (rather than transparent, which would show flat page background instead of the glass look). */
+  /* Chrome on Windows renders the classic (non-overlay) scrollbar gutter with its own opaque
+     white backing unless a custom ::-webkit-scrollbar width is declared alongside the track —
+     without that width rule, -track color gets ignored and the native white gutter shows through
+     regardless of alpha. Declaring the width switches it to the custom-drawn scrollbar so the
+     track color actually takes effect and merges into the glass panel with no visible frame. */
+  /* 16px keeps room for the native up/down arrow glyphs to render fully — the narrower 12px
+     used earlier was clipping them, which is why the arrows/thumb looked like they'd vanished
+     rather than just having their white backing blended away. */
+  /* Straight color swap on the classic scrollbar: keep its native size/track/thumb/arrow-button
+     structure exactly as the browser draws it, just recolor the track from Chrome's default
+     white to a solid grey so it doesn't clash — no transparency, so it stays clearly visible
+     instead of fading into the panel. */
+  /* #cfd4d2 read fine against the light theme's pale sidebar, but against the dark theme's deep
+     glass panel that same light grey reads as stark white by contrast. Dark mode (the default)
+     now gets a muted charcoal track with a softer grey thumb that sits naturally on the dark
+     glass instead of popping off it; light mode keeps the original lighter tones. */
+  .sidebar.sb-analyst-active .sb-scroll-list::-webkit-scrollbar { width: 16px; }
+  .sidebar.sb-analyst-active .sb-scroll-list::-webkit-scrollbar-track { background: #263029; }
+  .sidebar.sb-analyst-active .sb-scroll-list::-webkit-scrollbar-corner { background: #263029; }
+  .sidebar.sb-analyst-active .sb-scroll-list::-webkit-scrollbar-thumb { background: #5c6b63; border-radius: 0; }
+  html[data-theme="light"] .sidebar.sb-analyst-active .sb-scroll-list::-webkit-scrollbar-track { background: #cfd4d2; }
+  html[data-theme="light"] .sidebar.sb-analyst-active .sb-scroll-list::-webkit-scrollbar-corner { background: #cfd4d2; }
+  html[data-theme="light"] .sidebar.sb-analyst-active .sb-scroll-list::-webkit-scrollbar-thumb { background: #8a9490; }
+  .sb-ms-actions { display: flex; align-items: center; gap: 10px; }
   /* Spring "pop" open — the 3D Touch peek gesture overshoots slightly before settling, instead
      of a flat linear fade/slide. Scoped to the sidebar's region dropdown only so the header's
      interval dropdown keeps its original simple transition. */
@@ -449,6 +497,21 @@
     box-shadow: 0 14px 34px rgba(0,0,0,0.35), 0 2px 10px rgba(0,0,0,0.22);
     transition: box-shadow .32s cubic-bezier(.2,1.4,.4,1), transform .32s cubic-bezier(.2,1.4,.4,1);
   }
+  /* The fixed-header/scrolling-list treatment is only relevant once Analyst View's checklist can
+     get long — outside Analyst View the original behavior (panel just grows with its content,
+     no cap, no inner scrollbar) is what's wanted, so all of this is scoped to this class rather
+     than the bare .sidebar. renderSidebar() toggles it based on multiSelectMode. Caps the whole
+     panel to the viewport height and turns it into a column so the region picker + Analyst View
+     toggle (fixed-height content above) and the section list (the part that can genuinely get
+     long) can be told apart: the list gets the one flexible slot below them and scrolls on its
+     own, while everything above it never moves. See #sidebarSections and .sb-scroll-list below.
+     display:flex + flex-direction:column lets a single flex-basis:auto child (#sidebarSections)
+     claim exactly the remaining height. */
+  .sidebar.sb-analyst-active {
+    height: max-content; max-height: calc(100vh - 32px);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .sidebar.sb-analyst-active > .region-picker, .sidebar.sb-analyst-active > .sb-divider { flex: none; }
   /* The real "3D Touch" signature isn't just a shadow on the dropdown — it's the rest of the
      screen dimming so the popped element reads as physically lifted forward by contrast, not
      just by its own shadow. #sbDropdownScrim is a fixed full-page veil, explicitly stacked
@@ -1733,6 +1796,10 @@ function renderSidebar() {
   // current region's section list below it, instead of looping over all 4 regions with
   // their own expand/collapse chevrons.
   const box = document.getElementById("sidebarSections");
+  // The height-capped/scrolling treatment only makes sense once Analyst View's checklist is
+  // showing — outside it the panel should just grow with its content like before, no inner
+  // scrollbar. Toggling this class is what CSS above keys off of.
+  document.getElementById("sidebarNav")?.classList.toggle("sb-analyst-active", multiSelectMode);
   const r = REGIONS.find((x) => x.name === selectedRegion);
   if (!r) { box.innerHTML = ""; return; }
   const parsed = getRegionParsed(r);
@@ -1744,7 +1811,7 @@ function renderSidebar() {
       <span class="sb-ms-track"><span class="sb-ms-thumb"></span></span>
       <span class="sb-ms-label">Analyst View</span>
     </button>
-    ${multiSelectMode && selected.size ? `<div class="sb-ms-meta"><span>${selected.size} selected</span><button type="button" id="msClearAll" class="sb-ms-clear">Clear all</button></div>` : ""}
+    ${multiSelectMode ? `<div class="sb-ms-meta"><span>${selected.size ? `${selected.size} selected` : ""}</span><div class="sb-ms-actions"><button type="button" id="msSelectAll" class="sb-ms-clear">Select all</button>${selected.size ? `<button type="button" id="msClearAll" class="sb-ms-clear">Clear all</button>` : ""}</div></div>` : ""}
   </div>`;
 
   const listHtml = titles.length
@@ -1754,7 +1821,7 @@ function renderSidebar() {
       }).join("")}</ul>`
     : `<div class="sb-sections-empty">${r.status === "error" && !r.data ? "Sync failed — no sections available" : "Loading sections…"}</div>`;
 
-  box.innerHTML = toggleBar + listHtml;
+  box.innerHTML = toggleBar + `<div class="sb-scroll-list">${listHtml}</div>`;
 
   document.getElementById("multiSelectToggle")?.addEventListener("click", () => {
     multiSelectMode = !multiSelectMode;
@@ -1775,6 +1842,11 @@ function renderSidebar() {
   });
   document.getElementById("msClearAll")?.addEventListener("click", () => {
     getFocusedSet(selectedRegion).clear();
+    render();
+  });
+  document.getElementById("msSelectAll")?.addEventListener("click", () => {
+    const sel = getFocusedSet(selectedRegion);
+    titles.forEach((t) => sel.add(t));
     render();
   });
 
