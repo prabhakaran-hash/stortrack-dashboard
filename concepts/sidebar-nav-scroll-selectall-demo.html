@@ -712,7 +712,14 @@
      gets its own option markup (.mp-fs-table-option) instead of reusing single-pick .gs-option —
      but keeps the same frosted panel, radius and hover language as the region dropdown next to
      it, so the two read as one family. */
-  .mp-fs-table-menu { min-width:300px; max-height:min(420px, 60vh); display:flex; flex-direction:column; }
+  /* This dropdown sits right next to the close button near the panel's right edge, so opening
+     it the default left-anchored way (like the region dropdown, which has room to its right)
+     would push it straight off the viewport — anchor it from the right edge of its own button
+     instead, and give it enough width that table names (some genuinely long, e.g. "Facility
+     Type × Operator Type — NRSF") don't get truncated. */
+  #mpFsTableSelectWrap .glass-select-menu { left:auto; right:0; }
+  .mp-fs-table-menu { width:min(380px, 92vw); max-height:min(420px, 60vh); display:flex; flex-direction:column; }
+  .mp-fs-table-option span:last-child { white-space:normal; }
   .mp-fs-menu-actions { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:4px 4px 8px; }
   /* The "select all" action is the one thing in this menu meant to draw the eye first — a solid
      lime pill with a check glyph reads as a deliberate, premium action rather than a plain text
