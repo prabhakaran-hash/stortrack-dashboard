@@ -614,14 +614,23 @@
       width var(--gs-move-duration) var(--gs-move-ease),
       height var(--gs-move-duration) var(--gs-move-ease) !important;
   }
-  /* The drop-target "shadow" — restyled from GridStack's flat grey blob into a bordered,
-     accent-tinted slot so it reads as a deliberate landing zone. It still needs to track the
-     dragged panel with zero delay (any easing here is what caused the "shadow following"
-     glitch — it was chasing a target that had already moved on), so it's the one thing in the
-     grid explicitly exempted from the shared transition above. */
+  /* The drop-target marker — deliberately small and centered in the landing slot instead of
+     filling it edge-to-edge. A full-size shadow tracking the cursor at speed is what read as a
+     big shape "flying" around the grid; a small fixed marker just says "it'll land about here"
+     without dragging a large shape across the screen. The panel itself only grows to full size
+     once you actually drop it. It still needs to track the dragged panel with zero delay (any
+     easing here is what caused the "shadow following" glitch — it was chasing a target that had
+     already moved on), so it's the one thing in the grid explicitly exempted from the shared
+     transition above. */
   .grid-stack-placeholder > .placeholder-content {
-    background: rgba(33,163,126,0.12); border: 2px dashed var(--accent); border-radius:10px;
-    inset: 4px !important; margin:0;
+    position: absolute !important;
+    inset: auto !important;
+    top: 50% !important; left: 50% !important;
+    width: 46px; height: 46px;
+    max-width: calc(100% - 12px); max-height: calc(100% - 12px);
+    transform: translate(-50%, -50%);
+    background: rgba(33,163,126,0.18); border: 2px dashed var(--accent); border-radius:10px;
+    margin:0;
   }
   .grid-stack-item.grid-stack-placeholder,
   .grid-stack-item.ui-draggable-dragging,
@@ -1774,6 +1783,11 @@ let expandedRegions = new Set([selectedRegion]);
 let focusedSectionByRegion = {};
 let lastSingleTitleByRegion = {};
 let multiSelectMode = false;
+// Set the moment a section gets freshly ticked on in Analyst View, so the next
+// renderMainPanel()/wireCompareGrid() pass knows which panel to scroll into view once it's been
+// placed at the bottom of the stack — cleared right after that scroll happens (or if it turns
+// out not to apply, e.g. the mode got turned off before the render caught up).
+let pendingScrollToTitle = null;
 function getFocusedSet(regionName) {
   if (!focusedSectionByRegion[regionName]) focusedSectionByRegion[regionName] = new Set();
   return focusedSectionByRegion[regionName];
@@ -1865,7 +1879,15 @@ function renderSidebar() {
       const title = decodeURIComponent(btn.dataset.title);
       const sel = getFocusedSet(selectedRegion);
       if (multiSelectMode) {
-        if (sel.has(title)) sel.delete(title); else sel.add(title);
+        if (sel.has(title)) {
+          sel.delete(title);
+        } else {
+          sel.add(title);
+          // Freshly ticked on — it'll land below every other selected panel; once it's
+          // actually placed there, scroll it into view instead of leaving the user to hunt
+          // for it further down the page.
+          pendingScrollToTitle = title;
+        }
       } else {
         sel.clear();
         sel.add(title);
@@ -2034,6 +2056,24 @@ function wireCompareGrid(gridEl, regionName) {
       grid.update(el, { maxH });
     }
   });
+
+  // A section that was just ticked on lands here, below every other selected panel — now that
+  // it's actually in place, scroll it into view so the user lands right on it instead of having
+  // to hunt further down the page for what they just picked.
+  if (pendingScrollToTitle) {
+    const targetEl = gridEl.querySelector(
+      `.grid-stack-item[gs-id="${encodeURIComponent(pendingScrollToTitle)}"]`
+    );
+    pendingScrollToTitle = null;
+    if (targetEl) {
+      // A tick's delay lets GridStack finish placing/animating the panel into its landing
+      // spot first, so the scroll targets where it's actually settling rather than a
+      // mid-transition position.
+      requestAnimationFrame(() => {
+        targetEl.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
+  }
 
   // Growing a panel is pointless if the data table inside it is still clamped to its own short
   // internal scrollbar — so as soon as a panel is resized, that table's cap comes off and it's
