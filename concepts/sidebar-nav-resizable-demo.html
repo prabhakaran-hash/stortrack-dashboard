@@ -651,6 +651,19 @@
     transition: none !important;
   }
   .grid-stack-item:hover > .grid-stack-item-content { outline: 1px solid var(--accent); outline-offset:-1px; }
+  /* A freshly-ticked panel's card starts invisible and slightly lowered, then eases up into
+     place — instead of just materializing fully-formed the instant it's added — for the same
+     "real dashboard" feel a smooth reveal gives. This lives on the card itself (a child of
+     .grid-stack-item-content), never on .grid-stack-item/.grid-stack-item-content directly,
+     because those two already own the position/size transition above (with !important) — a
+     second `transition` rule on the same element would replace that one outright rather than
+     add to it. wireCompareGrid adds "mp-enter-in" one frame after mount to trigger this. */
+  .mp-enter-wrap {
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity .34s ease, transform .34s cubic-bezier(.22,1,.36,1);
+  }
+  .mp-enter-wrap.mp-enter-in { opacity: 1; transform: translateY(0); }
   .mp-compare-remove {
     position:absolute; top:10px; right:10px; z-index:7; width:24px; height:24px; border-radius:50%;
     display:flex; align-items:center; justify-content:center; font-size:15px; line-height:1; font-weight:700;
@@ -1969,10 +1982,17 @@ function renderMainPanel() {
         const posAttrs = pos
           ? `gs-x="${pos.x}" gs-y="${pos.y}" gs-w="${pos.w}" gs-h="${pos.h}"`
           : `gs-x="0" gs-y="${i * 5}" gs-w="12" gs-h="5" data-auto-h="1"`;
+        // A genuinely new panel (no remembered position — see the `pos` check above) gets its
+        // card wrapped for a fade/slide-in entrance (see .mp-enter-wrap CSS and the matching
+        // reveal logic in wireCompareGrid's fit pass) instead of just materializing fully-formed
+        // the instant the grid mounts it. An already-placed panel being redrawn (a data sync, a
+        // theme toggle) skips the wrapper entirely — it's not "arriving", so it shouldn't replay
+        // an entrance animation every time.
+        const cardHtml = pos ? card.outerHTML : `<div class="mp-enter-wrap">${card.outerHTML}</div>`;
         return `<div class="grid-stack-item" gs-id="${encodeURIComponent(title)}" ${posAttrs}>
           <div class="grid-stack-item-content">
             <button type="button" class="mp-compare-remove" data-title="${encodeURIComponent(title)}" aria-label="Remove ${title} from comparison">×</button>
-            ${card.outerHTML}
+            ${cardHtml}
           </div>
         </div>`;
       }).filter(Boolean);
@@ -2113,7 +2133,7 @@ function addComparePanel(regionName, title) {
   wrap.setAttribute("gs-id", encodeURIComponent(title));
   wrap.innerHTML = `<div class="grid-stack-item-content">
     <button type="button" class="mp-compare-remove" data-title="${encodeURIComponent(title)}" aria-label="Remove ${title} from comparison">×</button>
-    ${card.outerHTML}
+    <div class="mp-enter-wrap">${card.outerHTML}</div>
   </div>`;
   wireRemoveButton(wrap.querySelector(".mp-compare-remove"), regionName);
   // Placeholder height for the very first paint (see the requestAnimationFrame deferral below
@@ -2125,11 +2145,22 @@ function addComparePanel(regionName, title) {
     grid.update(wrap, { h: needed, maxH });
     const layout = getCompareLayout(regionName);
     layout[title] = Object.assign({}, layout[title], { x: 0, y: nextY, w: 12, h: needed });
+    revealEnterWrap(wrap);
     requestAnimationFrame(() => {
       wrap.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   });
   return true;
+}
+// Triggers the fade/slide-in defined by .mp-enter-wrap/.mp-enter-in in the CSS above. Needs one
+// more frame after the panel's real size lands: adding "mp-enter-in" in the very same tick as
+// the opacity:0 starting state was just written to the DOM would let the browser coalesce both
+// into a single style recalculation with nothing to visibly transition from — the same reason
+// the initial auto-fit sizing elsewhere in this file is deferred a frame before running.
+function revealEnterWrap(el) {
+  const target = el.querySelector(".mp-enter-wrap");
+  if (!target) return;
+  requestAnimationFrame(() => target.classList.add("mp-enter-in"));
 }
 
 function wireCompareGrid(gridEl, regionName) {
@@ -2195,6 +2226,7 @@ function wireCompareGrid(gridEl, regionName) {
         el.removeAttribute("data-auto-h");
         const layout = getCompareLayout(regionName);
         layout[title] = Object.assign({}, layout[title], { x: 0, y: nextY - needed, w: 12, h: needed });
+        revealEnterWrap(el);
       } else {
         grid.update(el, { maxH });
       }
