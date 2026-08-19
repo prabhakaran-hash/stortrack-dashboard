@@ -224,10 +224,14 @@
   /* 16px keeps room for the native up/down arrow glyphs to render fully — the narrower 12px
      used earlier was clipping them, which is why the arrows/thumb looked like they'd vanished
      rather than just having their white backing blended away. */
+  /* Straight color swap on the classic scrollbar: keep its native size/track/thumb/arrow-button
+     structure exactly as the browser draws it, just recolor the track from Chrome's default
+     white to a solid grey so it doesn't clash — no transparency, so it stays clearly visible
+     instead of fading into the panel. */
   .sidebar.sb-analyst-active .sb-scroll-list::-webkit-scrollbar { width: 16px; }
-  .sidebar.sb-analyst-active .sb-scroll-list::-webkit-scrollbar-track { background: rgba(180,196,188,0.55); }
-  .sidebar.sb-analyst-active .sb-scroll-list::-webkit-scrollbar-corner { background: transparent; }
-  html[data-theme="light"] .sidebar.sb-analyst-active .sb-scroll-list::-webkit-scrollbar-track { background: rgba(200,210,200,0.6); }
+  .sidebar.sb-analyst-active .sb-scroll-list::-webkit-scrollbar-track { background: #cfd4d2; }
+  .sidebar.sb-analyst-active .sb-scroll-list::-webkit-scrollbar-corner { background: #cfd4d2; }
+  .sidebar.sb-analyst-active .sb-scroll-list::-webkit-scrollbar-thumb { background: #8a9490; border-radius: 0; }
   .sb-ms-actions { display: flex; align-items: center; gap: 10px; }
   /* Spring "pop" open — the 3D Touch peek gesture overshoots slightly before settling, instead
      of a flat linear fade/slide. Scoped to the sidebar's region dropdown only so the header's
