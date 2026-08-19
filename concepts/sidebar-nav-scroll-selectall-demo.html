@@ -614,8 +614,19 @@
   }
   .sb-ms-text { flex:1; min-width:0; }
 
-  .main-panel { flex:1; min-width:0; }
+  .main-panel { flex:1; min-width:0; position:relative; }
   .mp-empty-state { min-height:160px; font-size:14px; }
+  /* Fullscreen toggle: sits pinned at the top-right of the whole main panel (not inside
+     #mainPanelBody, which gets fully re-rendered on every selection change) so it never needs
+     re-wiring — one listener, attached once. */
+  .mp-fs-toggle {
+    position:absolute; top:0; right:0; z-index:6; width:32px; height:32px; border-radius:8px;
+    display:flex; align-items:center; justify-content:center; cursor:pointer;
+    color: var(--text-secondary); background: var(--surface-1); border:1px solid var(--border);
+    transition: background .15s ease, color .15s ease;
+  }
+  .mp-fs-toggle:hover { background: rgba(255,255,255,0.08); color: var(--text-primary); }
+  .mp-fs-toggle svg { width:16px; height:16px; }
   .mp-focused .card { margin:0; }
   /* Stacked comparison view: each selected section keeps its own card, with a small remove
      control so someone can back out of the comparison one item at a time. */
@@ -636,6 +647,47 @@
     .dash-shell { flex-direction:column; }
     .sidebar { width:100%; position:static; }
   }
+
+  /* --- Full-screen table viewer: an in-page overlay (not a new tab/window) that reuses the
+     exact same .chart-row / .card / .card.empty grid language as index.html, just scaled up to
+     take the whole viewport. Unfilled grid slots render as empty cards, same as index.html's
+     own emptyCard() placeholders, so "select 1 of 2 slots" visibly leaves the other one blank
+     rather than collapsing the layout. */
+  .mp-fs-overlay { position:fixed; inset:0; z-index:300; display:flex; align-items:center; justify-content:center; padding:24px; }
+  .mp-fs-overlay[hidden] { display:none; }
+  .mp-fs-backdrop { position:absolute; inset:0; background:rgba(4,10,9,0.72); backdrop-filter: blur(3px); }
+  html[data-theme="light"] .mp-fs-backdrop { background:rgba(20,30,28,0.45); }
+  .mp-fs-panel {
+    position:relative; width:min(1400px, 100%); height:100%; display:flex; flex-direction:column;
+    background: var(--surface-0, #0d1a17); border:1px solid var(--border); border-radius:16px;
+    box-shadow: 0 24px 60px rgba(0,0,0,0.5); overflow:hidden;
+  }
+  html[data-theme="light"] .mp-fs-panel { background:#f5f3e9; }
+  .mp-fs-topbar { flex:none; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:16px 20px; border-bottom:1px solid var(--border); }
+  .mp-fs-title { font-size:15px; font-weight:700; color: var(--text-primary); }
+  .mp-fs-controls { display:flex; align-items:center; gap:14px; }
+  .mp-fs-controls button.sb-ms-clear { font-size:12.5px; }
+  .mp-fs-close {
+    width:30px; height:30px; border-radius:8px; display:flex; align-items:center; justify-content:center;
+    font-size:17px; line-height:1; color: var(--text-secondary); background: transparent; border:1px solid var(--border);
+    cursor:pointer; transition: background .15s ease, color .15s ease;
+  }
+  .mp-fs-close:hover { background: rgba(229,96,95,0.16); color: var(--bad, #e5605f); }
+  /* Chip strip: lets someone add/remove tables without leaving full screen — mirrors the
+     sidebar's own checklist so the two stay perfectly in sync (both read/write the same
+     getFocusedSet(), so a change from either place updates both immediately). */
+  .mp-fs-chips { flex:none; display:flex; flex-wrap:wrap; gap:8px; padding:12px 20px; border-bottom:1px solid var(--border); max-height:104px; overflow-y:auto; }
+  .mp-fs-chip {
+    font-size:12.5px; font-weight:600; padding:6px 12px; border-radius:999px; cursor:pointer;
+    color: var(--text-secondary); background: var(--surface-1); border:1px solid var(--border);
+    transition: background .12s ease, color .12s ease, border-color .12s ease;
+  }
+  .mp-fs-chip.on { color:#0d2b20; background: var(--brand-lime, #98f387); border-color: transparent; }
+  html[data-theme="light"] .mp-fs-chip.on { color:#fff; background: var(--navy-2, #02756e); }
+  .mp-fs-grid-wrap { flex:1 1 auto; overflow-y:auto; padding:20px; min-height:0; }
+  .mp-fs-grid { display:grid; grid-template-columns: 1fr 1fr; gap:16px; align-content:start; }
+  .mp-fs-grid .card, .mp-fs-grid .chart-row { margin:0; }
+  @media (max-width: 900px) { .mp-fs-grid { grid-template-columns: 1fr; } }
 
   /* --- Dashboard Assistant — rule-based chat, answers computed entirely from data already
      loaded in the browser (REGIONS/SHEETS). No external API calls, no per-query cost. Sits as
@@ -791,9 +843,30 @@
     </aside>
     <div class="dash-divider" aria-hidden="true"></div>
     <main class="main-panel">
+      <button type="button" id="mpFullscreenBtn" class="mp-fs-toggle" aria-label="View full screen" title="View full screen">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M9 4H5a1 1 0 0 0-1 1v4M15 4h4a1 1 0 0 1 1 1v4M9 20H5a1 1 0 0 1-1-1v-4M15 20h4a1 1 0 0 0 1-1v-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
       <section class="region-strip" id="regionStrip"></section>
       <div id="mainPanelBody"></div>
     </main>
+  </div>
+
+  <div class="mp-fs-overlay" id="mpFsOverlay" hidden>
+    <div class="mp-fs-backdrop" id="mpFsBackdrop"></div>
+    <div class="mp-fs-panel" role="dialog" aria-modal="true" aria-label="Full screen table view">
+      <div class="mp-fs-topbar">
+        <div class="mp-fs-title" id="mpFsTitle"></div>
+        <div class="mp-fs-controls">
+          <button type="button" id="mpFsSelectAll" class="sb-ms-clear">Select all</button>
+          <button type="button" id="mpFsClearAll" class="sb-ms-clear">Clear all</button>
+          <button type="button" id="mpFsClose" class="mp-fs-close" aria-label="Close full screen">×</button>
+        </div>
+      </div>
+      <div class="mp-fs-chips" id="mpFsChips"></div>
+      <div class="mp-fs-grid-wrap"><div class="mp-fs-grid" id="mpFsGrid"></div></div>
+    </div>
   </div>
 
   <footer class="foot" id="footNote">Sources: live Google Sheets, polled client-side. Loading…</footer>
@@ -1920,11 +1993,92 @@ function renderMainPanel() {
   });
 }
 
+// --- Full-screen table viewer -------------------------------------------------------------
+// An in-page overlay (never a new tab/window) that reuses index.html's own .chart-row/.card
+// grid language at full viewport size. It reads/writes the exact same getFocusedSet() the
+// sidebar uses, so selecting a table here or in the sidebar keeps both in sync live — no
+// separate state, no snapshot to go stale while the overlay is open.
+let fsOverlayOpen = false;
+
+function renderFullscreenOverlay() {
+  if (!fsOverlayOpen) return;
+  const region = REGIONS.find((r) => r.name === selectedRegion);
+  const parsed = region ? getRegionParsed(region) : null;
+  const titles = parsed ? parsed.titles : [];
+  const selected = getFocusedSet(selectedRegion);
+
+  document.getElementById("mpFsTitle").textContent = `${region ? region.name : ""} — Full Screen View`;
+
+  document.getElementById("mpFsChips").innerHTML = titles.map((t) => {
+    const on = selected.has(t);
+    return `<button type="button" class="mp-fs-chip${on ? " on" : ""}" data-title="${encodeURIComponent(t)}">${t}</button>`;
+  }).join("");
+  document.getElementById("mpFsChips").querySelectorAll(".mp-fs-chip").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      const title = decodeURIComponent(chip.dataset.title);
+      if (selected.has(title)) selected.delete(title); else selected.add(title);
+      render();
+    });
+  });
+
+  const grid = document.getElementById("mpFsGrid");
+  if (!selected.size) {
+    grid.innerHTML = `<div class="card empty mp-empty-state">Pick one or more tables above (or from the sidebar) to view them here.</div>`;
+  } else {
+    const filled = titles
+      .filter((t) => selected.has(t))
+      .map((t) => {
+        const idx = titles.indexOf(t);
+        const card = idx >= 0 ? parsed.cards[idx] : null;
+        return card ? card.outerHTML : "";
+      })
+      .filter(Boolean);
+    // Same "leave the other slot blank" behavior as index.html's own emptyCard() placeholders:
+    // an odd count just leaves the last row half-empty instead of stretching the lone card
+    // across both columns, so the grid always reads as the same fixed 2-up layout.
+    if (filled.length % 2 === 1) filled.push(emptyCard("Select another table to fill this slot."));
+    grid.innerHTML = filled.join("");
+  }
+}
+
+function openFullscreenOverlay() {
+  fsOverlayOpen = true;
+  document.getElementById("mpFsOverlay").hidden = false;
+  renderFullscreenOverlay();
+  document.getElementById("mpFsClose").focus();
+}
+
+function closeFullscreenOverlay() {
+  fsOverlayOpen = false;
+  document.getElementById("mpFsOverlay").hidden = true;
+  document.getElementById("mpFullscreenBtn").focus();
+}
+
+document.getElementById("mpFullscreenBtn").addEventListener("click", openFullscreenOverlay);
+document.getElementById("mpFsClose").addEventListener("click", closeFullscreenOverlay);
+document.getElementById("mpFsBackdrop").addEventListener("click", closeFullscreenOverlay);
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && fsOverlayOpen) closeFullscreenOverlay();
+});
+document.getElementById("mpFsSelectAll").addEventListener("click", () => {
+  const region = REGIONS.find((r) => r.name === selectedRegion);
+  const parsed = region ? getRegionParsed(region) : null;
+  const titles = parsed ? parsed.titles : [];
+  const sel = getFocusedSet(selectedRegion);
+  titles.forEach((t) => sel.add(t));
+  render();
+});
+document.getElementById("mpFsClearAll").addEventListener("click", () => {
+  getFocusedSet(selectedRegion).clear();
+  render();
+});
+
 function render() {
   renderRegionPicker();
   renderRegionStrip();
   renderSidebar();
   renderMainPanel();
+  renderFullscreenOverlay();
 }
 
 document.getElementById("refreshNow").addEventListener("click", () => { consecutiveFailures = 0; restartPolling(); syncAll(); });
