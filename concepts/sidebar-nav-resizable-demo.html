@@ -2002,7 +2002,11 @@ function wireCompareGrid(gridEl, regionName) {
     if (card) card.style.height = "auto";
     const prevMaxHeights = capScrollTables ? null : scrollTables.map((t) => t.style.maxHeight);
     if (!capScrollTables) scrollTables.forEach((t) => { t.style.maxHeight = "none"; });
-    const px = contentEl.scrollHeight;
+    // Measure the card's own natural height, not the scrollable wrapper's — the wrapper has an
+    // explicit height set by GridStack plus overflow:auto, so its scrollHeight is clamped to
+    // max(its own imposed height, content height) and never reports a shrink. The card is the
+    // element whose height we just freed to "auto", so it's the one that reflects true content size.
+    const px = card ? card.scrollHeight : contentEl.scrollHeight;
     if (card) card.style.height = prevCardHeight || "";
     if (!capScrollTables) scrollTables.forEach((t, i) => { t.style.maxHeight = prevMaxHeights[i] || ""; });
     return px;
