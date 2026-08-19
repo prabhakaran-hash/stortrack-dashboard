@@ -1957,7 +1957,14 @@ function renderMainPanel() {
   }
   body.innerHTML = `${parsed.headHtml}${parsed.kpiHtml}${focusedHtml}`;
   body.querySelectorAll(".mp-compare-remove").forEach((btn) => {
-    btn.addEventListener("click", () => {
+    // Stops the press from ever reaching GridStack's own drag/resize handling underneath —
+    // belt-and-suspenders alongside dropping the overlapping "ne" resize handle above, so a
+    // press that starts on this button can never be mistaken for the start of a resize.
+    ["pointerdown", "mousedown"].forEach((type) => {
+      btn.addEventListener(type, (e) => e.stopPropagation());
+    });
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
       const title = decodeURIComponent(btn.dataset.title);
       getFocusedSet(selectedRegion).delete(title);
       delete getCompareLayout(selectedRegion)[title];
@@ -1994,7 +2001,12 @@ function wireCompareGrid(gridEl, regionName) {
     // teleporting there — that instant teleport, not the animation, was what read as "shaking".
     animate: true,
     draggable: { cancel: ".mp-compare-remove" }, // don't start a drag from the remove button
-    resizable: { handles: "e, se, s, sw, w, nw, n, ne" }, // every side + corner, not just one shared edge
+    // No "ne" handle: the remove ("×") button lives in that exact top-right corner, and a click
+    // landing a pixel or two off the button could hit the resize handle underneath instead,
+    // starting an unwanted resize that could get stuck mid-interaction — which is what was
+    // making the page feel frozen after clicking "×". Dropping just that one corner handle
+    // (top and right edges are still separately grabbable) removes the conflict entirely.
+    resizable: { handles: "e, se, s, sw, w, nw, n" },
   }, gridEl);
   activeCompareGrid = grid;
 
@@ -2096,29 +2108,47 @@ function wireCompareGrid(gridEl, regionName) {
     return grid.engine.nodes.find((n) => n.el === el);
   }
 
-  // While a panel is actually being picked up and moved, its own footprint shrinks to a couple
-  // of rows — "a few lines" of reserved space — no matter how tall it really is or how far down
-  // the page it travels, instead of a full-size gap trailing the cursor the whole way. This is
-  // what was still making drags feel heavy: the grid was recalculating collisions against a
-  // full-size block on every mouse movement. The instant it's dropped, it snaps back to a
-  // height that hugs its real content (the same fit logic used when a panel is first added),
-  // landing at its actual size right where it was placed.
-  const DRAG_SHRINK_H = 2;
+  // While a panel is actually being picked up and moved, its own footprint shrinks to exactly
+  // 3 rows — "3 lines" of reserved space — no matter how tall it really is or how far down the
+  // page it travels, instead of a full-size gap trailing the cursor the whole way. This is what
+  // was still making drags feel heavy: the grid was recalculating collisions against a full-size
+  // block on every mouse movement. The instant it's dropped, it snaps back to exactly the size
+  // it was before it was picked up — whatever that was, including a size you'd deliberately set
+  // for a side-by-side layout — rather than recomputing a fresh "hug the content" height that
+  // would silently undo that custom sizing.
+  const DRAG_SHRINK_H = 3;
+  const realHBeforeDrag = new WeakMap();
   grid.on("dragstart", (event, itemsOrEl) => {
     toElements(itemsOrEl).forEach((el) => {
       const node = findNode(el);
-      if (!node || node.h <= DRAG_SHRINK_H) return;
+      if (!node) return;
+      realHBeforeDrag.set(el, node.h);
+      if (node.h <= DRAG_SHRINK_H) return;
       grid.update(el, { h: DRAG_SHRINK_H });
     });
   });
+  // Auto-scrolls the page while a drag nears the top/bottom edge of the visible viewport, so
+  // dragging a panel toward the bottom of a long stack doesn't require also manually scrolling
+  // with the other hand — the page just smoothly keeps up as you keep pushing past the edge.
+  const AUTOSCROLL_EDGE_PX = 80;
+  const AUTOSCROLL_STEP_PX = 16;
+  grid.on("drag", (event, itemsOrEl) => {
+    const el = toElements(itemsOrEl)[0];
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const vh = window.innerHeight;
+    if (rect.bottom > vh - AUTOSCROLL_EDGE_PX) {
+      window.scrollBy(0, AUTOSCROLL_STEP_PX);
+    } else if (rect.top < AUTOSCROLL_EDGE_PX) {
+      window.scrollBy(0, -AUTOSCROLL_STEP_PX);
+    }
+  });
   grid.on("dragstop", (event, itemsOrEl) => {
     toElements(itemsOrEl).forEach((el) => {
-      const node = findNode(el);
-      if (!node) return;
-      const compactPx = measureContentPx(el, true);
-      const ceiling = node.maxH || Infinity;
-      const needed = Math.min(ceiling, Math.max(2, Math.ceil((compactPx + BREATHING_PX) / rowSpan)));
-      grid.update(el, { h: needed });
+      const realH = realHBeforeDrag.get(el);
+      realHBeforeDrag.delete(el);
+      if (realH == null) return;
+      grid.update(el, { h: realH });
     });
   });
 
