@@ -212,9 +212,15 @@
      the sidebar's translucent glass panel. Leaving the thumb/arrow-button styling untouched (they
      already read fine per feedback) and blending the track to the sidebar's own glass tint
      (rather than transparent, which would show flat page background instead of the glass look). */
-  .sb-scroll-list::-webkit-scrollbar-track { background: rgba(255,255,255,0.10); }
+  /* Chrome on Windows renders the classic (non-overlay) scrollbar gutter with its own opaque
+     white backing unless a custom ::-webkit-scrollbar width is declared alongside the track —
+     without that width rule, -track color gets ignored and the native white gutter shows through
+     regardless of alpha. Declaring the width switches it to the custom-drawn scrollbar so the
+     track color actually takes effect and merges into the glass panel with no visible frame. */
+  .sb-scroll-list::-webkit-scrollbar { width: 12px; }
+  .sb-scroll-list::-webkit-scrollbar-track { background: rgba(180,196,188,0.55); }
   .sb-scroll-list::-webkit-scrollbar-corner { background: transparent; }
-  html[data-theme="light"] .sb-scroll-list::-webkit-scrollbar-track { background: rgba(13,50,46,0.06); }
+  html[data-theme="light"] .sb-scroll-list::-webkit-scrollbar-track { background: rgba(200,210,200,0.6); }
   .sb-ms-actions { display: flex; align-items: center; gap: 10px; }
   /* Spring "pop" open — the 3D Touch peek gesture overshoots slightly before settling, instead
      of a flat linear fade/slide. Scoped to the sidebar's region dropdown only so the header's
