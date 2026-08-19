@@ -73,6 +73,16 @@
   #themeToggle[aria-pressed="true"] svg { transform: rotate(180deg); }
   * { box-sizing: border-box; }
   html, body { margin:0; padding:0; background: #071614; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; transition: background .2s ease; }
+  /* The page's own (outer) scrollbar — the strip running the full window height on the right
+     edge — defaults to Chrome's plain white track, which reads as a hard seam against the dark
+     glassy page. Earlier this got confused with the sidebar's own internal list scrollbar
+     (.sb-scroll-list below); this is the actual one the feedback screenshots were pointing at.
+     Blending means matching the track to the surrounding page background — not making it
+     transparent (that leaves nothing behind it but flat white from the OS chrome) — while
+     leaving the thumb/arrow-button rendering exactly as the browser default, since that already
+     reads fine. */
+  html::-webkit-scrollbar-track { background: #071614; }
+  html[data-theme="light"]::-webkit-scrollbar-track { background: #f5f3e9; }
   .wrap { max-width: 1240px; margin: 0 auto; padding: 0 24px 60px; }
 
   /* Tightened from the original (22/20 padding, 24 margin, 4px accent bar) — that much air plus
@@ -200,11 +210,11 @@
   .sb-scroll-list { flex: 1 1 auto; overflow-y: auto; min-height: 0; }
   /* Scrollbar track/corner default to opaque white in Chrome, which reads as a hard seam against
      the sidebar's translucent glass panel. Leaving the thumb/arrow-button styling untouched (they
-     already read fine per feedback) and only dropping the track to transparent lets the glass
-     background show through behind the thumb instead of a white strip. */
-  .sb-scroll-list::-webkit-scrollbar { width: 14px; }
-  .sb-scroll-list::-webkit-scrollbar-track { background: transparent; }
+     already read fine per feedback) and blending the track to the sidebar's own glass tint
+     (rather than transparent, which would show flat page background instead of the glass look). */
+  .sb-scroll-list::-webkit-scrollbar-track { background: rgba(255,255,255,0.10); }
   .sb-scroll-list::-webkit-scrollbar-corner { background: transparent; }
+  html[data-theme="light"] .sb-scroll-list::-webkit-scrollbar-track { background: rgba(13,50,46,0.06); }
   .sb-ms-actions { display: flex; align-items: center; gap: 10px; }
   /* Spring "pop" open — the 3D Touch peek gesture overshoots slightly before settling, instead
      of a flat linear fade/slide. Scoped to the sidebar's region dropdown only so the header's
