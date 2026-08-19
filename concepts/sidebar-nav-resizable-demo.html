@@ -448,7 +448,13 @@
        panels next to it should never be able to pull the sidebar taller than its own content.
        It caps at the viewport (scrolling internally past that) and sizes to its own content
        otherwise, regardless of what the flex sibling next to it is doing. */
-    height: max-content; max-height: calc(100vh - 32px); overflow-y: auto;
+    height: max-content; max-height: calc(100vh - 32px);
+    /* The region picker and the Analyst View toggle bar are meant to stay put while only the
+       section list underneath scrolls — so the scrolling happens on an inner wrapper (see
+       .sb-scroll-list below), not on this outer box. display:flex + flex-direction:column lets
+       #sidebarSections claim the remaining vertical space so its own internal split (fixed
+       toggle bar on top, scrollable list below) has room to work. */
+    display: flex; flex-direction: column; overflow: hidden;
     /* Contains this panel's own backdrop-filter blur to its own compositing layer, so it can't
        intermittently repaint a frame out of sync with elements sitting on top of it (like the
        region button below) — the cause of the reported flicker on this panel's controls. */
@@ -517,6 +523,13 @@
   .sb-section-btn.selected { background: rgba(88,225,150,0.24); color:#eafff2 !important; }
   html[data-theme="light"] .sb-section-btn.selected { background: rgba(13,64,64,0.18); color: var(--text-primary) !important; }
   .sb-sections-empty { padding:8px 12px; font-size:11.5px; color: var(--text-muted); }
+
+  /* #sidebarSections holds the Analyst View toggle bar (fixed, first) and the scrollable list
+     wrapper below it — splitting the available vertical space between a fixed top and a
+     scrolling remainder, mirroring the same split .sidebar does one level up for the region
+     picker. */
+  #sidebarSections { flex:1 1 auto; display:flex; flex-direction:column; min-height:0; }
+  .sb-scroll-list { flex:1 1 auto; overflow-y:auto; min-height:0; }
 
   /* --- "Analyst View" — premium multi-select ---------------------------------------
      Off by default (identical single-section behaviour to before). Switching it on lets
@@ -1848,7 +1861,9 @@ function renderSidebar() {
       }).join("")}</ul>`
     : `<div class="sb-sections-empty">${r.status === "error" && !r.data ? "Sync failed — no sections available" : "Loading sections…"}</div>`;
 
-  box.innerHTML = toggleBar + listHtml;
+  // The toggle bar ("Analyst View" + selection count) stays fixed at the top; only the section
+  // list itself scrolls, in its own wrapper — see the .sb-scroll-list/#sidebarSections CSS.
+  box.innerHTML = toggleBar + `<div class="sb-scroll-list">${listHtml}</div>`;
 
   document.getElementById("multiSelectToggle")?.addEventListener("click", () => {
     multiSelectMode = !multiSelectMode;
@@ -2060,41 +2075,48 @@ function wireCompareGrid(gridEl, regionName) {
   // breathing room," never beyond. Freshly-added panels (marked data-auto-h) additionally get
   // their starting height fit to that same content (respecting any table's own scrollbar for the
   // default look), stacked in order below whatever already has a saved position.
-  let nextY = 0;
-  grid.engine.nodes.forEach((n) => { if (!n.el.hasAttribute("data-auto-h")) nextY = Math.max(nextY, n.y + n.h); });
-  grid.engine.nodes.slice().forEach((n) => {
-    const el = n.el;
-    const isAuto = el.hasAttribute("data-auto-h");
-    const fullPx = measureContentPx(el, false);
-    const maxH = Math.max(2, Math.ceil((fullPx + BREATHING_PX) / rowSpan));
-    if (isAuto) {
-      const compactPx = measureContentPx(el, true);
-      const needed = Math.min(maxH, Math.max(2, Math.ceil((compactPx + BREATHING_PX) / rowSpan)));
-      grid.update(el, { y: nextY, h: needed, maxH });
-      nextY += needed;
-      el.removeAttribute("data-auto-h");
-    } else {
-      grid.update(el, { maxH });
+  // Deferred one frame: applying this sizing the instant the item's raw HTML/attributes exist
+  // (same tick as GridStack.init parsing the DOM) means the browser never gets to paint the
+  // "just landed" placeholder state before jumping straight to the fitted size — so the change
+  // gets coalesced into a single frame with no animation to see, reading as a harsh, instant
+  // "hit" instead of a smooth grow/shrink. Waiting a frame lets that first paint happen, so the
+  // move to the real size afterward has something to animate from.
+  requestAnimationFrame(() => {
+    let nextY = 0;
+    grid.engine.nodes.forEach((n) => { if (!n.el.hasAttribute("data-auto-h")) nextY = Math.max(nextY, n.y + n.h); });
+    grid.engine.nodes.slice().forEach((n) => {
+      const el = n.el;
+      const isAuto = el.hasAttribute("data-auto-h");
+      const fullPx = measureContentPx(el, false);
+      const maxH = Math.max(2, Math.ceil((fullPx + BREATHING_PX) / rowSpan));
+      if (isAuto) {
+        const compactPx = measureContentPx(el, true);
+        const needed = Math.min(maxH, Math.max(2, Math.ceil((compactPx + BREATHING_PX) / rowSpan)));
+        grid.update(el, { y: nextY, h: needed, maxH });
+        nextY += needed;
+        el.removeAttribute("data-auto-h");
+      } else {
+        grid.update(el, { maxH });
+      }
+    });
+
+    // A section that was just ticked on lands here, below every other selected panel — now that
+    // it's actually in place, scroll it into view so the user lands right on it instead of
+    // having to hunt further down the page for what they just picked.
+    if (pendingScrollToTitle) {
+      const targetEl = gridEl.querySelector(
+        `.grid-stack-item[gs-id="${encodeURIComponent(pendingScrollToTitle)}"]`
+      );
+      pendingScrollToTitle = null;
+      if (targetEl) {
+        // One more frame lets the resize above actually start animating into place first, so
+        // the scroll targets where it's settling rather than a mid-transition position.
+        requestAnimationFrame(() => {
+          targetEl.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+      }
     }
   });
-
-  // A section that was just ticked on lands here, below every other selected panel — now that
-  // it's actually in place, scroll it into view so the user lands right on it instead of having
-  // to hunt further down the page for what they just picked.
-  if (pendingScrollToTitle) {
-    const targetEl = gridEl.querySelector(
-      `.grid-stack-item[gs-id="${encodeURIComponent(pendingScrollToTitle)}"]`
-    );
-    pendingScrollToTitle = null;
-    if (targetEl) {
-      // A tick's delay lets GridStack finish placing/animating the panel into its landing
-      // spot first, so the scroll targets where it's actually settling rather than a
-      // mid-transition position.
-      requestAnimationFrame(() => {
-        targetEl.scrollIntoView({ behavior: "smooth", block: "start" });
-      });
-    }
-  }
 
   // Growing a panel is pointless if the data table inside it is still clamped to its own short
   // internal scrollbar — so as soon as a panel is resized, that table's cap comes off and it's
@@ -2155,11 +2177,20 @@ function wireCompareGrid(gridEl, regionName) {
     }
   });
   grid.on("dragstop", (event, itemsOrEl) => {
-    toElements(itemsOrEl).forEach((el) => {
-      const realH = realHBeforeDrag.get(el);
-      realHBeforeDrag.delete(el);
-      if (realH == null) return;
-      grid.update(el, { h: realH });
+    const els = toElements(itemsOrEl);
+    // GridStack hasn't necessarily removed its own "ui-draggable-dragging" class yet at the
+    // exact moment this fires — and that class is what forces transitions off (see the CSS
+    // above), so restoring the real height in the very same tick could still land inside that
+    // no-transition window and snap instantly instead of animating, which is what read as a
+    // harsh/shaky drop. Waiting a frame guarantees the class is gone and the shared move
+    // transition is back in effect before the height change happens.
+    requestAnimationFrame(() => {
+      els.forEach((el) => {
+        const realH = realHBeforeDrag.get(el);
+        realHBeforeDrag.delete(el);
+        if (realH == null) return;
+        grid.update(el, { h: realH });
+      });
     });
   });
 
