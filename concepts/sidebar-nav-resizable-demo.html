@@ -1894,11 +1894,22 @@ function renderSidebar() {
       if (multiSelectMode) {
         if (sel.has(title)) {
           sel.delete(title);
+          delete getCompareLayout(selectedRegion)[title];
+          // Pull just this one panel out of the live grid — every other already-placed panel
+          // stays completely untouched (no remeasure, no flicker, no repositioning). Only when
+          // there's no live grid to operate on yet, or this was the last panel standing, does
+          // this fall through to a full render() below.
+          if (removeComparePanel(selectedRegion, title)) { renderSidebar(); return; }
         } else {
           sel.add(title);
-          // Freshly ticked on — it'll land below every other selected panel; once it's
-          // actually placed there, scroll it into view instead of leaving the user to hunt
-          // for it further down the page.
+          // Mount just the new panel into the live grid, below every other selected one, and
+          // scroll it into view once it's fitted — every already-placed panel stays untouched.
+          // Falls back to a full render() only when there's no live grid yet (this is the very
+          // first panel, bringing compare mode out of its empty state).
+          if (addComparePanel(selectedRegion, title)) { renderSidebar(); return; }
+          // Freshly ticked on and no incremental path was possible — it'll land below every
+          // other selected panel via the full rebuild; once it's actually placed there, scroll
+          // it into view instead of leaving the user to hunt for it further down the page.
           pendingScrollToTitle = title;
         }
       } else {
@@ -1980,21 +1991,7 @@ function renderMainPanel() {
     }
   }
   body.innerHTML = `${parsed.headHtml}${parsed.kpiHtml}${focusedHtml}`;
-  body.querySelectorAll(".mp-compare-remove").forEach((btn) => {
-    // Stops the press from ever reaching GridStack's own drag/resize handling underneath —
-    // belt-and-suspenders alongside dropping the overlapping "ne" resize handle above, so a
-    // press that starts on this button can never be mistaken for the start of a resize.
-    ["pointerdown", "mousedown"].forEach((type) => {
-      btn.addEventListener(type, (e) => e.stopPropagation());
-    });
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const title = decodeURIComponent(btn.dataset.title);
-      getFocusedSet(selectedRegion).delete(title);
-      delete getCompareLayout(selectedRegion)[title];
-      render();
-    });
-  });
+  body.querySelectorAll(".mp-compare-remove").forEach((btn) => wireRemoveButton(btn, region.name));
   const compareGridEl = body.querySelector("#mpCompareGrid");
   if (compareGridEl) wireCompareGrid(compareGridEl, region.name);
 }
@@ -2006,6 +2003,134 @@ let activeCompareGrid = null;
 
 const GS_CELL_HEIGHT = 150;
 const GS_MARGIN = 8;
+const GS_ROW_SPAN = GS_CELL_HEIGHT + GS_MARGIN;
+
+// A couple of "lines" worth of slack added on top of a raw content measurement, so a panel
+// reads as having a little breathing room rather than being shrink-wrapped pixel-tight to its
+// last row of data.
+const BREATHING_PX = 46;
+
+// Measures how tall a panel's content genuinely is. `capScrollTables` true = respect a data
+// table's own internal scrollbar (its normal capped height) — this is what the DEFAULT size
+// should hug. false = temporarily lift that cap so the measurement reflects the table's true,
+// full, uncapped height — this is what the RESIZE CEILING should be based on, so "make it
+// bigger" always tops out at "all the data is visible" rather than growing indefinitely.
+// NOTE: with a large table this is a genuinely expensive, layout-forcing measurement — callers
+// must only run it on the one panel that actually needs it (freshly added, or whose underlying
+// data just changed), never on every panel on every re-render. See ensurePanelMaxH below.
+function measureContentPx(el, capScrollTables) {
+  const contentEl = el.querySelector(".grid-stack-item-content");
+  const card = contentEl.querySelector(":scope > .card");
+  const scrollTables = Array.from(contentEl.querySelectorAll(".scroll-table"));
+  // The card is styled height:100% of its panel (so it fills whatever size GridStack gives
+  // it) — measuring scrollHeight while that rule is active just reports back the box's
+  // current height, not what the chart/table actually needs, which is what made every panel
+  // size itself to its own placeholder guess instead of its real content. Freeing the card to
+  // its natural height just for this one measurement is what makes the fit real.
+  const prevCardHeight = card ? card.style.height : null;
+  if (card) card.style.height = "auto";
+  const prevMaxHeights = capScrollTables ? null : scrollTables.map((t) => t.style.maxHeight);
+  if (!capScrollTables) scrollTables.forEach((t) => { t.style.maxHeight = "none"; });
+  // Measure the card's own natural height, not the scrollable wrapper's — the wrapper has an
+  // explicit height set by GridStack plus overflow:auto, so its scrollHeight is clamped to
+  // max(its own imposed height, content height) and never reports a shrink. The card is the
+  // element whose height we just freed to "auto", so it's the one that reflects true content size.
+  const px = card ? card.scrollHeight : contentEl.scrollHeight;
+  if (card) card.style.height = prevCardHeight || "";
+  if (!capScrollTables) scrollTables.forEach((t, i) => { t.style.maxHeight = prevMaxHeights[i] || ""; });
+  return px;
+}
+function computeMaxH(el) {
+  return Math.max(2, Math.ceil((measureContentPx(el, false) + BREATHING_PX) / GS_ROW_SPAN));
+}
+function computeCompactH(el, maxH) {
+  return Math.min(maxH, Math.max(2, Math.ceil((measureContentPx(el, true) + BREATHING_PX) / GS_ROW_SPAN)));
+}
+// A panel's resize ceiling only ever needs recomputing when it's brand new or the region's
+// underlying data has actually changed since we last measured it (a fresh sync swaps in a new
+// `region.data` object — see syncRegion/getRegionParsed) — the expensive uncapped-table
+// measurement inside computeMaxH is skipped otherwise, using the cached value from the last
+// time this exact title's content was measured. This is what keeps adding/removing one panel
+// from a compare view of several fast: only the panel that actually changed gets remeasured,
+// not the whole set every single click.
+function ensurePanelMaxH(regionName, title, el, dataRef) {
+  const layout = getCompareLayout(regionName);
+  const cached = layout[title];
+  if (cached && cached.maxH != null && cached.dataRef === dataRef) return cached.maxH;
+  const maxH = computeMaxH(el);
+  layout[title] = Object.assign({}, cached, { maxH, dataRef });
+  return maxH;
+}
+function wireRemoveButton(btn, regionName) {
+  if (!btn) return;
+  // Stops the press from ever reaching GridStack's own drag/resize handling underneath —
+  // belt-and-suspenders alongside dropping the overlapping "ne" resize handle above, so a
+  // press that starts on this button can never be mistaken for the start of a resize.
+  ["pointerdown", "mousedown"].forEach((type) => btn.addEventListener(type, (e) => e.stopPropagation()));
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const title = decodeURIComponent(btn.dataset.title);
+    getFocusedSet(regionName).delete(title);
+    delete getCompareLayout(regionName)[title];
+    // Try to just pull this one panel out of the live grid, leaving every other already-placed
+    // panel completely undisturbed. Only falls back to a full render() when there's no live grid
+    // to operate on, or this was the last panel (the main panel needs to switch to its empty-state
+    // message instead, which renderMainPanel handles).
+    if (removeComparePanel(regionName, title)) { renderSidebar(); return; }
+    render();
+  });
+}
+// Pulls a single panel out of the live compare grid without touching any other panel's DOM,
+// position, or size — the previous approach of tearing down and rebuilding the *entire* grid
+// on every single add/remove was what made already-placed panels flicker/reset, and (combined
+// with remeasuring every panel's content on every rebuild) was what made removing/adding a
+// panel in a busy compare view feel slow or, with large tables, freeze outright.
+function removeComparePanel(regionName, title) {
+  const grid = activeCompareGrid;
+  if (!grid || regionName !== selectedRegion) return false;
+  if (getFocusedSet(regionName).size === 0) return false; // last one — let render() show the empty state
+  const el = grid.el.querySelector(`.grid-stack-item[gs-id="${encodeURIComponent(title)}"]`);
+  if (!el) return false;
+  grid.removeWidget(el);
+  return true;
+}
+// Adds a single freshly-ticked panel into the live compare grid without touching any other
+// already-placed panel — see removeComparePanel above for why that matters. Returns false (no
+// grid to add to yet, e.g. this is the very first panel bringing compare mode out of its empty
+// state) so the caller can fall back to a full render() to build the grid from scratch.
+function addComparePanel(regionName, title) {
+  const grid = activeCompareGrid;
+  if (!grid || regionName !== selectedRegion) return false;
+  const region = REGIONS.find((r) => r.name === regionName);
+  const parsed = region ? getRegionParsed(region) : null;
+  const idx = parsed ? parsed.titles.indexOf(title) : -1;
+  const card = idx >= 0 ? parsed.cards[idx] : null;
+  if (!card) return false;
+  let nextY = 0;
+  grid.engine.nodes.forEach((n) => { nextY = Math.max(nextY, n.y + n.h); });
+  const wrap = document.createElement("div");
+  wrap.className = "grid-stack-item";
+  wrap.setAttribute("gs-id", encodeURIComponent(title));
+  wrap.innerHTML = `<div class="grid-stack-item-content">
+    <button type="button" class="mp-compare-remove" data-title="${encodeURIComponent(title)}" aria-label="Remove ${title} from comparison">×</button>
+    ${card.outerHTML}
+  </div>`;
+  wireRemoveButton(wrap.querySelector(".mp-compare-remove"), regionName);
+  // Placeholder height for the very first paint (see the requestAnimationFrame deferral below
+  // for why the real fit is applied a frame later rather than instantly).
+  grid.addWidget(wrap, { x: 0, y: nextY, w: 12, h: 5 });
+  requestAnimationFrame(() => {
+    const maxH = ensurePanelMaxH(regionName, title, wrap, region.data);
+    const needed = computeCompactH(wrap, maxH);
+    grid.update(wrap, { h: needed, maxH });
+    const layout = getCompareLayout(regionName);
+    layout[title] = Object.assign({}, layout[title], { x: 0, y: nextY, w: 12, h: needed });
+    requestAnimationFrame(() => {
+      wrap.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  });
+  return true;
+}
 
 function wireCompareGrid(gridEl, regionName) {
   // The previous grid instance (if any) was already torn down in renderMainPanel, before its
@@ -2035,40 +2160,7 @@ function wireCompareGrid(gridEl, regionName) {
     resizable: { handles: "e, se, s, sw, w, nw, n" },
   }, gridEl);
   activeCompareGrid = grid;
-
-  const rowSpan = GS_CELL_HEIGHT + GS_MARGIN;
-  // A couple of "lines" worth of slack added on top of a raw content measurement, so a panel
-  // reads as having a little breathing room rather than being shrink-wrapped pixel-tight to its
-  // last row of data.
-  const BREATHING_PX = 46;
-
-  // Measures how tall a panel's content genuinely is. `capScrollTables` true = respect a data
-  // table's own internal scrollbar (its normal capped height) — this is what the DEFAULT size
-  // should hug. false = temporarily lift that cap so the measurement reflects the table's true,
-  // full, uncapped height — this is what the RESIZE CEILING should be based on, so "make it
-  // bigger" always tops out at "all the data is visible" rather than growing indefinitely.
-  function measureContentPx(el, capScrollTables) {
-    const contentEl = el.querySelector(".grid-stack-item-content");
-    const card = contentEl.querySelector(":scope > .card");
-    const scrollTables = Array.from(contentEl.querySelectorAll(".scroll-table"));
-    // The card is styled height:100% of its panel (so it fills whatever size GridStack gives
-    // it) — measuring scrollHeight while that rule is active just reports back the box's
-    // current height, not what the chart/table actually needs, which is what made every panel
-    // size itself to its own placeholder guess instead of its real content. Freeing the card to
-    // its natural height just for this one measurement is what makes the fit real.
-    const prevCardHeight = card ? card.style.height : null;
-    if (card) card.style.height = "auto";
-    const prevMaxHeights = capScrollTables ? null : scrollTables.map((t) => t.style.maxHeight);
-    if (!capScrollTables) scrollTables.forEach((t) => { t.style.maxHeight = "none"; });
-    // Measure the card's own natural height, not the scrollable wrapper's — the wrapper has an
-    // explicit height set by GridStack plus overflow:auto, so its scrollHeight is clamped to
-    // max(its own imposed height, content height) and never reports a shrink. The card is the
-    // element whose height we just freed to "auto", so it's the one that reflects true content size.
-    const px = card ? card.scrollHeight : contentEl.scrollHeight;
-    if (card) card.style.height = prevCardHeight || "";
-    if (!capScrollTables) scrollTables.forEach((t, i) => { t.style.maxHeight = prevMaxHeights[i] || ""; });
-    return px;
-  }
+  const region = REGIONS.find((r) => r.name === regionName);
 
   // Every panel — freshly added or previously saved — gets a resize ceiling based on its true
   // full content height, so dragging it bigger always stops at "all the data plus a little
@@ -2081,20 +2173,28 @@ function wireCompareGrid(gridEl, regionName) {
   // gets coalesced into a single frame with no animation to see, reading as a harsh, instant
   // "hit" instead of a smooth grow/shrink. Waiting a frame lets that first paint happen, so the
   // move to the real size afterward has something to animate from.
+  //
+  // Already-placed panels reuse their cached maxH (see ensurePanelMaxH) instead of being
+  // remeasured here every time this runs — this loop only runs on a full rebuild (entering
+  // compare mode, switching region, a data sync), and remeasuring every panel's real content
+  // height on every one of those, even panels nothing changed about, is what made a busy compare
+  // view (several large tables) feel slow or freeze outright. Only genuinely new/changed content
+  // pays the real measurement cost.
   requestAnimationFrame(() => {
     let nextY = 0;
     grid.engine.nodes.forEach((n) => { if (!n.el.hasAttribute("data-auto-h")) nextY = Math.max(nextY, n.y + n.h); });
     grid.engine.nodes.slice().forEach((n) => {
       const el = n.el;
       const isAuto = el.hasAttribute("data-auto-h");
-      const fullPx = measureContentPx(el, false);
-      const maxH = Math.max(2, Math.ceil((fullPx + BREATHING_PX) / rowSpan));
+      const title = decodeURIComponent(el.getAttribute("gs-id") || "");
+      const maxH = ensurePanelMaxH(regionName, title, el, region ? region.data : null);
       if (isAuto) {
-        const compactPx = measureContentPx(el, true);
-        const needed = Math.min(maxH, Math.max(2, Math.ceil((compactPx + BREATHING_PX) / rowSpan)));
+        const needed = computeCompactH(el, maxH);
         grid.update(el, { y: nextY, h: needed, maxH });
         nextY += needed;
         el.removeAttribute("data-auto-h");
+        const layout = getCompareLayout(regionName);
+        layout[title] = Object.assign({}, layout[title], { x: 0, y: nextY - needed, w: 12, h: needed });
       } else {
         grid.update(el, { maxH });
       }
