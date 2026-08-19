@@ -228,10 +228,17 @@
      structure exactly as the browser draws it, just recolor the track from Chrome's default
      white to a solid grey so it doesn't clash — no transparency, so it stays clearly visible
      instead of fading into the panel. */
+  /* #cfd4d2 read fine against the light theme's pale sidebar, but against the dark theme's deep
+     glass panel that same light grey reads as stark white by contrast. Dark mode (the default)
+     now gets a muted charcoal track with a softer grey thumb that sits naturally on the dark
+     glass instead of popping off it; light mode keeps the original lighter tones. */
   .sidebar.sb-analyst-active .sb-scroll-list::-webkit-scrollbar { width: 16px; }
-  .sidebar.sb-analyst-active .sb-scroll-list::-webkit-scrollbar-track { background: #cfd4d2; }
-  .sidebar.sb-analyst-active .sb-scroll-list::-webkit-scrollbar-corner { background: #cfd4d2; }
-  .sidebar.sb-analyst-active .sb-scroll-list::-webkit-scrollbar-thumb { background: #8a9490; border-radius: 0; }
+  .sidebar.sb-analyst-active .sb-scroll-list::-webkit-scrollbar-track { background: #263029; }
+  .sidebar.sb-analyst-active .sb-scroll-list::-webkit-scrollbar-corner { background: #263029; }
+  .sidebar.sb-analyst-active .sb-scroll-list::-webkit-scrollbar-thumb { background: #5c6b63; border-radius: 0; }
+  html[data-theme="light"] .sidebar.sb-analyst-active .sb-scroll-list::-webkit-scrollbar-track { background: #cfd4d2; }
+  html[data-theme="light"] .sidebar.sb-analyst-active .sb-scroll-list::-webkit-scrollbar-corner { background: #cfd4d2; }
+  html[data-theme="light"] .sidebar.sb-analyst-active .sb-scroll-list::-webkit-scrollbar-thumb { background: #8a9490; }
   .sb-ms-actions { display: flex; align-items: center; gap: 10px; }
   /* Spring "pop" open — the 3D Touch peek gesture overshoots slightly before settling, instead
      of a flat linear fade/slide. Scoped to the sidebar's region dropdown only so the header's
