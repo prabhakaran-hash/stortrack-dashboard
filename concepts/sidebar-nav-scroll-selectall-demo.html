@@ -1080,7 +1080,7 @@
     </div>
   </div>
 
-  <footer class="foot" id="footNote">Sources: live Google Sheets, polled client-side. Loading…</footer>
+  <footer class="foot" id="footNote">Sources: live Google Sheets, polled client-side. Showing cached data — tap Refresh now for live.</footer>
   </div>
 
   <button class="cb-launcher" id="cbLauncher" aria-label="Open Dashboard Assistant" title="Dashboard Assistant">
@@ -3188,6 +3188,9 @@ document.getElementById("cbForm").addEventListener("submit", (e) => {
   document.getElementById("syncText").textContent = mostRecent
     ? "Cached · last synced " + mostRecent.toLocaleTimeString() + " — tap Refresh now"
     : "Showing cached data — tap Refresh now for live";
+  document.getElementById("footNote").textContent = "Sources: live Google Sheets (\"Regional Summary\" tab). " + (mostRecent
+    ? "Showing cached data last synced " + mostRecent.toLocaleTimeString() + " — tap Refresh now for the latest."
+    : "Showing cached data — tap Refresh now for the latest.");
 })();
 render();
 </script>
