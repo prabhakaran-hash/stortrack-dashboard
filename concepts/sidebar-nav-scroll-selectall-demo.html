@@ -783,12 +783,20 @@
   /* Compact/shrink: forces all selected regions into one row with no horizontal scroll by
      shrinking fonts, padding and row-height across whatever's in each card — bar charts, data
      tables, KPI-style cards alike — rather than changing the column count itself. */
+  /* Grid items default to a content-based automatic minimum width, which stops a 1fr column
+     from ever shrinking below its widest child's natural (unwrapped) width — exactly the
+     overflow this mode exists to remove. Forcing min-width:0 on the cell lets each column
+     actually take its computed 1fr share; the card's own overflow-x:auto still catches any
+     residual overflow (e.g. a very wide data-table) with its own small internal scrollbar
+     instead of forcing the whole grid to scroll sideways. */
   #mpFsGrid.fit-compact { gap:12px; }
+  #mpFsGrid.fit-compact > .mp-bm-cell { min-width:0; }
+  #mpFsGrid.fit-compact .mp-bm-cell .card, #mpFsGrid.fit-compact .mp-bm-cell .chart-row { min-width:0; }
   #mpFsGrid.fit-compact .card h3, #mpFsGrid.fit-compact .chart-row h3 { font-size:12px; }
   #mpFsGrid.fit-compact .card .card-sub, #mpFsGrid.fit-compact .chart-row .card-sub { font-size:9.5px; margin-bottom:6px; }
   #mpFsGrid.fit-compact .bar-row { gap:6px; margin:6px 0; }
   #mpFsGrid.fit-compact .bar-row .bar-label { width:62px; font-size:10.5px; }
-  #mpFsGrid.fit-compact .bar-track { margin-right:34px; }
+  #mpFsGrid.fit-compact .bar-track { margin-right:34px; min-width:0; }
   #mpFsGrid.fit-compact .bar-fill { height:9px; }
   #mpFsGrid.fit-compact .bar-value { font-size:10px; left:calc(100% + 6px); }
   #mpFsGrid.fit-compact table.data-table { font-size:10px; }
