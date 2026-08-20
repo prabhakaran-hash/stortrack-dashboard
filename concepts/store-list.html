@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stortrack — Store List</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root {
+    --surface-1:      #111a2e;
+    --page:           #0a1120;
+    --text-primary:   #f2f5fb;
+    --text-secondary: #a9b3c9;
+    --text-muted:     #7c869c;
+    --gridline:       #23304a;
+    --border:         rgba(255,255,255,0.08);
+    --navy:           #0f1c36;
+    --navy-2:         #1d3f6e;
+    --accent:         #3987e5;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin:0; padding:0; background: var(--page); color: var(--text-primary); font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .wrap { max-width: 1500px; margin: 0 auto; padding: 0 24px 60px; }
+
+  header.top {
+    background: linear-gradient(120deg, var(--navy) 0%, var(--navy-2) 100%);
+    margin: 0 0 24px; padding: 22px 0 20px;
+  }
+  header.top .header-inner {
+    max-width: 1500px; margin: 0 auto; padding: 0 24px;
+    display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;
+  }
+  header.top::after {
+    content:""; display:block; height:4px; margin-top:18px;
+    background: linear-gradient(90deg, #3987e5 0 25%, #d95926 25% 50%, #199e70 50% 75%, #c98500 75% 100%);
+  }
+  .brand { display:flex; flex-direction:column; gap:2px; }
+  .brand .name { font-size:12.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color: #9fc2ea; }
+  .brand h1 { margin:0; font-size:22px; font-weight:800; color:#ffffff; letter-spacing:-.01em; }
+  .back-link { font-size:13px; font-weight:600; color:#eef4fb; background: rgba(255,255,255,0.10); border:1px solid rgba(255,255,255,0.22); border-radius:8px; padding:8px 14px; text-decoration:none; }
+  .back-link:hover { background: rgba(255,255,255,0.2); }
+  .toolbar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .dl-btn, .refresh-btn {
+    font: inherit; font-size:13px; font-weight:600; color:#eef4fb; background: rgba(255,255,255,0.10);
+    border:1px solid rgba(255,255,255,0.22); border-radius:8px; padding:8px 14px; cursor:pointer;
+    display:inline-flex; align-items:center; gap:6px;
+  }
+  .dl-btn:hover, .refresh-btn:hover { background: rgba(255,255,255,0.2); }
+  .dl-btn:disabled { opacity:.5; cursor:not-allowed; }
+
+  .region-title { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:16px; padding:12px 18px; background: linear-gradient(90deg, var(--accent-color, var(--accent)) 0%, var(--navy) 130%); border-radius:10px; }
+  .region-title h2 { margin:0; font-size:19px; font-weight:800; color:#fff; }
+  .region-title .rt-sub { font-size:12.5px; color: rgba(255,255,255,0.85); }
+  .live-badge { font-size:11px; font-weight:700; letter-spacing:.03em; text-transform:uppercase; padding:4px 10px; border-radius:999px; background: rgba(255,255,255,0.18); color:#fff; }
+
+  .controls { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:14px; }
+  .search-box {
+    flex: 1 1 260px; max-width:360px; font: inherit; font-size:13.5px; color: var(--text-primary);
+    background: var(--surface-1); border:1px solid var(--border); border-radius:8px; padding:9px 12px;
+  }
+  .search-box::placeholder { color: var(--text-muted); }
+  .search-box:focus { outline:none; border-color: var(--accent); }
+
+  .muted { color: var(--text-muted); font-size:12.5px; margin: -2px 0 12px; }
+  .state-msg { color: var(--text-muted); font-size:14px; padding:40px 20px; text-align:center; }
+  .state-msg.err { color: #f0a0a0; }
+
+  .table-scroll { overflow:auto; border:1px solid var(--border); border-radius:10px; background: var(--surface-1); max-height: 72vh; }
+  table { width:100%; border-collapse: collapse; font-size:13px; white-space:nowrap; }
+  th, td { padding:9px 12px; text-align:left; border-bottom:1px solid var(--gridline); }
+  th { background: #131f38; color: var(--text-secondary); font-weight:700; font-size:11.5px; text-transform:uppercase; letter-spacing:.03em; position:sticky; top:0; cursor:pointer; user-select:none; white-space:nowrap; }
+  th:hover { color: #fff; }
+  th .arrow { opacity:.6; margin-left:4px; font-size:10px; }
+  tr:last-child td { border-bottom:none; }
+  tr:hover td { background: rgba(255,255,255,0.03); }
+  td a { color: #7fb2ef; text-decoration:underline; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="header-inner">
+      <div class="brand">
+        <span class="name">Stortrack · Research &amp; Data</span>
+        <h1>Store List</h1>
+      </div>
+      <div class="toolbar">
+        <button class="refresh-btn" id="refreshBtn">↻ Refresh now</button>
+        <button class="dl-btn" id="downloadCsvBtn" disabled>⬇ Download CSV</button>
+        <button class="dl-btn" id="downloadXlsxBtn" disabled>⬇ Download Excel (.xlsx)</button>
+        <a class="back-link" href="sidebar-nav.html">← Back to Dashboard</a>
+      </div>
+    </div>
+  </header>
+
+  <div class="region-title" id="regionTitle" style="--accent-color:#3987e5">
+    <div>
+      <h2 id="regionName">Region</h2>
+      <div class="rt-sub" id="regionSub">Full store list — live sync</div>
+    </div>
+    <span class="live-badge" id="liveBadge">Live</span>
+  </div>
+
+  <div class="controls">
+    <input class="search-box" id="searchBox" type="text" placeholder="Search stores (any column)…" disabled>
+  </div>
+  <p class="muted" id="rowCount"></p>
+
+  <div class="table-scroll" id="tableScroll">
+    <table id="dataTable" style="display:none;">
+      <thead><tr id="headRow"></tr></thead>
+      <tbody id="tableBody"></tbody>
+    </table>
+    <div class="state-msg" id="stateMsg">Loading store list…</div>
+  </div>
+</div>
+
+<script>
+/* =====================================================================================
+   PURE DYNAMIC MIRROR — this page renders exactly whatever columns and rows exist in
+   each region's live "Store List" / "Stores List" Google Sheet tab, in the order the
+   sheet has them. Nothing here is keyed to a fixed, hand-typed column list: the header
+   row IS the column list, every time. If a column is renamed, added, or removed in the
+   sheet, this page reflects that on the next load with zero code changes — same design
+   principle used for the detail tables in sidebar-nav.html (see project notes).
+   ===================================================================================== */
+const ACCENTS = { canada: "#3987e5", uk: "#d95926", australia: "#199e70", newzealand: "#c98500" };
+const NAMES = { canada: "Canada", uk: "United Kingdom", australia: "Australia", newzealand: "New Zealand" };
+// The exact tab name to read per region — confirmed against each live sheet directly
+// (Australia's tab is plural "Stores List"; the other three are singular "Store List").
+const STORE_LIST_TABS = { canada: "Store List", uk: "Store List", australia: "Stores List", newzealand: "Store List" };
+
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx4PtXmZMAE6AIyRcy7QSfHfEFR9mNDuyaJlWDqvOYbNlk95jMu1PAcn8Jfyhp4CyK4/exec";
+
+const params = new URLSearchParams(window.location.search);
+const region = (params.get("region") || "canada").toLowerCase();
+const name = params.get("name") || NAMES[region] || "Region";
+const tabName = STORE_LIST_TABS[region];
+
+document.getElementById("regionTitle").style.setProperty("--accent-color", ACCENTS[region] || "#3987e5");
+document.getElementById("regionName").textContent = name;
+
+let COLUMNS = [];     // literal header text, in sheet order, blank -> "—"
+let ROWS = [];         // array of { values: [...] }, positional to COLUMNS
+let sortCol = -1, sortDir = 1;
+let filterText = "";
+
+function looksLikeUrl(v) {
+  return typeof v === "string" && /^https?:\/\//i.test(v.trim());
+}
+
+async function fetchStoreList() {
+  if (!tabName) throw new Error("No Store List tab configured for this region.");
+  const res = await fetch(`${APPS_SCRIPT_URL}?region=${encodeURIComponent(region)}&tab=${encodeURIComponent(tabName)}&_ts=${Date.now()}`, { cache: "no-store" });
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  const json = await res.json();
+  if (json.error) throw new Error(json.error);
+  const grid = json.grid || [];
+  if (!grid.length) return { columns: [], rows: [] };
+  const header = grid[0].map((h) => (h == null ? "" : String(h).trim()));
+  const dataRows = grid.slice(1).filter((r) => r.some((v) => String(v == null ? "" : v).trim() !== ""));
+  return {
+    columns: header.map((h) => h || "—"),
+    rows: dataRows.map((r) => ({ values: header.map((_, i) => (r[i] == null ? "" : r[i])) }))
+  };
+}
+
+function renderHeader() {
+  document.getElementById("headRow").innerHTML = COLUMNS.map((c, i) => {
+    const arrow = sortCol === i ? (sortDir === 1 ? "▲" : "▼") : "";
+    return `<th data-col="${i}">${c}${arrow ? ` <span class="arrow">${arrow}</span>` : ""}</th>`;
+  }).join("");
+  document.querySelectorAll("#headRow th").forEach((th) => {
+    th.addEventListener("click", () => {
+      const i = Number(th.dataset.col);
+      if (sortCol === i) { sortDir = -sortDir; } else { sortCol = i; sortDir = 1; }
+      renderBody();
+    });
+  });
+}
+
+function visibleRows() {
+  let rows = ROWS;
+  if (filterText) {
+    const q = filterText.toLowerCase();
+    rows = rows.filter((r) => r.values.some((v) => String(v).toLowerCase().includes(q)));
+  }
+  if (sortCol >= 0) {
+    rows = rows.slice().sort((a, b) => {
+      const av = a.values[sortCol], bv = b.values[sortCol];
+      const an = parseFloat(av), bn = parseFloat(bv);
+      let cmp;
+      if (!isNaN(an) && !isNaN(bn) && String(av).trim() !== "" && String(bv).trim() !== "") cmp = an - bn;
+      else cmp = String(av).localeCompare(String(bv));
+      return cmp * sortDir;
+    });
+  }
+  return rows;
+}
+
+function renderBody() {
+  renderHeader();
+  const rows = visibleRows();
+  document.getElementById("tableBody").innerHTML = rows.map((r) => {
+    const cells = r.values.map((v) => {
+      if (looksLikeUrl(v)) return `<td><a href="${v}" target="_blank" rel="noopener">${v}</a></td>`;
+      return `<td>${v === "" || v == null ? "" : v}</td>`;
+    }).join("");
+    return "<tr>" + cells + "</tr>";
+  }).join("");
+  const total = ROWS.length, shown = rows.length;
+  const word = total === 1 ? "store" : "stores";
+  document.getElementById("rowCount").textContent = filterText
+    ? `${shown} of ${total} ${word} match “${filterText}”`
+    : `${total} ${word} · ${COLUMNS.length} columns — live synced with the "${tabName}" sheet · last checked ${new Date().toLocaleTimeString()}`;
+}
+
+function showState(msg, isErr) {
+  const el = document.getElementById("stateMsg");
+  el.textContent = msg;
+  el.className = "state-msg" + (isErr ? " err" : "");
+  el.style.display = "block";
+  document.getElementById("dataTable").style.display = "none";
+}
+
+function showTable() {
+  document.getElementById("stateMsg").style.display = "none";
+  document.getElementById("dataTable").style.display = "table";
+}
+
+async function loadAndRender() {
+  document.getElementById("liveBadge").textContent = "Syncing…";
+  try {
+    const { columns, rows } = await fetchStoreList();
+    COLUMNS = columns;
+    ROWS = rows;
+    document.getElementById("liveBadge").textContent = "Live";
+    document.getElementById("searchBox").disabled = false;
+    document.getElementById("downloadCsvBtn").disabled = ROWS.length === 0;
+    document.getElementById("downloadXlsxBtn").disabled = ROWS.length === 0;
+    if (!COLUMNS.length) {
+      showState(`Couldn't read the "${tabName}" tab for ${name} — check that the sheet still has that tab.`, true);
+      return;
+    }
+    if (!ROWS.length) {
+      showState(`No stores currently in the "${tabName}" sheet for ${name} yet. This page mirrors that sheet exactly, so it will fill in automatically once rows are added.`, false);
+      renderHeader();
+      document.getElementById("rowCount").textContent = `0 stores · ${COLUMNS.length} columns — live synced with the "${tabName}" sheet · last checked ${new Date().toLocaleTimeString()}`;
+      return;
+    }
+    showTable();
+    renderBody();
+  } catch (err) {
+    document.getElementById("liveBadge").textContent = "Error";
+    showState("Couldn't load the live store list right now (" + err.message + "). Try Refresh now.", true);
+  }
+}
+
+document.getElementById("searchBox").addEventListener("input", (e) => {
+  filterText = e.target.value.trim();
+  if (COLUMNS.length && ROWS.length) renderBody();
+});
+document.getElementById("refreshBtn").addEventListener("click", loadAndRender);
+
+loadAndRender();
+setInterval(loadAndRender, 900000); // 15 min — store lists are large and change far less often than the summary tabs
+
+/* ------------------------------ Downloads (real CSV / real .xlsx) ------------------------------
+   Exports the exact columns + rows currently loaded from the live sheet — literal mirror,
+   same source the table renders from, so exports can never drift from what's on screen. */
+function fileSafeName(ext) {
+  const stamp = new Date().toISOString().slice(0, 10);
+  return `stortrack-${region}-store-list-${stamp}.${ext}`;
+}
+function triggerDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+function csvEscape(v) {
+  const s = v == null ? "" : String(v);
+  return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+document.getElementById("downloadCsvBtn").addEventListener("click", () => {
+  if (!ROWS.length) return;
+  const header = COLUMNS.map(csvEscape).join(",");
+  const lines = ROWS.map((r) => r.values.map(csvEscape).join(","));
+  const csv = [header, ...lines].join("\r\n");
+  triggerDownload(new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" }), fileSafeName("csv"));
+});
+document.getElementById("downloadXlsxBtn").addEventListener("click", () => {
+  if (!ROWS.length) return;
+  const aoa = [COLUMNS, ...ROWS.map((r) => r.values)];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws["!cols"] = COLUMNS.map(() => ({ wch: 16 }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, name.slice(0, 31) || "Store List");
+  XLSX.writeFile(wb, fileSafeName("xlsx"));
+});
+</script>
+</body>
+</html>
