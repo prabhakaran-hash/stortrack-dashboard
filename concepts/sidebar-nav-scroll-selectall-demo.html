@@ -2336,19 +2336,30 @@ function renderFullscreenOverlay() {
   if (!selected.size) {
     grid.innerHTML = `<div class="card empty mp-empty-state">Pick one or more tables from the dropdown above (or from the sidebar) to view them here.</div>`;
   } else {
-    const filled = tableTitles
-      .filter((t) => selected.has(t))
-      .map((t) => {
-        const idx = tableTitles.indexOf(t);
-        const card = idx >= 0 ? parsed.cards[idx] : null;
-        return card ? card.outerHTML : "";
-      })
-      .filter(Boolean);
+    // Same small "×" the main panel's single-table and compare views already have — lets you
+    // drop just one table straight from its card here in full screen, instead of having to
+    // reopen the table dropdown (or go back to the sidebar) to untick it.
+    const filled = [];
+    tableTitles.filter((t) => selected.has(t)).forEach((t) => {
+      const idx = tableTitles.indexOf(t);
+      const card = idx >= 0 ? parsed.cards[idx] : null;
+      if (!card) return;
+      filled.push(`<div class="mp-compare-item">
+        <button type="button" class="mp-compare-remove" data-title="${encodeURIComponent(t)}" aria-label="Remove ${t} from view">×</button>
+        ${card.outerHTML}
+      </div>`);
+    });
     // Same "leave the other slot blank" behavior as index.html's own emptyCard() placeholders:
     // an odd count just leaves the last row half-empty instead of stretching the lone card
     // across both columns, so the grid always reads as the same fixed 2-up layout.
     if (filled.length % 2 === 1) filled.push(emptyCard("Select another table to fill this slot."));
     grid.innerHTML = filled.join("");
+    grid.querySelectorAll(".mp-compare-remove").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        selected.delete(decodeURIComponent(btn.dataset.title));
+        render();
+      });
+    });
   }
 }
 
