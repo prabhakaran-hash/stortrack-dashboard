@@ -1593,10 +1593,10 @@ let REFRESH_MS = 1800000;
    saved to localStorage after every sync cycle (see saveLiveCache() in
    syncAll()). On load, this lets the dashboard show genuine last-known data
    immediately — labeled "Cached snapshot" with its real synced time — while
-   a fresh sync runs underneath, instead of a blank/loading state. Unlike the
-   old hardcoded FALLBACK_SNAPSHOTS, this is always real data this browser
-   actually synced, kept current automatically, and just never re-fetched
-   from Apps Script until this page proves it can.
+   a fresh sync runs underneath, instead of a blank/loading state. This is
+   always real data this browser actually synced, kept current automatically.
+   Lives in localStorage, so it's per-browser and clears if the user clears
+   site data — that's fine, DEFAULT_SNAPSHOTS below covers that gap.
    ------------------------------------------------------------------------ */
 const LIVE_CACHE_KEY = "stortrack_live_cache_v1";
 function loadLiveCache() {
@@ -1613,10 +1613,30 @@ function saveLiveCache() {
 }
 const LIVE_CACHE = loadLiveCache();
 
+/* ------------------------------------------------------------------------
+   DEFAULT SNAPSHOT — a built-in, last-resort placeholder baked into this
+   file (not localStorage, so it can never be lost by clearing site data).
+   Only used the very first time a browser ever loads this page, before it
+   has any live cache of its own — so no visitor ever sees a blank/loading
+   dashboard. The instant that browser's first live sync succeeds, its own
+   LIVE_CACHE takes over permanently and this default is never shown to it
+   again. Update this occasionally if it drifts too far from reality; it's
+   only ever on screen for the few seconds before a real sync lands.
+   ------------------------------------------------------------------------ */
+const DEFAULT_SNAPSHOTS = {
+  "Canada": { "totalStores":3806,"pricing":{"yes":2428,"no":1378},"operatorType":[{"label":"Large Operator","stores":932,"yes":881,"no":51},{"label":"Medium Operator","stores":632,"yes":444,"no":188},{"label":"Single Operator","stores":2242,"yes":1103,"no":1139}],"regionSplit":[{"label":"AB","large":133,"medium":82,"single":370,"total":585,"priceNo":186,"priceYes":399},{"label":"BC","large":108,"medium":141,"single":426,"total":675,"priceNo":269,"priceYes":406},{"label":"MB","large":27,"medium":20,"single":73,"total":120,"priceNo":37,"priceYes":83},{"label":"NB","large":21,"medium":22,"single":73,"total":116,"priceNo":48,"priceYes":68},{"label":"NL","large":6,"medium":null,"single":32,"total":38,"priceNo":24,"priceYes":14},{"label":"NS","large":35,"medium":27,"single":78,"total":140,"priceNo":48,"priceYes":92},{"label":"NT","large":null,"medium":null,"single":6,"total":6,"priceNo":2,"priceYes":4},{"label":"ON","large":459,"medium":220,"single":800,"total":1479,"priceNo":492,"priceYes":987},{"label":"PE","large":1,"medium":2,"single":14,"total":17,"priceNo":8,"priceYes":9},{"label":"QC","large":104,"medium":93,"single":264,"total":461,"priceNo":200,"priceYes":261},{"label":"SK","large":37,"medium":19,"single":100,"total":156,"priceNo":54,"priceYes":102},{"label":"YT","large":1,"medium":6,"single":6,"total":13,"priceNo":10,"priceYes":3}],"facilityType":{"Self-Storage":1634,"Hybrid":1970,"Parking":202},"facilityDetail":[{"category":"Self-Storage","type":"Container","yes":43,"no":36,"total":79},{"category":"Self-Storage","type":"Self Storage","yes":822,"no":585,"total":1407},{"category":"Self-Storage","type":"Self Storage and Container","yes":87,"no":60,"total":147},{"category":"Self-Storage","type":"Wine Storage","yes":null,"no":1,"total":1},{"category":"Hybrid","type":"Container and Parking","yes":98,"no":60,"total":158},{"category":"Hybrid","type":"Self Storage and Parking","yes":1029,"no":422,"total":1451},{"category":"Hybrid","type":"Self Storage, Container and Parking","yes":234,"no":127,"total":361},{"category":"Parking","type":"Parking","yes":63,"no":61,"total":124},{"category":"Parking","type":"RV and Boat Storage","yes":52,"no":26,"total":78}],"facilityOperatorNrsf":null,"units":{"actual":152,"estimated":3204,"notAvailable":693,"totalStoresInUnitsTab":4049},"sqftTotal":null,"regionLabel":"Province" },
+  "United Kingdom": { "totalStores":5559,"pricing":{"yes":3385,"no":2174},"operatorType":[{"label":"Large Operator","stores":601,"yes":594,"no":7},{"label":"Medium Operator","stores":442,"yes":385,"no":57},{"label":"Small Operator","stores":1181,"yes":874,"no":307},{"label":"Single Operator","stores":3335,"yes":1532,"no":1803}],"regionSplit":[{"label":"England","large":601,"medium":369,"small":977,"single":2799,"total":4746,"priceNo":1812,"priceYes":2934},{"label":"Northern Ireland","large":null,"medium":null,"small":13,"single":62,"total":75,"priceNo":48,"priceYes":27},{"label":"Scotland","large":null,"medium":15,"small":107,"single":258,"total":380,"priceNo":171,"priceYes":209},{"label":"Wales","large":null,"medium":58,"small":84,"single":216,"total":358,"priceNo":143,"priceYes":215}],"facilityType":{"Self Storage":2617,"Container":1667,"Hybrid":989,"Parking":286},"facilityDetail":null,"facilityOperatorNrsf":[{"facility":"Self Storage","operator":"Large Operator","stores":498,"nrsf":23288872},{"facility":"Self Storage","operator":"Medium Operator","stores":222,"nrsf":6534330},{"facility":"Self Storage","operator":"Small Operator","stores":556,"nrsf":12735011},{"facility":"Self Storage","operator":"Single Operator","stores":1341,"nrsf":24032175},{"facility":"Container","operator":"Large Operator","stores":40,"nrsf":549852},{"facility":"Container","operator":"Medium Operator","stores":138,"nrsf":1855441},{"facility":"Container","operator":"Small Operator","stores":396,"nrsf":5399383},{"facility":"Container","operator":"Single Operator","stores":1093,"nrsf":12484415},{"facility":"Hybrid","operator":"Large Operator","stores":63,"nrsf":2566183},{"facility":"Hybrid","operator":"Medium Operator","stores":82,"nrsf":2246558},{"facility":"Hybrid","operator":"Small Operator","stores":218,"nrsf":6122837},{"facility":"Hybrid","operator":"Single Operator","stores":626,"nrsf":17848721},{"facility":"Parking","operator":"Large Operator","stores":0,"nrsf":null},{"facility":"Parking","operator":"Medium Operator","stores":0,"nrsf":null},{"facility":"Parking","operator":"Small Operator","stores":11,"nrsf":247070},{"facility":"Parking","operator":"Single Operator","stores":275,"nrsf":10217861}],"units":{"actual":94,"estimated":3816,"notAvailable":1248,"totalStoresInUnitsTab":5158},"sqftTotal":126128709,"regionLabel":"Region" },
+  "Australia": { "totalStores":2846,"pricing":{"yes":1468,"no":1378},"operatorType":[{"label":"REIT","stores":274,"yes":260,"no":14},{"label":"Large Operator","stores":529,"yes":481,"no":48},{"label":"Medium Operator","stores":476,"yes":270,"no":206},{"label":"Single Operator","stores":1567,"yes":457,"no":1110}],"regionSplit":[{"label":"Australian Capital Territory","reit":4,"large":8,"medium":1,"single":3,"total":16,"priceNo":null,"priceYes":16},{"label":"New South Wales","reit":60,"large":210,"medium":158,"single":472,"total":900,"priceNo":451,"priceYes":449},{"label":"Northern Territory","reit":3,"large":null,"medium":8,"single":8,"total":19,"priceNo":10,"priceYes":9},{"label":"Queensland","reit":81,"large":152,"medium":107,"single":334,"total":674,"priceNo":312,"priceYes":362},{"label":"South Australia","reit":11,"large":16,"medium":37,"single":150,"total":214,"priceNo":120,"priceYes":94},{"label":"Tasmania","reit":6,"large":1,"medium":9,"single":77,"total":93,"priceNo":55,"priceYes":38},{"label":"Victoria","reit":66,"large":112,"medium":111,"single":397,"total":686,"priceNo":320,"priceYes":366},{"label":"Western Australia","reit":43,"large":30,"medium":45,"single":126,"total":244,"priceNo":110,"priceYes":134}],"facilityType":null,"facilityDetail":null,"facilityOperatorNrsf":null,"units":{"actual":26,"estimated":2537,"notAvailable":258,"totalStoresInUnitsTab":2821},"sqftTotal":null,"regionLabel":"State" },
+  "New Zealand": { "totalStores":873,"pricing":{"yes":460,"no":413},"operatorType":[{"label":"Large Operator","stores":259,"yes":211,"no":48},{"label":"Medium Operator","stores":146,"yes":70,"no":76},{"label":"Single Operator","stores":468,"yes":179,"no":289}],"regionSplit":null,"facilityType":null,"facilityDetail":null,"facilityOperatorNrsf":null,"units":{"actual":0,"estimated":756,"notAvailable":104,"totalStoresInUnitsTab":860},"sqftTotal":null,"regionLabel":null }
+};
+
 const REGIONS = Object.keys(SHEETS).map((name) => {
   const cached = LIVE_CACHE[name];
   if (cached && cached.data) {
     return { name, status: "cached", lastSynced: cached.lastSynced ? new Date(cached.lastSynced) : null, error: null, data: cached.data };
+  }
+  if (DEFAULT_SNAPSHOTS[name]) {
+    return { name, status: "cached", lastSynced: null, error: null, data: DEFAULT_SNAPSHOTS[name] };
   }
   return { name, status: "loading", lastSynced: null, error: null, data: null };
 });
