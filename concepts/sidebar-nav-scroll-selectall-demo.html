@@ -1900,7 +1900,16 @@ function stackedYesNoList(items) {
 function renderDynamicTable(opts) {
   const grouped = !!opts.groupHeader;
   const cols = opts.columns || [];
-  const colTotals = cols.map((_, i) => opts.rows.reduce((s, r) => s + (r.values[i] || 0), 0));
+  // Some sheets (e.g. Pricing Availability history) already end with their own literal
+  // "Grand Total" row baked into the data — that row's label IS kept (unlike other tables,
+  // it isn't a blank-label summary row so it never gets excluded by the parser). Adding our
+  // own computed sum row on top of that would double-count it. So: only synthesize a bottom
+  // Total row when the sheet doesn't already end with one of its own.
+  const lastRow = opts.rows.length ? opts.rows[opts.rows.length - 1] : null;
+  const lastLabel = lastRow ? (opts.itemOf(lastRow) || "") : "";
+  const sheetHasOwnTotalRow = TOTAL_RE.test(lastLabel);
+  const summableRows = sheetHasOwnTotalRow ? opts.rows.slice(0, -1) : opts.rows;
+  const colTotals = cols.map((_, i) => summableRows.reduce((s, r) => s + (r.values[i] || 0), 0));
   let bodyRows;
   if (grouped) {
     const groups = [];
@@ -1918,10 +1927,11 @@ function renderDynamicTable(opts) {
     bodyRows = opts.rows.map((row) => `<tr><td>${opts.itemOf(row) || "—"}</td>${row.values.map((v) => `<td class="num">${fmtNum(v)}</td>`).join("")}</tr>`).join("");
   }
   const leadColspan = grouped ? 2 : 1;
+  const totalRowHtml = sheetHasOwnTotalRow ? "" : `<tr class="total-row"><td colspan="${leadColspan}">${opts.totalLabel || "Total"}</td>${colTotals.map((v) => `<td class="num"><strong>${fmtNum(v)}</strong></td>`).join("")}</tr>`;
   return `<div class="card"><h3>${opts.title}</h3><div class="card-sub">${opts.subtitle}</div>
     <div class="scroll-table"><table class="data-table"><thead><tr>${grouped ? `<th>${opts.groupHeader}</th>` : ""}<th>${opts.itemHeader}</th>${cols.map((c) => `<th class="num">${c || "—"}</th>`).join("")}</tr></thead>
     <tbody>${bodyRows}
-    <tr class="total-row"><td colspan="${leadColspan}">${opts.totalLabel || "Total"}</td>${colTotals.map((v) => `<td class="num"><strong>${fmtNum(v)}</strong></td>`).join("")}</tr>
+    ${totalRowHtml}
     </tbody></table></div></div>`;
 }
 function donutSVG(entries, centerValue, centerLabel, size) {
