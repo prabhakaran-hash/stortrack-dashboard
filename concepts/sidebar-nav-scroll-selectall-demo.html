@@ -774,6 +774,28 @@
   .mp-fs-controls .sb-multiselect-toggle { width:auto; padding:6px 10px; }
   .mp-fs-panel.benchmark-mode #mpFsRegionSelectWrap { display:none; }
   .mp-fs-panel:not(.benchmark-mode) #mpFsBmRegionSelectWrap { display:none; }
+  /* "Fit to screen" only makes sense once Benchmark View has multiple regions side by side. */
+  .mp-fs-panel:not(.benchmark-mode) #mpFsFitToggle { display:none; }
+  .mp-fs-controls .mp-fs-toggle.on {
+    background: linear-gradient(160deg, var(--brand-lime, #98f387), #6fe0a0); color:#0d2b20; border-color:transparent;
+  }
+  .mp-fs-controls .mp-fs-toggle.on:hover { background: linear-gradient(160deg, #a6ff95, #6fe0a0); color:#0d2b20; }
+  /* Compact/shrink: forces all selected regions into one row with no horizontal scroll by
+     shrinking fonts, padding and row-height across whatever's in each card — bar charts, data
+     tables, KPI-style cards alike — rather than changing the column count itself. */
+  #mpFsGrid.fit-compact { gap:12px; }
+  #mpFsGrid.fit-compact .card h3, #mpFsGrid.fit-compact .chart-row h3 { font-size:12px; }
+  #mpFsGrid.fit-compact .card .card-sub, #mpFsGrid.fit-compact .chart-row .card-sub { font-size:9.5px; margin-bottom:6px; }
+  #mpFsGrid.fit-compact .bar-row { gap:6px; margin:6px 0; }
+  #mpFsGrid.fit-compact .bar-row .bar-label { width:62px; font-size:10.5px; }
+  #mpFsGrid.fit-compact .bar-track { margin-right:34px; }
+  #mpFsGrid.fit-compact .bar-fill { height:9px; }
+  #mpFsGrid.fit-compact .bar-value { font-size:10px; left:calc(100% + 6px); }
+  #mpFsGrid.fit-compact table.data-table { font-size:10px; }
+  #mpFsGrid.fit-compact table.data-table th, #mpFsGrid.fit-compact table.data-table td { padding:4px 5px; }
+  #mpFsGrid.fit-compact .scroll-table { max-height:280px; }
+  #mpFsGrid.fit-compact .mp-bm-region-tag { font-size:9px; padding:2px 8px; top:8px; left:12px; }
+  #mpFsGrid.fit-compact .mp-bm-cell .card, #mpFsGrid.fit-compact .mp-bm-cell .chart-row { padding:28px 12px 10px; }
   #mpFsBmRegionSelectWrap .glass-select-menu { left:auto; right:0; }
   .mp-fs-bm-region-menu { width:min(260px, 90vw); max-height:min(340px, 60vh); }
   .mp-bm-cell { position:relative; }
@@ -994,6 +1016,14 @@
               <div class="mp-fs-table-options" id="mpFsTableOptions"></div>
             </div>
           </div>
+          <button type="button" id="mpFsFitToggle" class="mp-fs-toggle" aria-label="Fit to screen" title="Fit to screen — shrink cards so all selected regions fit with no side-scroll" aria-pressed="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="4 14 10 14 10 20"></polyline>
+              <polyline points="20 10 14 10 14 4"></polyline>
+              <line x1="14" y1="10" x2="21" y2="3"></line>
+              <line x1="3" y1="21" x2="10" y2="14"></line>
+            </svg>
+          </button>
           <button type="button" id="mpFsClose" class="mp-fs-close" aria-label="Close full screen">×</button>
         </div>
       </div>
@@ -2153,6 +2183,11 @@ let fsOverlayOpen = false;
 let benchmarkMode = false;
 let benchmarkRegionSet = new Set();
 let benchmarkTableSet = new Set();
+// "Fit to screen" — Benchmark View only. Off (false) keeps every card at its normal full size,
+// which may need a side-scroll with 3-4 regions selected (today's default). On (true) shrinks
+// fonts/padding/row-height across the grid's cards so all selected regions sit in one row with
+// no horizontal scroll at all — same content, denser presentation.
+let benchmarkFitMode = false;
 
 function renderFullscreenOverlay() {
   if (!fsOverlayOpen) return;
@@ -2168,6 +2203,10 @@ function renderFullscreenOverlay() {
   const bmToggle = document.getElementById("mpFsBenchmarkToggle");
   bmToggle.classList.toggle("on", benchmarkMode);
   bmToggle.setAttribute("aria-pressed", String(benchmarkMode));
+
+  const fitToggle = document.getElementById("mpFsFitToggle");
+  fitToggle.classList.toggle("on", benchmarkFitMode);
+  fitToggle.setAttribute("aria-pressed", String(benchmarkFitMode));
 
   // Single-region dropdown: lets someone switch regions from inside full screen (non-benchmark
   // mode only). Reuses the same .gs-option markup/behavior as the header's own region picker —
@@ -2248,6 +2287,7 @@ function renderFullscreenOverlay() {
     // table since cells are emitted table-by-table, region-by-region within each table. Each
     // cell carries its own small region-colored tag in the available top-left space rather
     // than a separate labeled row, per the confirmed design.
+    grid.classList.toggle("fit-compact", benchmarkFitMode);
     const activeRegions = REGIONS.filter((r) => benchmarkRegionSet.has(r.name));
     if (!activeRegions.length || !benchmarkTableSet.size) {
       grid.style.gridTemplateColumns = "1fr";
@@ -2273,6 +2313,7 @@ function renderFullscreenOverlay() {
     return;
   }
 
+  grid.classList.remove("fit-compact");
   grid.style.gridTemplateColumns = "";
   if (!selected.size) {
     grid.innerHTML = `<div class="card empty mp-empty-state">Pick one or more tables from the dropdown above (or from the sidebar) to view them here.</div>`;
@@ -2319,6 +2360,10 @@ document.getElementById("mpFsTableSelectBtn").addEventListener("click", (e) => {
 document.getElementById("mpFsBenchmarkToggle").addEventListener("click", () => {
   benchmarkMode = !benchmarkMode;
   closeAllGlassSelects();
+  render();
+});
+document.getElementById("mpFsFitToggle").addEventListener("click", () => {
+  benchmarkFitMode = !benchmarkFitMode;
   render();
 });
 document.getElementById("mpFsBmRegionSelectBtn").addEventListener("click", (e) => { e.stopPropagation(); toggleGlassSelect(document.getElementById("mpFsBmRegionSelectWrap")); });
