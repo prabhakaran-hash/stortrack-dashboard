@@ -381,23 +381,6 @@
   .card .card-sub { font-size:12px; color: var(--text-muted); margin-bottom:10px; }
   .card.empty { display:flex; align-items:center; justify-content:center; color: var(--text-muted); font-size:13px; text-align:center; padding:30px 16px; }
 
-  /* ---- Skeleton loading shimmer — shown briefly on first load / right after a hard
-     refresh, until the first live sync lands. Plays after the hr-jiggle wave settles. ---- */
-  .skel { position:relative; overflow:hidden; background:var(--gridline); border-radius:6px; display:block; }
-  .skel::after {
-    content:""; position:absolute; top:0; left:-150%; height:100%; width:150%;
-    background:linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.35) 50%, rgba(255,255,255,0) 100%);
-    animation: skelShimmer 1.35s ease-in-out infinite;
-  }
-  @keyframes skelShimmer { 0% { left:-150%; } 100% { left:150%; } }
-  .skel-value { width:60%; height:26px; margin:4px 0 8px; }
-  .skel-sub { width:75%; height:12px; }
-  .skel-btn { width:46%; height:28px; margin-top:10px; border-radius:8px; }
-  .skel-head-title { width:180px; height:20px; margin-left:auto; }
-  .skel-kpi-label { width:65%; height:11px; margin-bottom:10px; }
-  .skel-kpi-value { width:45%; height:24px; margin-bottom:8px; }
-  .skel-kpi-sub { width:55%; height:10px; }
-
   .bar-row { display:flex; align-items:center; gap:10px; margin:9px 0; }
   .bar-row .bar-label { width:150px; flex:none; font-size:12.5px; color: var(--text-secondary); text-align:right; }
   /* The value label sits past the bar's own right edge (bar-value, below), so the track needs
@@ -1605,9 +1588,38 @@ const EXTRA_TABS = {
 };
 let REFRESH_MS = 1800000;
 
-const REGIONS = Object.keys(SHEETS).map((name) => ({
-  name, status: "loading", lastSynced: null, error: null, data: null
-}));
+/* ------------------------------------------------------------------------
+   LIVE CACHE — the real result of the last successful sync for each region,
+   saved to localStorage after every sync cycle (see saveLiveCache() in
+   syncAll()). On load, this lets the dashboard show genuine last-known data
+   immediately — labeled "Cached snapshot" with its real synced time — while
+   a fresh sync runs underneath, instead of a blank/loading state. Unlike the
+   old hardcoded FALLBACK_SNAPSHOTS, this is always real data this browser
+   actually synced, kept current automatically, and just never re-fetched
+   from Apps Script until this page proves it can.
+   ------------------------------------------------------------------------ */
+const LIVE_CACHE_KEY = "stortrack_live_cache_v1";
+function loadLiveCache() {
+  try { return JSON.parse(localStorage.getItem(LIVE_CACHE_KEY)) || {}; } catch (e) { return {}; }
+}
+function saveLiveCache() {
+  try {
+    const out = {};
+    REGIONS.forEach((r) => {
+      if (r.data) out[r.name] = { data: r.data, lastSynced: r.lastSynced ? r.lastSynced.toISOString() : null };
+    });
+    localStorage.setItem(LIVE_CACHE_KEY, JSON.stringify(out));
+  } catch (e) {}
+}
+const LIVE_CACHE = loadLiveCache();
+
+const REGIONS = Object.keys(SHEETS).map((name) => {
+  const cached = LIVE_CACHE[name];
+  if (cached && cached.data) {
+    return { name, status: "cached", lastSynced: cached.lastSynced ? new Date(cached.lastSynced) : null, error: null, data: cached.data };
+  }
+  return { name, status: "loading", lastSynced: null, error: null, data: null };
+});
 
 function fmtNum(n) { return (n == null) ? "—" : Math.round(n).toLocaleString("en-US"); }
 function fmtCompact(n) { if (n == null) return "—"; if (n >= 1e6) return (n/1e6).toFixed(1) + "M"; if (n >= 1e3) return (n/1e3).toFixed(1) + "K"; return String(Math.round(n)); }
@@ -1687,7 +1699,7 @@ async function syncRegion(region) {
     // console.error as a blocking notification, which re-appears on every retry
     // and makes the page unusable. Failures are tracked in region.error/status
     // and shown in the page UI instead.
-    region.status = region.data ? "stale" : "error";
+    region.status = region.data ? (region.status === "loaded" ? "stale" : "cached") : "error";
     region.error = String((err && err.message) || err);
     anyCorsError = true;
   }
@@ -1704,6 +1716,7 @@ async function syncAll() {
   } catch (e) {
     // syncRegion never rethrows, but guard anyway so one bad tick can't kill polling.
   }
+  saveLiveCache();
   const allOk = REGIONS.every((r) => r.status === "loaded");
   const dot = document.getElementById("syncDot");
   const text = document.getElementById("syncText");
@@ -1747,6 +1760,7 @@ function renderRegionPicker() {
 }
 const BADGE_META = {
   loaded: { cls: "live", text: "Live" },
+  cached: { cls: "pend", text: "Cached snapshot" },
   stale:  { cls: "err",  text: "Sync error (cached)" },
   error:  { cls: "err",  text: "Sync error" },
   loading:{ cls: "pend", text: "Loading…" }
@@ -1754,21 +1768,11 @@ const BADGE_META = {
 function renderRegionStrip() {
   document.getElementById("regionStrip").innerHTML = REGIONS.map((r) => {
     const badge = BADGE_META[r.status] || BADGE_META.loading;
-    const key = (SHEETS[r.name] && SHEETS[r.name].key) || "";
-    if (r.status === "loading" && !r.data) {
-      // First load / just after a hard refresh, before the first sync lands — shimmer
-      // placeholders instead of "—"/"connecting…" text, so the card keeps its real shape.
-      return `<div class="region-card ${r.name === selectedRegion ? "selected" : ""}" data-region="${r.name}" style="--accent-color:${accentFor(r.name)}">
-        <div class="rc-top"><span class="rc-name">${r.name}</span><span class="rc-badge ${badge.cls}">${badge.text}</span></div>
-        <div class="skel skel-value"></div>
-        <div class="skel skel-sub"></div>
-        <div class="skel skel-btn"></div>
-      </div>`;
-    }
     const value = r.data ? fmtNum(r.data.totalStores) : "—";
     const sub = r.data
-      ? (r.status === "loaded" ? "stores · synced " + (r.lastSynced ? r.lastSynced.toLocaleTimeString() : "—") : "stores · " + (r.error || "sync error"))
+      ? (r.status === "loaded" ? "stores · synced " + (r.lastSynced ? r.lastSynced.toLocaleTimeString() : "—") : r.status === "cached" ? "stores · snapshot, not yet synced live" : "stores · " + (r.error || "sync error"))
       : (r.error || "connecting…");
+    const key = (SHEETS[r.name] && SHEETS[r.name].key) || "";
     return `<div class="region-card ${r.status === "error" ? "err" : ""} ${r.name === selectedRegion ? "selected" : ""}" data-region="${r.name}" style="--accent-color:${accentFor(r.name)}">
       <div class="rc-top"><span class="rc-name">${r.name}</span><span class="rc-badge ${badge.cls}">${badge.text}</span></div>
       <div class="rc-value">${value}</div>
@@ -2005,7 +2009,8 @@ if (d.developments && d.developments.length) {
   return `<div class="region-block">
     <div class="region-head" style="--accent-color:${accent}"><h2>${region.name}</h2><span class="rh-sub">${
       region.status === "loaded" ? "Live · synced " + (region.lastSynced ? region.lastSynced.toLocaleTimeString() : "—")
-      : "Sync error, showing last good sync — " + (region.error || "")
+      : region.status === "stale" ? "Sync error, showing last good sync — " + (region.error || "")
+      : (region.lastSynced ? "Cached snapshot · last synced " + region.lastSynced.toLocaleTimeString() + " — refreshing…" : "Cached snapshot — waiting on first live sync")
     }</span></div>
     ${kpis}
     <div class="chart-row">
@@ -2145,15 +2150,7 @@ function renderMainPanel() {
   const region = REGIONS.find((r) => r.name === selectedRegion);
   const body = document.getElementById("mainPanelBody");
   if (region.status === "loading") {
-    body.innerHTML = `<div class="region-block">
-      <div class="region-head" style="--accent-color:${accentFor(region.name)}"><h2>${region.name}</h2><span class="skel skel-head-title"></span></div>
-      <div class="kpi-row">
-        <div class="kpi-tile"><div class="skel skel-kpi-label"></div><div class="skel skel-kpi-value"></div><div class="skel skel-kpi-sub"></div></div>
-        <div class="kpi-tile"><div class="skel skel-kpi-label"></div><div class="skel skel-kpi-value"></div><div class="skel skel-kpi-sub"></div></div>
-        <div class="kpi-tile"><div class="skel skel-kpi-label"></div><div class="skel skel-kpi-value"></div><div class="skel skel-kpi-sub"></div></div>
-        <div class="kpi-tile"><div class="skel skel-kpi-label"></div><div class="skel skel-kpi-value"></div><div class="skel skel-kpi-sub"></div></div>
-      </div>
-    </div>`;
+    body.innerHTML = `<div class="card" style="text-align:center;padding:30px;color:var(--text-muted);">Loading ${region.name}…</div>`;
     return;
   }
   if (region.status === "error" && !region.data) {
