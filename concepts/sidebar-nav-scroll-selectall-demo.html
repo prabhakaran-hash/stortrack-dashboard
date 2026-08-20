@@ -792,6 +792,16 @@
     width: fit-content;
     max-width: 100%;
   }
+  /* A lone selected table has nothing to flow beside, so it takes the whole row's width
+     rather than shrinking to just its own content — matches the approved single-table
+     mockup. Only applies when exactly one table is selected (see JS). */
+  .mp-fs-panel:not(.benchmark-mode) #mpFsGrid > .mp-compare-solo {
+    width: 100%;
+  }
+  .mp-fs-panel:not(.benchmark-mode) #mpFsGrid > .mp-compare-solo .card,
+  .mp-fs-panel:not(.benchmark-mode) #mpFsGrid > .mp-compare-solo .chart-row {
+    width: 100%;
+  }
   @media (max-width: 900px) { .mp-fs-panel:not(.benchmark-mode) #mpFsGrid > * { width: 100%; } }
 
   /* --- Benchmark View: a second mode inside the same full-screen popup, for comparing the
@@ -2501,11 +2511,14 @@ function renderFullscreenOverlay() {
     // drop just one table straight from its card here in full screen, instead of having to
     // reopen the table dropdown (or go back to the sidebar) to untick it.
     const filled = [];
+    // A single selected table takes the full available width (matches the approved mockup);
+    // two or more flow Pinterest-style at their own natural size, wrapping wherever they fit.
+    const soloClass = selected.size === 1 ? " mp-compare-solo" : "";
     tableTitles.filter((t) => selected.has(t)).forEach((t) => {
       const idx = tableTitles.indexOf(t);
       const card = idx >= 0 ? parsed.cards[idx] : null;
       if (!card) return;
-      filled.push(`<div class="mp-compare-item">
+      filled.push(`<div class="mp-compare-item${soloClass}">
         <button type="button" class="mp-compare-remove" data-title="${encodeURIComponent(t)}" aria-label="Remove ${t} from view">×</button>
         ${card.outerHTML}
       </div>`);
