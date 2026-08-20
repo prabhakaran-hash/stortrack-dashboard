@@ -2331,15 +2331,31 @@ document.getElementById("mpFsBmRegionClearAll").addEventListener("click", () => 
   render();
 });
 document.getElementById("mpFsMenuSelectAll").addEventListener("click", () => {
-  const region = REGIONS.find((r) => r.name === selectedRegion);
-  const parsed = region ? getRegionParsed(region) : null;
-  const titles = parsed ? parsed.titles : [];
-  const sel = getFocusedSet(selectedRegion);
-  titles.forEach((t) => sel.add(t));
+  if (benchmarkMode) {
+    // Table list here is the dynamic union of titles across every selected benchmark region
+    // (recomputed the same way renderFullscreenOverlay does it), and the target set is the
+    // dedicated benchmarkTableSet — not the sidebar's per-region getFocusedSet, which is what
+    // this button was wrongly writing to before (so "Select all" silently did nothing visible
+    // in Benchmark View).
+    const activeRegions = REGIONS.filter((r) => benchmarkRegionSet.has(r.name));
+    const seen = new Set();
+    activeRegions.forEach((r) => {
+      const p = getRegionParsed(r);
+      if (!p) return;
+      p.titles.forEach((t) => { if (!seen.has(t)) { seen.add(t); benchmarkTableSet.add(t); } });
+    });
+  } else {
+    const region = REGIONS.find((r) => r.name === selectedRegion);
+    const parsed = region ? getRegionParsed(region) : null;
+    const titles = parsed ? parsed.titles : [];
+    const sel = getFocusedSet(selectedRegion);
+    titles.forEach((t) => sel.add(t));
+  }
   render();
 });
 document.getElementById("mpFsMenuClearAll").addEventListener("click", () => {
-  getFocusedSet(selectedRegion).clear();
+  if (benchmarkMode) benchmarkTableSet.clear();
+  else getFocusedSet(selectedRegion).clear();
   render();
 });
 
