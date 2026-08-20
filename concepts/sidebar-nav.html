@@ -761,7 +761,7 @@
   .mp-fs-table-option.on .mp-fs-check { background: var(--brand-lime, #98f387); border-color: transparent; }
   .mp-fs-check::after { content:""; width:8px; height:6px; border-left:2px solid #0d2b20; border-bottom:2px solid #0d2b20; transform: rotate(-45deg) translate(1px,-1px); opacity:0; }
   .mp-fs-table-option.on .mp-fs-check::after { opacity:1; }
-  .mp-fs-grid-wrap { flex:1 1 auto; overflow-y:auto; padding:20px; min-height:0; }
+  .mp-fs-grid-wrap { flex:1 1 auto; overflow-y:auto; overflow-x:auto; padding:20px; min-height:0; }
   .mp-fs-grid { display:grid; grid-template-columns: 1fr 1fr; gap:16px; align-content:start; }
   .mp-fs-grid .card, .mp-fs-grid .chart-row { margin:0; }
   /* Grid items default to min-width:auto (content-based), which stops a 1fr column from
@@ -2318,7 +2318,14 @@ function renderFullscreenOverlay() {
       grid.style.gridTemplateColumns = "1fr";
       grid.innerHTML = `<div class="card empty mp-empty-state">Pick two or more regions and at least one table above to compare them side by side.</div>`;
     } else {
-      grid.style.gridTemplateColumns = `repeat(${Math.min(activeRegions.length, 4)}, 1fr)`;
+      // Default (Fit to screen OFF): give every region column its full, real width — same
+      // as a single-region card — instead of squeezing all of them into the popup's width.
+      // If they don't all fit, the whole grid scrolls sideways as one unit (one scrollbar for
+      // the page), rather than each card getting its own internal horizontal scrollbar.
+      // "Fit to screen" ON keeps the previous shrink-to-fit behavior (columns share 1fr).
+      grid.style.gridTemplateColumns = benchmarkFitMode
+        ? `repeat(${Math.min(activeRegions.length, 4)}, 1fr)`
+        : `repeat(${activeRegions.length}, 620px)`;
       const cells = [];
       tableTitles.filter((t) => benchmarkTableSet.has(t)).forEach((title) => {
         activeRegions.forEach((r) => {
