@@ -629,6 +629,7 @@
   }
   .mp-fs-toggle:hover { background: rgba(255,255,255,0.08); color: var(--text-primary); }
   .mp-fs-toggle svg { width:16px; height:16px; }
+  .mp-focused { position:relative; }
   .mp-focused .card { margin:0; }
   /* Stacked comparison view: each selected section keeps its own card, with a small remove
      control so someone can back out of the comparison one item at a time. */
@@ -2151,7 +2152,13 @@ function renderMainPanel() {
       const card = idx >= 0 ? parsed.cards[idx] : null;
       if (card) {
         hasSelection = true;
-        focusedHtml = `<div class="mp-focused">${card.outerHTML}</div>`;
+        // Same small "×" compare mode already gives every card, now on the single-table view
+        // too — lets you drop the current selection right from here instead of having to go
+        // back to the sidebar to untick it.
+        focusedHtml = `<div class="mp-focused">
+          <button type="button" class="mp-compare-remove" data-title="${encodeURIComponent(focusedTitle)}" aria-label="Remove ${focusedTitle} from view">×</button>
+          ${card.outerHTML}
+        </div>`;
       } else {
         focusedHtml = `<div class="card empty mp-empty-state">That section isn't available for ${region.name} right now — pick another from the sidebar.</div>`;
       }
