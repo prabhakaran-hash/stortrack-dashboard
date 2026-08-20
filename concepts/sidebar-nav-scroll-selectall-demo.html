@@ -1235,14 +1235,31 @@ function rowHasDataInSpan(grid, r, fromCol, span) {
   for (let i = 0; i < span; i++) { if (cell(grid, r, fromCol + i) !== "") return true; }
   return false;
 }
+const TOTAL_RE = /^(grand )?total$/i;
 function readLabelRows(grid, startRow, labelCol, stopAtTotal, dataSpan) {
   const span = dataSpan || tableRowSpan(grid, startRow - 1, labelCol);
   const rows = [];
+  // A row with a blank label is genuinely ambiguous on its own: it might be a real row whose
+  // name got cleared (keep it — that's the whole point of this fix), or it might be the
+  // sheet's own trailing Total/summary row, which also often has a blank leading cell and
+  // still has real numbers in it. We can't tell which just by looking at that one row, so we
+  // hold it in `pending` and decide once we see what comes next: if a real label resumes
+  // afterward, every pending row was a genuine (if unlabeled) part of the table and gets kept;
+  // if instead we hit a fully blank row, the total-keyword check, or run past a small cap of
+  // consecutive blank-label rows, nothing real was coming — pending is discarded as the
+  // table's tail (its Total row and/or real trailing blank rows), matching how the sheet ends.
+  let pending = [];
   for (let r = startRow; r < grid.length; r++) {
     const label = cell(grid, r, labelCol);
-    if (stopAtTotal !== false && /^(grand )?total$/i.test(label)) break;
-    if (!label && !rowHasDataInSpan(grid, r, labelCol + 1, span)) break;
-    rows.push(r);
+    // A sheet's own Total row often has the word "Total" merged across its leading columns
+    // rather than sitting in this exact label column (e.g. the row label lives one column to
+    // the left when the label column itself is blank on the total row) — check both spots.
+    const isTotalRow = stopAtTotal !== false && (TOTAL_RE.test(label) || (labelCol > 0 && TOTAL_RE.test(cell(grid, r, labelCol - 1))));
+    if (isTotalRow) break;
+    if (label) { rows.push(...pending); pending = []; rows.push(r); continue; }
+    if (!rowHasDataInSpan(grid, r, labelCol + 1, span)) break;
+    pending.push(r);
+    if (pending.length > 5) break;
   }
   return rows;
 }
