@@ -772,6 +772,25 @@
   .mp-fs-grid > * { min-width:0; }
   .mp-fs-grid .card, .mp-fs-grid .chart-row { min-width:0; }
   @media (max-width: 900px) { .mp-fs-grid { grid-template-columns: 1fr; } .mp-fs-controls .glass-select-btn { min-width:130px; } }
+  /* Masonry packing for the single-region Full Screen View (not Benchmark View): a strict
+     2-column grid sizes every row to its tallest card, so a short card next to a tall one
+     (e.g. "Sqft Research Coverage" beside "Store Profile Research Status") leaves a big dead
+     gap and the whole thing reads as disorganized. CSS multi-column layout instead lets each
+     column fill independently to a balanced height, tiling cards Pinterest-style with no gaps.
+     Scoped to :not(.benchmark-mode) so Benchmark View's own grid (fixed columns, one per
+     region) is untouched. */
+  .mp-fs-panel:not(.benchmark-mode) #mpFsGrid {
+    display: block;
+    column-count: 2;
+    column-gap: 16px;
+  }
+  .mp-fs-panel:not(.benchmark-mode) #mpFsGrid > * {
+    break-inside: avoid;
+    -webkit-column-break-inside: avoid;
+    margin: 0 0 16px;
+    width: 100%;
+  }
+  @media (max-width: 900px) { .mp-fs-panel:not(.benchmark-mode) #mpFsGrid { column-count: 1; } }
 
   /* --- Benchmark View: a second mode inside the same full-screen popup, for comparing the
      same table(s) across up to all 4 regions at once. The toggle reuses the sidebar's own
