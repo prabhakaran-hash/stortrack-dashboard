@@ -1215,15 +1215,62 @@ function parseUnitsSummary(grid, regionKey) {
 // AND no data) — a single blank column ends a table, matching how these sheets lay tables
 // out side-by-side with one blank spacer column between them.
 // ---------------------------------------------------------------------------------------
-function readLabelRows(grid, startRow, labelCol, stopAtTotal) {
+// A blank ROW LABEL used to end the scan immediately (readLabelRows returned early), which
+// meant deleting just one category/type/operator name in the sheet — even with every number
+// in that row still intact — silently dropped that row AND every row after it from the whole
+// table. tableRowSpan/rowHasDataInSpan let readLabelRows tell "this row's label got cleared,
+// but the row is still part of the table" apart from "this is genuinely the blank row after
+// the table ends": it keeps scanning as long as the row has ANY data across the table's own
+// width (measured from the header row directly above), and only stops on a row that's fully
+// empty — label AND every data cell — matching how a real blank spacer row looks in the sheet.
+function tableRowSpan(grid, headerRow, fromCol, maxSpan) {
+  maxSpan = maxSpan || 30;
+  let span = 1;
+  for (let i = 0; i < maxSpan; i++) {
+    if (cell(grid, headerRow, fromCol + i) !== "") span = i + 1;
+  }
+  return Math.max(span, 6);
+}
+function rowHasDataInSpan(grid, r, fromCol, span) {
+  for (let i = 0; i < span; i++) { if (cell(grid, r, fromCol + i) !== "") return true; }
+  return false;
+}
+const TOTAL_RE = /^(grand )?total$/i;
+function readLabelRows(grid, startRow, labelCol, stopAtTotal, dataSpan) {
+  const span = dataSpan || tableRowSpan(grid, startRow - 1, labelCol);
   const rows = [];
+  // A row with a blank label is genuinely ambiguous on its own: it might be a real row whose
+  // name got cleared (keep it — that's the whole point of this fix), or it might be the
+  // sheet's own trailing Total/summary row, which also often has a blank leading cell and
+  // still has real numbers in it. We can't tell which just by looking at that one row, so we
+  // hold it in `pending` and decide once we see what comes next: if a real label resumes
+  // afterward, every pending row was a genuine (if unlabeled) part of the table and gets kept;
+  // if instead we hit a fully blank row, the total-keyword check, or run past a small cap of
+  // consecutive blank-label rows, nothing real was coming — pending is discarded as the
+  // table's tail (its Total row and/or real trailing blank rows), matching how the sheet ends.
+  let pending = [];
   for (let r = startRow; r < grid.length; r++) {
     const label = cell(grid, r, labelCol);
-    if (!label) break;
-    if (stopAtTotal !== false && /^(grand )?total$/i.test(label)) break;
-    rows.push(r);
+    // A sheet's own Total row often has the word "Total" merged across its leading columns
+    // rather than sitting in this exact label column (e.g. the row label lives one column to
+    // the left when the label column itself is blank on the total row) — check both spots.
+    const isTotalRow = stopAtTotal !== false && (TOTAL_RE.test(label) || (labelCol > 0 && TOTAL_RE.test(cell(grid, r, labelCol - 1))));
+    if (isTotalRow) break;
+    if (label) { rows.push(...pending); pending = []; rows.push(r); continue; }
+    if (!rowHasDataInSpan(grid, r, labelCol + 1, span)) break;
+    pending.push(r);
+    if (pending.length > 5) break;
   }
   return rows;
+}
+// Best-effort pick of "the column that represents each row's grand total", used only by
+// rollup visuals (e.g. the Facility Type Mix donut) that need *a* total-like number per row —
+// never by the literal detail tables, which just show every sheet column exactly as named.
+function pickTotalColIndex(columns) {
+  let idx = columns.findIndex((c) => /^total$/i.test(c));
+  if (idx === -1) idx = columns.findIndex((c) => /grand total/i.test(c));
+  if (idx === -1) idx = columns.length - 1;
+  return idx;
 }
 function readCols(grid, headerRow, startC, rowStart, rowEnd) {
   const rs = rowStart != null ? rowStart : headerRow + 1;
@@ -1323,15 +1370,18 @@ function parseOperatorBlocks(grid, regionKey) {
   return rows.map((r) => ({ label: r.label, stores: r.stores, yes: priceByLabel[r.label] ? priceByLabel[r.label].yes : null, no: priceByLabel[r.label] ? priceByLabel[r.label].no : null }));
 }
 
+// Pure dynamic mirror of the sheet's Facility Type breakdown: whatever columns the sheet has
+// right now (however they're named, however many there are) are what gets returned — no
+// "yes"/"no" text matching, so renaming a header can never mislabel or silently drop a column,
+// and a blanked Facility Type name (row label) no longer truncates the whole table (see
+// readLabelRows above). The renderer displays `columns` as the literal header row and each
+// row's `values` positionally underneath — an exact replica of the sheet, not a reinterpretation.
 function parseFacilityDetail(grid, regionKey) {
   const hit = anchorPos((regionKey || "default") + ":facilityDetail", findCells(grid, exact("Category")).find((m) => cell(grid, m.r, m.c + 1) === "Facility Type"), grid);
   if (!hit) return null;
   const rowIdxs = readLabelRows(grid, hit.r + 1, hit.c + 1);
   const lastRow = rowIdxs.length ? rowIdxs[rowIdxs.length - 1] + 1 : hit.r + 1;
   const cols = readCols(grid, hit.r, hit.c + 2, hit.r + 1, lastRow);
-  const yesCol = cols.find((c) => /yes/i.test(c.name));
-  const noCol = cols.find((c) => /\bno\b/i.test(c.name));
-  const totalCol = cols.find((c) => /^total$/i.test(c.name)) || cols[cols.length - 1];
   const rows = [];
   let lastCategory = "";
   rowIdxs.forEach((r) => {
@@ -1339,26 +1389,24 @@ function parseFacilityDetail(grid, regionKey) {
     const facType = cell(grid, r, hit.c + 1);
     const category = rawCat || lastCategory;
     lastCategory = category;
-    rows.push({
-      category, type: facType,
-      yes: yesCol ? numOf(cell(grid, r, yesCol.col)) : null,
-      no: noCol ? numOf(cell(grid, r, noCol.col)) : null,
-      total: totalCol ? numOf(cell(grid, r, totalCol.col)) : null
-    });
+    rows.push({ category, type: facType, values: cols.map((c) => numOf(cell(grid, r, c.col))) });
   });
-  return rows.length ? rows : null;
+  return rows.length ? { columns: cols.map((c) => c.name), rows } : null;
 }
 
+// Pure dynamic mirror of the sheet's Facility Type x Operator Type x NRSF table — see
+// parseFacilityDetail's comment above for why: literal sheet columns/values only, no
+// "store count"/"nrsf"/"total" text remapping, so a renamed or blanked header can't silently
+// drop or relabel a column in the table the user actually sees. Callers that need a specific
+// semantic number out of this (e.g. the UK's "Total NRSF" KPI tile and Facility Mix donut,
+// which is a rollup, not a literal table cell) do their own best-effort column lookup —
+// see parseUK below — same as before, just reading from this generic shape instead.
 function parseFacilityOperatorNrsf(grid, regionKey) {
   const hit = anchorPos((regionKey || "default") + ":facilityOperatorNrsf", findCells(grid, exact("Facility Type")).find((m) => cell(grid, m.r, m.c + 1) === "Category" && cell(grid, m.r, m.c + 2) === "Store Count"), grid);
   if (!hit) return null;
   const rowIdxs = readLabelRows(grid, hit.r + 1, hit.c + 1);
   const lastRow = rowIdxs.length ? rowIdxs[rowIdxs.length - 1] + 1 : hit.r + 1;
   const cols = readCols(grid, hit.r, hit.c + 2, hit.r + 1, lastRow);
-  const storesCol = cols.find((c) => /store count/i.test(c.name)) || cols[0];
-  const nrsfCol = cols.find((c) => /^nrsf$/i.test(c.name) || (/nrsf/i.test(c.name) && !/total/i.test(c.name)));
-  const totalStoresCol = cols.find((c) => /total stores/i.test(c.name));
-  const totalNrsfCol = cols.find((c) => /total nrsf/i.test(c.name));
   const rows = [];
   let lastFacility = "";
   rowIdxs.forEach((r) => {
@@ -1366,15 +1414,9 @@ function parseFacilityOperatorNrsf(grid, regionKey) {
     const opLabel = cell(grid, r, hit.c + 1);
     const facility = rawFac || lastFacility;
     lastFacility = facility;
-    rows.push({
-      facility, operator: opLabel,
-      stores: storesCol ? (numOf(cell(grid, r, storesCol.col)) || 0) : 0,
-      nrsf: nrsfCol ? numOf(cell(grid, r, nrsfCol.col)) : null,
-      totalStores: totalStoresCol ? numOf(cell(grid, r, totalStoresCol.col)) : null,
-      totalNrsf: totalNrsfCol ? numOf(cell(grid, r, totalNrsfCol.col)) : null
-    });
+    rows.push({ facility, operator: opLabel, values: cols.map((c) => numOf(cell(grid, r, c.col))) });
   });
-  return rows.length ? rows : null;
+  return rows.length ? { columns: cols.map((c) => c.name), rows } : null;
 }
 
 function parseCanada(grid, regionKey) {
@@ -1384,11 +1426,18 @@ function parseCanada(grid, regionKey) {
   const rb = parseRegionBlocks(grid, regionKey);
   const regionSplit = buildRegionSplit(rb);
   const regionPriceSplit = buildRegionPriceSplit(rb);
+  // facilityDetail is now the pure {columns, rows} sheet mirror (see parseFacilityDetail).
+  // The donut chart is a rollup, not a literal table cell, so it still needs *a* total-like
+  // column to sum per category — pickTotalColIndex finds one by name if possible, falling
+  // back to position, but never drops the underlying table if it can't find one.
   const facilityDetail = parseFacilityDetail(grid, regionKey);
   const facilityType = {};
-  (facilityDetail || []).forEach((d) => { facilityType[d.category] = (facilityType[d.category] || 0) + (d.total || 0); });
+  if (facilityDetail) {
+    const totalIdx = pickTotalColIndex(facilityDetail.columns);
+    facilityDetail.rows.forEach((r) => { facilityType[r.category] = (facilityType[r.category] || 0) + (r.values[totalIdx] || 0); });
+  }
   return { totalStores, pricing, operatorType,
-    regionSplit, regionPriceSplit, facilityType, pricingHistory: parsePricingHistory(grid, regionKey), facilityDetail, facilityOperatorNrsf: null, units: parseUnitsSummary(grid, regionKey), sqftTotal: null, regionLabel: "Province" };
+    regionSplit, regionPriceSplit, facilityType, pricingHistory: parsePricingHistory(grid, regionKey), facilityDetail, facilityOperatorNrsf: null, facilityOperatorNrsfTable: null, units: parseUnitsSummary(grid, regionKey), sqftTotal: null, regionLabel: "Province" };
 }
 
 const UK_REGIONS = ["England", "Northern Ireland", "Scotland", "Wales"];
@@ -1399,12 +1448,27 @@ function parseUK(grid, regionKey) {
   const rb = parseRegionBlocks(grid, regionKey);
   const regionSplit = buildRegionSplit(rb);
   const regionPriceSplit = buildRegionPriceSplit(rb);
-  const nrsfRows = parseFacilityOperatorNrsf(grid, regionKey);
-  const facilityOperatorNrsf = (nrsfRows || []).map((r) => ({ facility: r.facility.startsWith("Hybrid") ? "Hybrid" : r.facility, operator: r.operator, stores: r.stores, nrsf: r.nrsf, totalStores: r.totalStores, totalNrsf: r.totalNrsf }));
-  const facilityType = {};
-  facilityOperatorNrsf.forEach((d) => { facilityType[d.facility] = (facilityType[d.facility] || 0) + (d.stores || 0); });
-  const sqftTotal = facilityOperatorNrsf.reduce((s, d) => s + (d.nrsf || 0), 0);
-  return { totalStores, pricing, operatorType, regionSplit, regionPriceSplit, facilityType, facilityOperatorNrsf, pricingHistory: parsePricingHistory(grid, regionKey), facilityDetail: null, units: parseUnitsSummary(grid, regionKey), sqftTotal, regionLabel: "Region" };
+  // facilityOperatorNrsfTable is the pure {columns, rows} sheet mirror, rendered verbatim.
+  // facilityOperatorNrsf below is a best-effort semantic view of that same table, kept only
+  // because the "Total NRSF" KPI tile and Facility Mix donut are rollups that need to know
+  // *which* column means stores vs. NRSF — same matching this app already used before, just
+  // reading it from the generic table instead of baking it into the parser.
+  const nrsfTable = parseFacilityOperatorNrsf(grid, regionKey);
+  let facilityOperatorNrsf = null, facilityType = null, sqftTotal = 0;
+  if (nrsfTable) {
+    const storesIdx = nrsfTable.columns.findIndex((c) => /store count/i.test(c));
+    const nrsfIdx = nrsfTable.columns.findIndex((c) => /^nrsf$/i.test(c) || (/nrsf/i.test(c) && !/total/i.test(c)));
+    facilityOperatorNrsf = nrsfTable.rows.map((r) => ({
+      facility: r.facility.startsWith("Hybrid") ? "Hybrid" : r.facility,
+      operator: r.operator,
+      stores: storesIdx >= 0 ? (r.values[storesIdx] || 0) : 0,
+      nrsf: nrsfIdx >= 0 ? r.values[nrsfIdx] : null
+    }));
+    facilityType = {};
+    facilityOperatorNrsf.forEach((d) => { facilityType[d.facility] = (facilityType[d.facility] || 0) + (d.stores || 0); });
+    sqftTotal = facilityOperatorNrsf.reduce((s, d) => s + (d.nrsf || 0), 0);
+  }
+  return { totalStores, pricing, operatorType, regionSplit, regionPriceSplit, facilityType, facilityOperatorNrsf, facilityOperatorNrsfTable: nrsfTable, pricingHistory: parsePricingHistory(grid, regionKey), facilityDetail: null, units: parseUnitsSummary(grid, regionKey), sqftTotal, regionLabel: "Region" };
 }
 
 const AU_STATES = ["Australian Capital Territory", "New South Wales", "Northern Territory", "Queensland", "South Australia", "Tasmania", "Victoria", "Western Australia"];
@@ -1415,14 +1479,14 @@ function parseAustralia(grid, regionKey) {
   const rb = parseRegionBlocks(grid, regionKey);
   const regionSplit = buildRegionSplit(rb);
   const regionPriceSplit = buildRegionPriceSplit(rb);
-  return { totalStores, pricing, operatorType, regionSplit, regionPriceSplit, facilityType: null, pricingHistory: parsePricingHistory(grid, regionKey), facilityDetail: null, facilityOperatorNrsf: null, units: parseUnitsSummary(grid, regionKey), sqftTotal: null, regionLabel: "State" };
+  return { totalStores, pricing, operatorType, regionSplit, regionPriceSplit, facilityType: null, pricingHistory: parsePricingHistory(grid, regionKey), facilityDetail: null, facilityOperatorNrsf: null, facilityOperatorNrsfTable: null, units: parseUnitsSummary(grid, regionKey), sqftTotal: null, regionLabel: "State" };
 }
 
 function parseNewZealand(grid, regionKey) {
   const operatorType = parseOperatorBlocks(grid, regionKey) || [];
   const totalStores = operatorType.reduce((s, o) => s + (o.stores || 0), 0);
   const pricing = { yes: operatorType.reduce((s, o) => s + (o.yes || 0), 0), no: operatorType.reduce((s, o) => s + (o.no || 0), 0) };
-  return { totalStores, pricing, operatorType, regionSplit: null, facilityType: null, pricingHistory: parsePricingHistory(grid, regionKey), facilityDetail: null, facilityOperatorNrsf: null, units: parseUnitsSummary(grid, regionKey), sqftTotal: null, regionLabel: null };
+  return { totalStores, pricing, operatorType, regionSplit: null, facilityType: null, pricingHistory: parsePricingHistory(grid, regionKey), facilityDetail: null, facilityOperatorNrsf: null, facilityOperatorNrsfTable: null, units: parseUnitsSummary(grid, regionKey), sqftTotal: null, regionLabel: null };
 }
 
 function parseSourceCoverage(grid, unitLabel, regionKey) {
@@ -1509,10 +1573,11 @@ function parseDevelopments(grid, regionKey) {
     for (let cc = hit.c + 1; cc < (totalIdx > -1 ? totalIdx : headerRow.length); cc++) {
       stageCols.push({ col: cc, label: cell(grid, hit.r, cc) });
     }
+    const devSpan = tableRowSpan(grid, hit.r, hit.c);
     const rows = [];
     for (let r = hit.r + 1; r < grid.length; r++) {
       const region = cell(grid, r, hit.c);
-      if (!region) break;
+      if (!region && !rowHasDataInSpan(grid, r, hit.c + 1, devSpan)) break;
       const stages = stageCols.map((s) => ({ label: s.label, value: numOf(cell(grid, r, s.col)) }));
       const total = totalIdx > -1 ? numOf(cell(grid, r, totalIdx)) : null;
       rows.push({ region, stages, total });
@@ -1522,6 +1587,12 @@ function parseDevelopments(grid, regionKey) {
   return sections.length ? sections : null;
 }
 
+// Finding this table still keys off "Available"/"Not Available"/"...history..." header text —
+// that's just how we locate WHERE it lives in the grid the first time (same as every other
+// anchor in this file; POS_CACHE remembers the position after that). But once found, every
+// column is now returned exactly as named/valued in the sheet — no more remapping into
+// available/notAvailable/withHistory fields, so a renamed column shows up under its real name
+// instead of vanishing or landing under the wrong label. Pure sheet mirror, like the others.
 function parsePricingHistory(grid, regionKey) {
   const catHits = findCells(grid, exact("Category"));
   function colsOf(h) {
@@ -1545,19 +1616,8 @@ function parsePricingHistory(grid, regionKey) {
   }
   const lastRow = (dataRowIdxs.length ? dataRowIdxs[dataRowIdxs.length - 1] : hit.r) + 1;
   const cols = readCols(grid, hit.r, hit.c + 1, hit.r + 1, lastRow);
-  const colByName = (name) => { const f = cols.find((c) => c.name === name); return f ? f.col : null; };
-  const availCol = colByName("Available");
-  const naCol = colByName("Not Available");
-  const totalCol = cols.find((c) => /^(grand )?total$/i.test(c.name));
-  const historyCol = cols.find((c) => /history/i.test(c.name));
-  const rows = dataRowIdxs.map((r) => ({
-    label: cell(grid, r, hit.c),
-    available: availCol != null ? numOf(cell(grid, r, availCol)) : null,
-    notAvailable: naCol != null ? numOf(cell(grid, r, naCol)) : null,
-    total: totalCol ? numOf(cell(grid, r, totalCol.col)) : null,
-    withHistory: historyCol ? numOf(cell(grid, r, historyCol.col)) : null
-  }));
-  return rows.length ? rows : null;
+  const rows = dataRowIdxs.map((r) => ({ label: cell(grid, r, hit.c), values: cols.map((c) => numOf(cell(grid, r, c.col))) }));
+  return rows.length ? { columns: cols.map((c) => c.name), rows } : null;
 }
 
 /* =====================================================================================
@@ -1598,7 +1658,12 @@ let REFRESH_MS = 1800000;
    Lives in localStorage, so it's per-browser and clears if the user clears
    site data — that's fine, DEFAULT_SNAPSHOTS below covers that gap.
    ------------------------------------------------------------------------ */
-const LIVE_CACHE_KEY = "stortrack_live_cache_v1";
+// Bumped to v2 because this update changes the shape of facilityDetail/facilityOperatorNrsf/
+// pricingHistory (semantic yes/no/total fields -> a generic {columns, rows} sheet mirror).
+// A browser holding a v1 cache from before this change would otherwise feed the new renderer
+// old-shaped data and crash on load; bumping the key makes that old cache simply not match,
+// so it falls through to the built-in default snapshot (or a fresh sync) instead of erroring.
+const LIVE_CACHE_KEY = "stortrack_live_cache_v2";
 function loadLiveCache() {
   try { return JSON.parse(localStorage.getItem(LIVE_CACHE_KEY)) || {}; } catch (e) { return {}; }
 }
@@ -1624,8 +1689,8 @@ const LIVE_CACHE = loadLiveCache();
    only ever on screen for the few seconds before a real sync lands.
    ------------------------------------------------------------------------ */
 const DEFAULT_SNAPSHOTS = {
-  "Canada": { "totalStores":3806,"pricing":{"yes":2428,"no":1378},"operatorType":[{"label":"Large Operator","stores":932,"yes":881,"no":51},{"label":"Medium Operator","stores":632,"yes":444,"no":188},{"label":"Single Operator","stores":2242,"yes":1103,"no":1139}],"regionSplit":[{"label":"AB","large":133,"medium":82,"single":370,"total":585,"priceNo":186,"priceYes":399},{"label":"BC","large":108,"medium":141,"single":426,"total":675,"priceNo":269,"priceYes":406},{"label":"MB","large":27,"medium":20,"single":73,"total":120,"priceNo":37,"priceYes":83},{"label":"NB","large":21,"medium":22,"single":73,"total":116,"priceNo":48,"priceYes":68},{"label":"NL","large":6,"medium":null,"single":32,"total":38,"priceNo":24,"priceYes":14},{"label":"NS","large":35,"medium":27,"single":78,"total":140,"priceNo":48,"priceYes":92},{"label":"NT","large":null,"medium":null,"single":6,"total":6,"priceNo":2,"priceYes":4},{"label":"ON","large":459,"medium":220,"single":800,"total":1479,"priceNo":492,"priceYes":987},{"label":"PE","large":1,"medium":2,"single":14,"total":17,"priceNo":8,"priceYes":9},{"label":"QC","large":104,"medium":93,"single":264,"total":461,"priceNo":200,"priceYes":261},{"label":"SK","large":37,"medium":19,"single":100,"total":156,"priceNo":54,"priceYes":102},{"label":"YT","large":1,"medium":6,"single":6,"total":13,"priceNo":10,"priceYes":3}],"facilityType":{"Self-Storage":1634,"Hybrid":1970,"Parking":202},"facilityDetail":[{"category":"Self-Storage","type":"Container","yes":43,"no":36,"total":79},{"category":"Self-Storage","type":"Self Storage","yes":822,"no":585,"total":1407},{"category":"Self-Storage","type":"Self Storage and Container","yes":87,"no":60,"total":147},{"category":"Self-Storage","type":"Wine Storage","yes":null,"no":1,"total":1},{"category":"Hybrid","type":"Container and Parking","yes":98,"no":60,"total":158},{"category":"Hybrid","type":"Self Storage and Parking","yes":1029,"no":422,"total":1451},{"category":"Hybrid","type":"Self Storage, Container and Parking","yes":234,"no":127,"total":361},{"category":"Parking","type":"Parking","yes":63,"no":61,"total":124},{"category":"Parking","type":"RV and Boat Storage","yes":52,"no":26,"total":78}],"facilityOperatorNrsf":null,"units":{"actual":152,"estimated":3204,"notAvailable":693,"totalStoresInUnitsTab":4049},"sqftTotal":null,"regionLabel":"Province" },
-  "United Kingdom": { "totalStores":5559,"pricing":{"yes":3385,"no":2174},"operatorType":[{"label":"Large Operator","stores":601,"yes":594,"no":7},{"label":"Medium Operator","stores":442,"yes":385,"no":57},{"label":"Small Operator","stores":1181,"yes":874,"no":307},{"label":"Single Operator","stores":3335,"yes":1532,"no":1803}],"regionSplit":[{"label":"England","large":601,"medium":369,"small":977,"single":2799,"total":4746,"priceNo":1812,"priceYes":2934},{"label":"Northern Ireland","large":null,"medium":null,"small":13,"single":62,"total":75,"priceNo":48,"priceYes":27},{"label":"Scotland","large":null,"medium":15,"small":107,"single":258,"total":380,"priceNo":171,"priceYes":209},{"label":"Wales","large":null,"medium":58,"small":84,"single":216,"total":358,"priceNo":143,"priceYes":215}],"facilityType":{"Self Storage":2617,"Container":1667,"Hybrid":989,"Parking":286},"facilityDetail":null,"facilityOperatorNrsf":[{"facility":"Self Storage","operator":"Large Operator","stores":498,"nrsf":23288872},{"facility":"Self Storage","operator":"Medium Operator","stores":222,"nrsf":6534330},{"facility":"Self Storage","operator":"Small Operator","stores":556,"nrsf":12735011},{"facility":"Self Storage","operator":"Single Operator","stores":1341,"nrsf":24032175},{"facility":"Container","operator":"Large Operator","stores":40,"nrsf":549852},{"facility":"Container","operator":"Medium Operator","stores":138,"nrsf":1855441},{"facility":"Container","operator":"Small Operator","stores":396,"nrsf":5399383},{"facility":"Container","operator":"Single Operator","stores":1093,"nrsf":12484415},{"facility":"Hybrid","operator":"Large Operator","stores":63,"nrsf":2566183},{"facility":"Hybrid","operator":"Medium Operator","stores":82,"nrsf":2246558},{"facility":"Hybrid","operator":"Small Operator","stores":218,"nrsf":6122837},{"facility":"Hybrid","operator":"Single Operator","stores":626,"nrsf":17848721},{"facility":"Parking","operator":"Large Operator","stores":0,"nrsf":null},{"facility":"Parking","operator":"Medium Operator","stores":0,"nrsf":null},{"facility":"Parking","operator":"Small Operator","stores":11,"nrsf":247070},{"facility":"Parking","operator":"Single Operator","stores":275,"nrsf":10217861}],"units":{"actual":94,"estimated":3816,"notAvailable":1248,"totalStoresInUnitsTab":5158},"sqftTotal":126128709,"regionLabel":"Region" },
+  "Canada": { "totalStores":3806,"pricing":{"yes":2428,"no":1378},"operatorType":[{"label":"Large Operator","stores":932,"yes":881,"no":51},{"label":"Medium Operator","stores":632,"yes":444,"no":188},{"label":"Single Operator","stores":2242,"yes":1103,"no":1139}],"regionSplit":[{"label":"AB","large":133,"medium":82,"single":370,"total":585,"priceNo":186,"priceYes":399},{"label":"BC","large":108,"medium":141,"single":426,"total":675,"priceNo":269,"priceYes":406},{"label":"MB","large":27,"medium":20,"single":73,"total":120,"priceNo":37,"priceYes":83},{"label":"NB","large":21,"medium":22,"single":73,"total":116,"priceNo":48,"priceYes":68},{"label":"NL","large":6,"medium":null,"single":32,"total":38,"priceNo":24,"priceYes":14},{"label":"NS","large":35,"medium":27,"single":78,"total":140,"priceNo":48,"priceYes":92},{"label":"NT","large":null,"medium":null,"single":6,"total":6,"priceNo":2,"priceYes":4},{"label":"ON","large":459,"medium":220,"single":800,"total":1479,"priceNo":492,"priceYes":987},{"label":"PE","large":1,"medium":2,"single":14,"total":17,"priceNo":8,"priceYes":9},{"label":"QC","large":104,"medium":93,"single":264,"total":461,"priceNo":200,"priceYes":261},{"label":"SK","large":37,"medium":19,"single":100,"total":156,"priceNo":54,"priceYes":102},{"label":"YT","large":1,"medium":6,"single":6,"total":13,"priceNo":10,"priceYes":3}],"facilityType":{"Self-Storage":1634,"Hybrid":1970,"Parking":202},"facilityDetail":{"columns":["Price - Yes","Price - No","Total"],"rows":[{"category":"Self-Storage","type":"Container","values":[43,36,79]},{"category":"Self-Storage","type":"Self Storage","values":[822,585,1407]},{"category":"Self-Storage","type":"Self Storage and Container","values":[87,60,147]},{"category":"Self-Storage","type":"Wine Storage","values":[null,1,1]},{"category":"Hybrid","type":"Container and Parking","values":[98,60,158]},{"category":"Hybrid","type":"Self Storage and Parking","values":[1029,422,1451]},{"category":"Hybrid","type":"Self Storage, Container and Parking","values":[234,127,361]},{"category":"Parking","type":"Parking","values":[63,61,124]},{"category":"Parking","type":"RV and Boat Storage","values":[52,26,78]}]},"facilityOperatorNrsf":null,"units":{"actual":152,"estimated":3204,"notAvailable":693,"totalStoresInUnitsTab":4049},"sqftTotal":null,"regionLabel":"Province" },
+  "United Kingdom": { "totalStores":5559,"pricing":{"yes":3385,"no":2174},"operatorType":[{"label":"Large Operator","stores":601,"yes":594,"no":7},{"label":"Medium Operator","stores":442,"yes":385,"no":57},{"label":"Small Operator","stores":1181,"yes":874,"no":307},{"label":"Single Operator","stores":3335,"yes":1532,"no":1803}],"regionSplit":[{"label":"England","large":601,"medium":369,"small":977,"single":2799,"total":4746,"priceNo":1812,"priceYes":2934},{"label":"Northern Ireland","large":null,"medium":null,"small":13,"single":62,"total":75,"priceNo":48,"priceYes":27},{"label":"Scotland","large":null,"medium":15,"small":107,"single":258,"total":380,"priceNo":171,"priceYes":209},{"label":"Wales","large":null,"medium":58,"small":84,"single":216,"total":358,"priceNo":143,"priceYes":215}],"facilityType":{"Self Storage":2617,"Container":1667,"Hybrid":989,"Parking":286},"facilityDetail":null,"facilityOperatorNrsf":[{"facility":"Self Storage","operator":"Large Operator","stores":498,"nrsf":23288872},{"facility":"Self Storage","operator":"Medium Operator","stores":222,"nrsf":6534330},{"facility":"Self Storage","operator":"Small Operator","stores":556,"nrsf":12735011},{"facility":"Self Storage","operator":"Single Operator","stores":1341,"nrsf":24032175},{"facility":"Container","operator":"Large Operator","stores":40,"nrsf":549852},{"facility":"Container","operator":"Medium Operator","stores":138,"nrsf":1855441},{"facility":"Container","operator":"Small Operator","stores":396,"nrsf":5399383},{"facility":"Container","operator":"Single Operator","stores":1093,"nrsf":12484415},{"facility":"Hybrid","operator":"Large Operator","stores":63,"nrsf":2566183},{"facility":"Hybrid","operator":"Medium Operator","stores":82,"nrsf":2246558},{"facility":"Hybrid","operator":"Small Operator","stores":218,"nrsf":6122837},{"facility":"Hybrid","operator":"Single Operator","stores":626,"nrsf":17848721},{"facility":"Parking","operator":"Large Operator","stores":0,"nrsf":null},{"facility":"Parking","operator":"Medium Operator","stores":0,"nrsf":null},{"facility":"Parking","operator":"Small Operator","stores":11,"nrsf":247070},{"facility":"Parking","operator":"Single Operator","stores":275,"nrsf":10217861}],"facilityOperatorNrsfTable":{"columns":["Store Count","NRSF"],"rows":[{"facility":"Self Storage","operator":"Large Operator","values":[498,23288872]},{"facility":"Self Storage","operator":"Medium Operator","values":[222,6534330]},{"facility":"Self Storage","operator":"Small Operator","values":[556,12735011]},{"facility":"Self Storage","operator":"Single Operator","values":[1341,24032175]},{"facility":"Container","operator":"Large Operator","values":[40,549852]},{"facility":"Container","operator":"Medium Operator","values":[138,1855441]},{"facility":"Container","operator":"Small Operator","values":[396,5399383]},{"facility":"Container","operator":"Single Operator","values":[1093,12484415]},{"facility":"Hybrid","operator":"Large Operator","values":[63,2566183]},{"facility":"Hybrid","operator":"Medium Operator","values":[82,2246558]},{"facility":"Hybrid","operator":"Small Operator","values":[218,6122837]},{"facility":"Hybrid","operator":"Single Operator","values":[626,17848721]},{"facility":"Parking","operator":"Large Operator","values":[0,null]},{"facility":"Parking","operator":"Medium Operator","values":[0,null]},{"facility":"Parking","operator":"Small Operator","values":[11,247070]},{"facility":"Parking","operator":"Single Operator","values":[275,10217861]}]},"units":{"actual":94,"estimated":3816,"notAvailable":1248,"totalStoresInUnitsTab":5158},"sqftTotal":126128709,"regionLabel":"Region" },
   "Australia": { "totalStores":2846,"pricing":{"yes":1468,"no":1378},"operatorType":[{"label":"REIT","stores":274,"yes":260,"no":14},{"label":"Large Operator","stores":529,"yes":481,"no":48},{"label":"Medium Operator","stores":476,"yes":270,"no":206},{"label":"Single Operator","stores":1567,"yes":457,"no":1110}],"regionSplit":[{"label":"Australian Capital Territory","reit":4,"large":8,"medium":1,"single":3,"total":16,"priceNo":null,"priceYes":16},{"label":"New South Wales","reit":60,"large":210,"medium":158,"single":472,"total":900,"priceNo":451,"priceYes":449},{"label":"Northern Territory","reit":3,"large":null,"medium":8,"single":8,"total":19,"priceNo":10,"priceYes":9},{"label":"Queensland","reit":81,"large":152,"medium":107,"single":334,"total":674,"priceNo":312,"priceYes":362},{"label":"South Australia","reit":11,"large":16,"medium":37,"single":150,"total":214,"priceNo":120,"priceYes":94},{"label":"Tasmania","reit":6,"large":1,"medium":9,"single":77,"total":93,"priceNo":55,"priceYes":38},{"label":"Victoria","reit":66,"large":112,"medium":111,"single":397,"total":686,"priceNo":320,"priceYes":366},{"label":"Western Australia","reit":43,"large":30,"medium":45,"single":126,"total":244,"priceNo":110,"priceYes":134}],"facilityType":null,"facilityDetail":null,"facilityOperatorNrsf":null,"units":{"actual":26,"estimated":2537,"notAvailable":258,"totalStoresInUnitsTab":2821},"sqftTotal":null,"regionLabel":"State" },
   "New Zealand": { "totalStores":873,"pricing":{"yes":460,"no":413},"operatorType":[{"label":"Large Operator","stores":259,"yes":211,"no":48},{"label":"Medium Operator","stores":146,"yes":70,"no":76},{"label":"Single Operator","stores":468,"yes":179,"no":289}],"regionSplit":null,"facilityType":null,"facilityDetail":null,"facilityOperatorNrsf":null,"units":{"actual":0,"estimated":756,"notAvailable":104,"totalStoresInUnitsTab":860},"sqftTotal":null,"regionLabel":null }
 };
@@ -1824,6 +1889,51 @@ function stackedYesNoList(items) {
       <div class="stack-label">${fmtNum(i.yes)} yes · ${fmtNum(i.no)} no · ${fmtNum(total)} total</div></div>`;
   }).join("");
 }
+// Renders a {columns, rows} table (from parseFacilityDetail / parseFacilityOperatorNrsf /
+// parsePricingHistory) exactly as the sheet has it right now: the header cells shown are the
+// sheet's own column headers (whatever they currently say), and every row's numbers sit under
+// whichever column they actually came from — no hardcoded "Yes"/"No"/"Total" labels baked into
+// the markup. A blank header shows as "—" rather than an empty cell so it's visibly a header,
+// not an accidental gap. `groupOf`/`itemOf` are optional leading text columns (e.g. Category +
+// Facility Type) shown with the group column row-spanned when consecutive rows share a group —
+// purely a display grouping of the row labels already in the sheet, not a re-derived value.
+function renderDynamicTable(opts) {
+  const grouped = !!opts.groupHeader;
+  const cols = opts.columns || [];
+  // Some sheets (e.g. Pricing Availability history) already end with their own literal
+  // "Grand Total" row baked into the data — that row's label IS kept (unlike other tables,
+  // it isn't a blank-label summary row so it never gets excluded by the parser). Adding our
+  // own computed sum row on top of that would double-count it. So: only synthesize a bottom
+  // Total row when the sheet doesn't already end with one of its own.
+  const lastRow = opts.rows.length ? opts.rows[opts.rows.length - 1] : null;
+  const lastLabel = lastRow ? (opts.itemOf(lastRow) || "") : "";
+  const sheetHasOwnTotalRow = TOTAL_RE.test(lastLabel);
+  const summableRows = sheetHasOwnTotalRow ? opts.rows.slice(0, -1) : opts.rows;
+  const colTotals = cols.map((_, i) => summableRows.reduce((s, r) => s + (r.values[i] || 0), 0));
+  let bodyRows;
+  if (grouped) {
+    const groups = [];
+    opts.rows.forEach((row) => {
+      const g = opts.groupOf(row);
+      let grp = groups.length ? groups[groups.length - 1] : null;
+      if (!grp || grp.key !== g) { grp = { key: g, rows: [] }; groups.push(grp); }
+      grp.rows.push(row);
+    });
+    bodyRows = groups.map((grp) => grp.rows.map((row, i) => {
+      const groupCell = i === 0 ? `<td rowspan="${grp.rows.length}">${grp.key || "—"}</td>` : "";
+      return `<tr>${groupCell}<td>${opts.itemOf(row) || "—"}</td>${row.values.map((v) => `<td class="num">${fmtNum(v)}</td>`).join("")}</tr>`;
+    }).join("")).join("");
+  } else {
+    bodyRows = opts.rows.map((row) => `<tr><td>${opts.itemOf(row) || "—"}</td>${row.values.map((v) => `<td class="num">${fmtNum(v)}</td>`).join("")}</tr>`).join("");
+  }
+  const leadColspan = grouped ? 2 : 1;
+  const totalRowHtml = sheetHasOwnTotalRow ? "" : `<tr class="total-row"><td colspan="${leadColspan}">${opts.totalLabel || "Total"}</td>${colTotals.map((v) => `<td class="num"><strong>${fmtNum(v)}</strong></td>`).join("")}</tr>`;
+  return `<div class="card"><h3>${opts.title}</h3><div class="card-sub">${opts.subtitle}</div>
+    <div class="scroll-table"><table class="data-table"><thead><tr>${grouped ? `<th>${opts.groupHeader}</th>` : ""}<th>${opts.itemHeader}</th>${cols.map((c) => `<th class="num">${c || "—"}</th>`).join("")}</tr></thead>
+    <tbody>${bodyRows}
+    ${totalRowHtml}
+    </tbody></table></div></div>`;
+}
 function donutSVG(entries, centerValue, centerLabel, size) {
   size = size || 150;
   const total = entries.reduce((s,e) => s + (e.value||0), 0) || 1;
@@ -1923,63 +2033,44 @@ function renderRegionBlock(region) {
   const unitsNote = (d.units.totalStoresInUnitsTab != null && d.units.totalStoresInUnitsTab !== storeTotal)
     ? `<div class="foot-note">Note: the sheet's "Units Summary" section totals ${fmtNum(d.units.totalStoresInUnitsTab)} stores — this differs from the ${fmtNum(storeTotal)} total elsewhere on the tab. Shown as reported.</div>` : "";
 
+  // All three tables below are pure, dynamic mirrors of their sheet section: the header cells
+  // are whatever the sheet's own headers currently say, and every value sits under the column
+  // it actually came from — see renderDynamicTable's comment and the parser comments above.
   let detailTables = "";
-      if (d.pricingHistory && d.pricingHistory.length) {
-    detailTables += `<div class="card"><h3>Pricing Availability - 3+ Year History Coverage</h3><div class="card-sub">Stores with at least 3 years of pricing history, by operator type</div>
-      <table class="data-table"><thead><tr><th>Operator Type</th><th class="num">Available</th><th class="num">Not Available</th><th class="num">Total</th><th class="num">With 3+ Yrs History</th></tr></thead>
-      <tbody>${d.pricingHistory.map((x) => `<tr><td>${x.label}</td><td class="num">${fmtNum(x.available)}</td><td class="num">${fmtNum(x.notAvailable)}</td><td class="num">${fmtNum(x.total)}</td><td class="num"><strong>${fmtNum(x.withHistory)}</strong></td></tr>`).join("")}</tbody></table></div>`;
+  if (d.pricingHistory && d.pricingHistory.rows.length) {
+    detailTables += renderDynamicTable({
+      title: "Pricing Availability - 3+ Year History Coverage",
+      subtitle: "Stores with at least 3 years of pricing history, by operator type — exactly as the sheet has it",
+      itemHeader: "Operator Type",
+      itemOf: (r) => r.label,
+      columns: d.pricingHistory.columns,
+      rows: d.pricingHistory.rows
+    });
   }
 
   if (d.facilityDetail) {
-    const fdGroups = [];
-    d.facilityDetail.forEach((x) => {
-      let g = fdGroups.find((g) => g.category === x.category);
-      if (!g) { g = { category: x.category, rows: [] }; fdGroups.push(g); }
-      g.rows.push(x);
+    detailTables += renderDynamicTable({
+      title: "Facility Type — full breakdown",
+      subtitle: "Every sub-type reported, exactly as the sheet has it",
+      groupHeader: "Category",
+      groupOf: (r) => r.category,
+      itemHeader: "Facility Type",
+      itemOf: (r) => r.type,
+      columns: d.facilityDetail.columns,
+      rows: d.facilityDetail.rows
     });
-    const fdYesAll = d.facilityDetail.reduce((s, x) => s + (x.yes || 0), 0);
-    const fdNoAll = d.facilityDetail.reduce((s, x) => s + (x.no || 0), 0);
-    const fdGrandAll = d.facilityDetail.reduce((s, x) => s + (x.total || 0), 0);
-    const fdBody = fdGroups.map((g) => {
-      const groupTotal = g.rows.reduce((s, x) => s + (x.total || 0), 0);
-      return g.rows.map((x, i) => {
-        const catCell = i === 0 ? `<td rowspan="${g.rows.length}">${g.category}</td>` : "";
-        const gtCell = i === 0 ? `<td class="num" rowspan="${g.rows.length}"><strong>${fmtNum(groupTotal)}</strong></td>` : "";
-        return `<tr>${catCell}<td>${x.type}</td><td class="num">${fmtNum(x.yes)}</td><td class="num">${fmtNum(x.no)}</td><td class="num"><strong>${fmtNum(x.total)}</strong></td>${gtCell}</tr>`;
-      }).join("");
-    }).join("");
-    detailTables += `<div class="card"><h3>Facility Type — full breakdown</h3><div class="card-sub">Every sub-type reported, with price yes/no</div>
-      <table class="data-table"><thead><tr><th>Category</th><th>Facility Type</th><th class="num">Price — Yes</th><th class="num">Price — No</th><th class="num">Total</th><th class="num">Grand Total</th></tr></thead>
-      <tbody>${fdBody}
-      <tr class="total-row"><td colspan="2">Total</td><td class="num">${fmtNum(fdYesAll)}</td><td class="num">${fmtNum(fdNoAll)}</td><td class="num">—</td><td class="num"><strong>${fmtNum(fdGrandAll)}</strong></td></tr>
-      </tbody></table></div>`;
   }
-  if (d.facilityOperatorNrsf) {
-    const fnGroups = [];
-    d.facilityOperatorNrsf.forEach((x) => {
-      let g = fnGroups.find((g) => g.facility === x.facility);
-      if (!g) { g = { facility: x.facility, rows: [], totalStores: null, totalNrsf: null }; fnGroups.push(g); }
-      g.rows.push(x);
-      if (x.totalStores != null) g.totalStores = x.totalStores;
-      if (x.totalNrsf != null) g.totalNrsf = x.totalNrsf;
+  if (d.facilityOperatorNrsfTable) {
+    detailTables += renderDynamicTable({
+      title: "Facility Type × Operator Type — NRSF",
+      subtitle: "Store count and net rentable sq ft per slice, exactly as the sheet has it",
+      groupHeader: "Facility Type",
+      groupOf: (r) => r.facility,
+      itemHeader: "Operator Type",
+      itemOf: (r) => r.operator,
+      columns: d.facilityOperatorNrsfTable.columns,
+      rows: d.facilityOperatorNrsfTable.rows
     });
-    const hasTotals = fnGroups.some((g) => g.totalStores != null || g.totalNrsf != null);
-    let grandStores = 0, grandNrsf = 0, grandNrsfSeen = false;
-    const fnBody = fnGroups.map((g) => {
-      const groupStores = g.totalStores != null ? g.totalStores : g.rows.reduce((s,x)=>s+(x.stores||0),0);
-      const groupNrsf = g.totalNrsf != null ? g.totalNrsf : g.rows.reduce((s,x)=>s+(x.nrsf||0),0);
-      grandStores += groupStores || 0;
-      if (groupNrsf) { grandNrsf += groupNrsf; grandNrsfSeen = true; }
-      return g.rows.map((x, i) => {
-        const facCell = i === 0 ? `<td rowspan="${g.rows.length}">${g.facility}</td>` : "";
-        const totCells = i === 0 && hasTotals ? `<td class="num" rowspan="${g.rows.length}"><strong>${fmtNum(groupStores)}</strong></td><td class="num" rowspan="${g.rows.length}"><strong>${groupNrsf ? fmtNum(groupNrsf) : "—"}</strong></td>` : "";
-        return `<tr>${facCell}<td>${x.operator}</td><td class="num">${fmtNum(x.stores)}</td><td class="num">${x.nrsf ? fmtNum(x.nrsf) : "—"}</td>${totCells}</tr>`;
-      }).join("");
-    }).join("");
-    const fnTotalRow = `<tr class="total-row"><td colspan="2">Total</td><td class="num">—</td><td class="num">—</td>${hasTotals ? `<td class="num"><strong>${fmtNum(grandStores)}</strong></td><td class="num"><strong>${grandNrsfSeen ? fmtNum(grandNrsf) : "—"}</strong></td>` : ""}</tr>`;
-    detailTables += `<div class="card"><h3>Facility Type × Operator Type — NRSF</h3><div class="card-sub">Store count and net rentable sq ft per slice${hasTotals ? ", with per-facility totals" : ""}</div>
-      <table class="data-table"><thead><tr><th>Facility Type</th><th>Operator Type</th><th class="num">Stores</th><th class="num">NRSF</th>${hasTotals ? '<th class="num">Total Stores</th><th class="num">Total NRSF</th>' : ""}</tr></thead>
-      <tbody>${fnBody}${fnTotalRow}</tbody></table></div>`;
   }
 
   if (d.sourceCoverage && d.sourceCoverage.rows.length) {
