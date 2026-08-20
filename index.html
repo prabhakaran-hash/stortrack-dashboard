@@ -883,22 +883,8 @@ const EXTRA_TABS = {
 };
 let REFRESH_MS = 1800000;
 
-/* ------------------------------------------------------------------------
-   FALLBACK SNAPSHOTS — last known-good read of each sheet (taken manually,
-   cross-checked cell-by-cell before shipping). Shown immediately on page
-   load and instantly replaced the moment the first live sync succeeds, so
-   the dashboard is never blank while waiting on the network, and never
-   goes blank if a later poll fails either.
-   ------------------------------------------------------------------------ */
-const FALLBACK_SNAPSHOTS = {
-  "Canada": { "totalStores":3806,"pricing":{"yes":2428,"no":1378},"operatorType":[{"label":"Large Operator","stores":932,"yes":881,"no":51},{"label":"Medium Operator","stores":632,"yes":444,"no":188},{"label":"Single Operator","stores":2242,"yes":1103,"no":1139}],"regionSplit":[{"label":"AB","large":133,"medium":82,"single":370,"total":585,"priceNo":186,"priceYes":399},{"label":"BC","large":108,"medium":141,"single":426,"total":675,"priceNo":269,"priceYes":406},{"label":"MB","large":27,"medium":20,"single":73,"total":120,"priceNo":37,"priceYes":83},{"label":"NB","large":21,"medium":22,"single":73,"total":116,"priceNo":48,"priceYes":68},{"label":"NL","large":6,"medium":null,"single":32,"total":38,"priceNo":24,"priceYes":14},{"label":"NS","large":35,"medium":27,"single":78,"total":140,"priceNo":48,"priceYes":92},{"label":"NT","large":null,"medium":null,"single":6,"total":6,"priceNo":2,"priceYes":4},{"label":"ON","large":459,"medium":220,"single":800,"total":1479,"priceNo":492,"priceYes":987},{"label":"PE","large":1,"medium":2,"single":14,"total":17,"priceNo":8,"priceYes":9},{"label":"QC","large":104,"medium":93,"single":264,"total":461,"priceNo":200,"priceYes":261},{"label":"SK","large":37,"medium":19,"single":100,"total":156,"priceNo":54,"priceYes":102},{"label":"YT","large":1,"medium":6,"single":6,"total":13,"priceNo":10,"priceYes":3}],"facilityType":{"Self-Storage":1634,"Hybrid":1970,"Parking":202},"facilityDetail":[{"category":"Self-Storage","type":"Container","yes":43,"no":36,"total":79},{"category":"Self-Storage","type":"Self Storage","yes":822,"no":585,"total":1407},{"category":"Self-Storage","type":"Self Storage and Container","yes":87,"no":60,"total":147},{"category":"Self-Storage","type":"Wine Storage","yes":null,"no":1,"total":1},{"category":"Hybrid","type":"Container and Parking","yes":98,"no":60,"total":158},{"category":"Hybrid","type":"Self Storage and Parking","yes":1029,"no":422,"total":1451},{"category":"Hybrid","type":"Self Storage, Container and Parking","yes":234,"no":127,"total":361},{"category":"Parking","type":"Parking","yes":63,"no":61,"total":124},{"category":"Parking","type":"RV and Boat Storage","yes":52,"no":26,"total":78}],"facilityOperatorNrsf":null,"units":{"actual":152,"estimated":3204,"notAvailable":693,"totalStoresInUnitsTab":4049},"sqftTotal":null,"regionLabel":"Province" },
-  "United Kingdom": { "totalStores":5559,"pricing":{"yes":3385,"no":2174},"operatorType":[{"label":"Large Operator","stores":601,"yes":594,"no":7},{"label":"Medium Operator","stores":442,"yes":385,"no":57},{"label":"Small Operator","stores":1181,"yes":874,"no":307},{"label":"Single Operator","stores":3335,"yes":1532,"no":1803}],"regionSplit":[{"label":"England","large":601,"medium":369,"small":977,"single":2799,"total":4746,"priceNo":1812,"priceYes":2934},{"label":"Northern Ireland","large":null,"medium":null,"small":13,"single":62,"total":75,"priceNo":48,"priceYes":27},{"label":"Scotland","large":null,"medium":15,"small":107,"single":258,"total":380,"priceNo":171,"priceYes":209},{"label":"Wales","large":null,"medium":58,"small":84,"single":216,"total":358,"priceNo":143,"priceYes":215}],"facilityType":{"Self Storage":2617,"Container":1667,"Hybrid":989,"Parking":286},"facilityDetail":null,"facilityOperatorNrsf":[{"facility":"Self Storage","operator":"Large Operator","stores":498,"nrsf":23288872},{"facility":"Self Storage","operator":"Medium Operator","stores":222,"nrsf":6534330},{"facility":"Self Storage","operator":"Small Operator","stores":556,"nrsf":12735011},{"facility":"Self Storage","operator":"Single Operator","stores":1341,"nrsf":24032175},{"facility":"Container","operator":"Large Operator","stores":40,"nrsf":549852},{"facility":"Container","operator":"Medium Operator","stores":138,"nrsf":1855441},{"facility":"Container","operator":"Small Operator","stores":396,"nrsf":5399383},{"facility":"Container","operator":"Single Operator","stores":1093,"nrsf":12484415},{"facility":"Hybrid","operator":"Large Operator","stores":63,"nrsf":2566183},{"facility":"Hybrid","operator":"Medium Operator","stores":82,"nrsf":2246558},{"facility":"Hybrid","operator":"Small Operator","stores":218,"nrsf":6122837},{"facility":"Hybrid","operator":"Single Operator","stores":626,"nrsf":17848721},{"facility":"Parking","operator":"Large Operator","stores":0,"nrsf":null},{"facility":"Parking","operator":"Medium Operator","stores":0,"nrsf":null},{"facility":"Parking","operator":"Small Operator","stores":11,"nrsf":247070},{"facility":"Parking","operator":"Single Operator","stores":275,"nrsf":10217861}],"units":{"actual":94,"estimated":3816,"notAvailable":1248,"totalStoresInUnitsTab":5158},"sqftTotal":126128709,"regionLabel":"Region" },
-  "Australia": { "totalStores":2846,"pricing":{"yes":1468,"no":1378},"operatorType":[{"label":"REIT","stores":274,"yes":260,"no":14},{"label":"Large Operator","stores":529,"yes":481,"no":48},{"label":"Medium Operator","stores":476,"yes":270,"no":206},{"label":"Single Operator","stores":1567,"yes":457,"no":1110}],"regionSplit":[{"label":"Australian Capital Territory","reit":4,"large":8,"medium":1,"single":3,"total":16,"priceNo":null,"priceYes":16},{"label":"New South Wales","reit":60,"large":210,"medium":158,"single":472,"total":900,"priceNo":451,"priceYes":449},{"label":"Northern Territory","reit":3,"large":null,"medium":8,"single":8,"total":19,"priceNo":10,"priceYes":9},{"label":"Queensland","reit":81,"large":152,"medium":107,"single":334,"total":674,"priceNo":312,"priceYes":362},{"label":"South Australia","reit":11,"large":16,"medium":37,"single":150,"total":214,"priceNo":120,"priceYes":94},{"label":"Tasmania","reit":6,"large":1,"medium":9,"single":77,"total":93,"priceNo":55,"priceYes":38},{"label":"Victoria","reit":66,"large":112,"medium":111,"single":397,"total":686,"priceNo":320,"priceYes":366},{"label":"Western Australia","reit":43,"large":30,"medium":45,"single":126,"total":244,"priceNo":110,"priceYes":134}],"facilityType":null,"facilityDetail":null,"facilityOperatorNrsf":null,"units":{"actual":26,"estimated":2537,"notAvailable":258,"totalStoresInUnitsTab":2821},"sqftTotal":null,"regionLabel":"State" },
-  "New Zealand": { "totalStores":873,"pricing":{"yes":460,"no":413},"operatorType":[{"label":"Large Operator","stores":259,"yes":211,"no":48},{"label":"Medium Operator","stores":146,"yes":70,"no":76},{"label":"Single Operator","stores":468,"yes":179,"no":289}],"regionSplit":null,"facilityType":null,"facilityDetail":null,"facilityOperatorNrsf":null,"units":{"actual":0,"estimated":756,"notAvailable":104,"totalStoresInUnitsTab":860},"sqftTotal":null,"regionLabel":null }
-};
-
 const REGIONS = Object.keys(SHEETS).map((name) => ({
-  name, status: "cached", lastSynced: null, error: null, data: FALLBACK_SNAPSHOTS[name] || null
+  name, status: "loading", lastSynced: null, error: null, data: null
 }));
 
 function fmtNum(n) { return (n == null) ? "—" : Math.round(n).toLocaleString("en-US"); }
@@ -979,7 +965,7 @@ async function syncRegion(region) {
     // console.error as a blocking notification, which re-appears on every retry
     // and makes the page unusable. Failures are tracked in region.error/status
     // and shown in the page UI instead.
-    region.status = region.data ? (region.status === "loaded" ? "stale" : "cached") : "error";
+    region.status = region.data ? "stale" : "error";
     region.error = String((err && err.message) || err);
     anyCorsError = true;
   }
@@ -1039,7 +1025,6 @@ function renderRegionPicker() {
 }
 const BADGE_META = {
   loaded: { cls: "live", text: "Live" },
-  cached: { cls: "pend", text: "Cached snapshot" },
   stale:  { cls: "err",  text: "Sync error (cached)" },
   error:  { cls: "err",  text: "Sync error" },
   loading:{ cls: "pend", text: "Loading…" }
@@ -1049,7 +1034,7 @@ function renderRegionStrip() {
     const badge = BADGE_META[r.status] || BADGE_META.loading;
     const value = r.data ? fmtNum(r.data.totalStores) : "—";
     const sub = r.data
-      ? (r.status === "loaded" ? "stores · synced " + (r.lastSynced ? r.lastSynced.toLocaleTimeString() : "—") : r.status === "cached" ? "stores · snapshot, not yet synced live" : "stores · " + (r.error || "sync error"))
+      ? (r.status === "loaded" ? "stores · synced " + (r.lastSynced ? r.lastSynced.toLocaleTimeString() : "—") : "stores · " + (r.error || "sync error"))
       : (r.error || "connecting…");
     const key = (SHEETS[r.name] && SHEETS[r.name].key) || "";
     return `<div class="region-card ${r.status === "error" ? "err" : ""} ${r.name === selectedRegion ? "selected" : ""}" data-region="${r.name}" style="--accent-color:${accentFor(r.name)}">
@@ -1116,7 +1101,7 @@ function renderRegionBlock(region) {
   const accent = accentFor(region.name);
 
   const kpis = `<div class="kpi-row">
-    <div class="kpi-tile" style="--kpi-accent:${KPI_STORES_COLOR}"><div class="label">Total Stores</div><div class="value">${fmtNum(storeTotal)}</div><div class="sub">${region.lastSynced ? "synced " + region.lastSynced.toLocaleTimeString() : "cached snapshot"}</div></div>
+    <div class="kpi-tile" style="--kpi-accent:${KPI_STORES_COLOR}"><div class="label">Total Stores</div><div class="value">${fmtNum(storeTotal)}</div><div class="sub">${region.lastSynced ? "synced " + region.lastSynced.toLocaleTimeString() : "—"}</div></div>
     <div class="kpi-tile" style="--kpi-accent:${YES_COLOR}"><div class="label">Price Available — Yes</div><div class="value">${fmtNum(yesTotal)}</div><div class="sub">${pct(yesTotal, yesTotal+noTotal)}% of stores</div></div>
     <div class="kpi-tile" style="--kpi-accent:${NO_COLOR}"><div class="label">Price Available — No</div><div class="value">${fmtNum(noTotal)}</div><div class="sub">${pct(noTotal, yesTotal+noTotal)}% of stores</div></div>
     <div class="kpi-tile" style="--kpi-accent:${KPI_COVERAGE_COLOR}"><div class="label">${d.sqftTotal ? "Total NRSF" : "Units Coverage"}</div>
@@ -1288,8 +1273,7 @@ if (d.developments && d.developments.length) {
   return `<div class="region-block">
     <div class="region-head" style="--accent-color:${accent}"><h2>${region.name}</h2><span class="rh-sub">${
       region.status === "loaded" ? "Live · synced " + (region.lastSynced ? region.lastSynced.toLocaleTimeString() : "—")
-      : region.status === "stale" ? "Sync error, showing last good sync — " + (region.error || "")
-      : "Cached snapshot — waiting on first live sync"
+      : "Sync error, showing last good sync — " + (region.error || "")
     }</span></div>
     ${kpis}
     <div class="chart-row">
