@@ -158,10 +158,18 @@ async function fetchStoreList() {
   const grid = json.grid || [];
   if (!grid.length) return { columns: [], rows: [] };
   const header = grid[0].map((h) => (h == null ? "" : String(h).trim()));
-  const dataRows = grid.slice(1).filter((r) => r.some((v) => String(v == null ? "" : v).trim() !== ""));
+  // Keep each row's real spreadsheet row number (grid[0] is sheet row 1, so
+  // grid[i] for i>=1 is sheet row i+1) before filtering out fully-blank rows,
+  // so the "Row #" column below always points back to the exact sheet row —
+  // even when earlier rows were skipped for having no data at all.
+  const dataRows = grid.slice(1)
+    .map((r, i) => ({ sheetRow: i + 2, cells: r }))
+    .filter(({ cells }) => cells.some((v) => String(v == null ? "" : v).trim() !== ""));
   return {
-    columns: header.map((h) => h || "—"),
-    rows: dataRows.map((r) => ({ values: header.map((_, i) => (r[i] == null ? "" : r[i])) }))
+    columns: ["Row #", ...header.map((h) => h || "—")],
+    rows: dataRows.map(({ sheetRow, cells }) => ({
+      values: [sheetRow, ...header.map((_, i) => (cells[i] == null ? "" : cells[i]))]
+    }))
   };
 }
 
@@ -212,7 +220,7 @@ function renderBody() {
   const word = total === 1 ? "store" : "stores";
   document.getElementById("rowCount").textContent = filterText
     ? `${shown} of ${total} ${word} match “${filterText}”`
-    : `${total} ${word} · ${COLUMNS.length} columns — live synced with the "${tabName}" sheet · last checked ${new Date().toLocaleTimeString()}`;
+    : `${total} ${word} · ${COLUMNS.length - 1} sheet columns (+ Row #) — live synced with the "${tabName}" sheet · last checked ${new Date().toLocaleTimeString()}`;
 }
 
 function showState(msg, isErr) {
@@ -245,7 +253,7 @@ async function loadAndRender() {
     if (!ROWS.length) {
       showState(`No stores currently in the "${tabName}" sheet for ${name} yet. This page mirrors that sheet exactly, so it will fill in automatically once rows are added.`, false);
       renderHeader();
-      document.getElementById("rowCount").textContent = `0 stores · ${COLUMNS.length} columns — live synced with the "${tabName}" sheet · last checked ${new Date().toLocaleTimeString()}`;
+      document.getElementById("rowCount").textContent = `0 stores · ${COLUMNS.length - 1} sheet columns (+ Row #) — live synced with the "${tabName}" sheet · last checked ${new Date().toLocaleTimeString()}`;
       return;
     }
     showTable();
