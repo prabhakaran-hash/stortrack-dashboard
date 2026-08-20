@@ -764,6 +764,13 @@
   .mp-fs-grid-wrap { flex:1 1 auto; overflow-y:auto; padding:20px; min-height:0; }
   .mp-fs-grid { display:grid; grid-template-columns: 1fr 1fr; gap:16px; align-content:start; }
   .mp-fs-grid .card, .mp-fs-grid .chart-row { margin:0; }
+  /* Grid items default to min-width:auto (content-based), which stops a 1fr column from
+     shrinking below its widest child's natural width — this is what forced the whole popup
+     to scroll sideways when a wide table was selected, instead of just that table's own
+     internal scrollbar kicking in. min-width:0 here lets each column shrink to the track
+     width and pushes any real overflow down into the table's own .scroll-table/.card scrollbar. */
+  .mp-fs-grid > * { min-width:0; }
+  .mp-fs-grid .card, .mp-fs-grid .chart-row { min-width:0; }
   @media (max-width: 900px) { .mp-fs-grid { grid-template-columns: 1fr; } .mp-fs-controls .glass-select-btn { min-width:130px; } }
 
   /* --- Benchmark View: a second mode inside the same full-screen popup, for comparing the
