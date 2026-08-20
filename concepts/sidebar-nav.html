@@ -767,25 +767,42 @@
   .mp-fs-grid > * { min-width:0; }
   .mp-fs-grid .card, .mp-fs-grid .chart-row { min-width:0; }
   @media (max-width: 900px) { .mp-fs-grid { grid-template-columns: 1fr; } .mp-fs-controls .glass-select-btn { min-width:130px; } }
-  /* Masonry packing for the single-region Full Screen View (not Benchmark View): a strict
-     2-column grid sizes every row to its tallest card, so a short card next to a tall one
-     (e.g. "Sqft Research Coverage" beside "Store Profile Research Status") leaves a big dead
-     gap and the whole thing reads as disorganized. CSS multi-column layout instead lets each
-     column fill independently to a balanced height, tiling cards Pinterest-style with no gaps.
+  /* Pinterest-style auto-flow for the single-region Full Screen View (not Benchmark View):
+     each selected table renders at its own natural full size (every column visible) and
+     cards flow left-to-right, wrapping to a new row only when they don't fit — instead of
+     a fixed 2-column split. A single table takes the whole row on its own; two narrow
+     tables sit side by side; a wide table (e.g. Store List) gets its own full-width row
+     rather than being squeezed. No placeholder is ever needed to "fill" an unused slot.
      Scoped to :not(.benchmark-mode) so Benchmark View's own grid (fixed columns, one per
      region) is untouched. */
   .mp-fs-panel:not(.benchmark-mode) #mpFsGrid {
-    display: block;
-    column-count: 2;
-    column-gap: 16px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    align-content: start;
+    gap: 16px;
   }
   .mp-fs-panel:not(.benchmark-mode) #mpFsGrid > * {
-    break-inside: avoid;
-    -webkit-column-break-inside: avoid;
-    margin: 0 0 16px;
+    flex: 0 1 auto;
+    width: fit-content;
+    max-width: 100%;
+  }
+  .mp-fs-panel:not(.benchmark-mode) #mpFsGrid > * .card,
+  .mp-fs-panel:not(.benchmark-mode) #mpFsGrid > * .chart-row {
+    width: fit-content;
+    max-width: 100%;
+  }
+  /* A lone selected table has nothing to flow beside, so it takes the whole row's width
+     rather than shrinking to just its own content — matches the approved single-table
+     mockup. Only applies when exactly one table is selected (see JS). */
+  .mp-fs-panel:not(.benchmark-mode) #mpFsGrid > .mp-compare-solo {
     width: 100%;
   }
-  @media (max-width: 900px) { .mp-fs-panel:not(.benchmark-mode) #mpFsGrid { column-count: 1; } }
+  .mp-fs-panel:not(.benchmark-mode) #mpFsGrid > .mp-compare-solo .card,
+  .mp-fs-panel:not(.benchmark-mode) #mpFsGrid > .mp-compare-solo .chart-row {
+    width: 100%;
+  }
+  @media (max-width: 900px) { .mp-fs-panel:not(.benchmark-mode) #mpFsGrid > * { width: 100%; } }
 
   /* --- Benchmark View: a second mode inside the same full-screen popup, for comparing the
      same table(s) across up to all 4 regions at once. The toggle reuses the sidebar's own
@@ -935,7 +952,10 @@
       </div>
       <div class="status-cluster">
         <span class="status-pill glass"><span class="dot live" id="syncDot"></span><span id="syncText">Connecting…</span></span>
-        <div class="glass-select" id="intervalSelectWrap">
+        <!-- Auto-refresh has been removed (sync is manual-only via "Refresh now" below), so
+             this interval picker no longer does anything and is hidden rather than shown
+             inert/misleading. -->
+        <div class="glass-select" id="intervalSelectWrap" style="display:none;">
           <button type="button" class="glass-select-btn glass" id="intervalSelectBtn" title="Auto-refresh interval" aria-haspopup="listbox" aria-expanded="false">
             <span id="intervalSelectLabel">Refresh: 30 min</span>
             <svg class="gs-caret" viewBox="0 0 12 8" fill="none"><path d="M1 1.5L6 6.5L11 1.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -1060,7 +1080,7 @@
     </div>
   </div>
 
-  <footer class="foot" id="footNote">Sources: live Google Sheets, polled client-side. Loading…</footer>
+  <footer class="foot" id="footNote">Sources: live Google Sheets, polled client-side. Showing cached data — tap Refresh now for live.</footer>
   </div>
 
   <button class="cb-launcher" id="cbLauncher" aria-label="Open Dashboard Assistant" title="Dashboard Assistant">
@@ -1809,10 +1829,7 @@ async function syncAll() {
   else if (REGIONS.some((r) => r.status === "loaded")) { dot.className = "dot error"; text.textContent = "Partially synced — some regions failed"; consecutiveFailures++; }
   else { dot.className = "dot error"; text.textContent = "Sync failed — check sheet sharing"; consecutiveFailures++; }
   document.getElementById("corsWarning").style.display = anyCorsError ? "block" : "none";
-  document.getElementById("footNote").textContent = "Sources: live Google Sheets (\"Regional Summary\" tab). Last attempt " + new Date().toLocaleTimeString() + (allOk ? ", auto-refreshing every " + (REFRESH_MS/1000) + "s." : ".");
-  // Stop hammering a broken connection: after 2 straight full failures, pause
-  // auto-retry and wait for a manual "Refresh now" instead of retrying forever.
-  if (consecutiveFailures >= 2 && pollTimer) { clearInterval(pollTimer); pollTimer = null; text.textContent += " — auto-refresh paused, tap Refresh now"; }
+  document.getElementById("footNote").textContent = "Sources: live Google Sheets (\"Regional Summary\" tab). Last synced " + new Date().toLocaleTimeString() + " — tap Refresh now for the latest.";
   render();
 }
 
@@ -2121,7 +2138,7 @@ if (d.developments && d.developments.length) {
     <div class="region-head" style="--accent-color:${accent}"><h2>${region.name}</h2><span class="rh-sub">${
       region.status === "loaded" ? "Live · synced " + (region.lastSynced ? region.lastSynced.toLocaleTimeString() : "—")
       : region.status === "stale" ? "Sync error, showing last good sync — " + (region.error || "")
-      : (region.lastSynced ? "Cached snapshot · last synced " + region.lastSynced.toLocaleTimeString() + " — refreshing…" : "Cached snapshot — waiting on first live sync")
+      : (region.lastSynced ? "Cached snapshot · last synced " + region.lastSynced.toLocaleTimeString() + " — tap Refresh now for the latest" : "Cached snapshot — tap Refresh now for live data")
     }</span></div>
     ${kpis}
     <div class="chart-row">
@@ -2494,19 +2511,21 @@ function renderFullscreenOverlay() {
     // drop just one table straight from its card here in full screen, instead of having to
     // reopen the table dropdown (or go back to the sidebar) to untick it.
     const filled = [];
+    // A single selected table takes the full available width (matches the approved mockup);
+    // two or more flow Pinterest-style at their own natural size, wrapping wherever they fit.
+    const soloClass = selected.size === 1 ? " mp-compare-solo" : "";
     tableTitles.filter((t) => selected.has(t)).forEach((t) => {
       const idx = tableTitles.indexOf(t);
       const card = idx >= 0 ? parsed.cards[idx] : null;
       if (!card) return;
-      filled.push(`<div class="mp-compare-item">
+      filled.push(`<div class="mp-compare-item${soloClass}">
         <button type="button" class="mp-compare-remove" data-title="${encodeURIComponent(t)}" aria-label="Remove ${t} from view">×</button>
         ${card.outerHTML}
       </div>`);
     });
-    // Same "leave the other slot blank" behavior as index.html's own emptyCard() placeholders:
-    // an odd count just leaves the last row half-empty instead of stretching the lone card
-    // across both columns, so the grid always reads as the same fixed 2-up layout.
-    if (filled.length % 2 === 1) filled.push(emptyCard("Select another table to fill this slot."));
+    // Pinterest-style auto-flow (see #mpFsGrid CSS above) sizes and wraps each card on its
+    // own — there's no fixed column count to "fill", so no placeholder padding is needed
+    // regardless of how many tables are selected.
     grid.innerHTML = filled.join("");
     grid.querySelectorAll(".mp-compare-remove").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -2595,7 +2614,9 @@ function render() {
   renderFullscreenOverlay();
 }
 
-document.getElementById("refreshNow").addEventListener("click", () => { consecutiveFailures = 0; restartPolling(); syncAll(); });
+// Manual-only sync: this button is now the sole trigger for a live sync anywhere on the
+// page — no automatic timer runs alongside it (see restartPolling()'s comment below).
+document.getElementById("refreshNow").addEventListener("click", () => { consecutiveFailures = 0; syncAll(); });
 
 // --- Theme toggle: dark/light, remembered across visits. The attribute is actually set as
 // early as possible by a tiny inline script in <head> (before first paint) to avoid a flash
@@ -2651,7 +2672,6 @@ function renderIntervalSelect() {
   menu.querySelectorAll(".gs-option").forEach((btn) => {
     btn.onclick = () => {
       REFRESH_MS = Number(btn.dataset.value);
-      restartPolling();
       renderIntervalSelect();
       closeGlassSelect(document.getElementById("intervalSelectWrap"));
     };
@@ -2719,8 +2739,11 @@ document.getElementById("hardRefreshBtn").addEventListener("click", (e) => {
   }, 900);
 });
 
+// Auto-refresh timer intentionally removed — syncing is manual-only now (see the "Refresh
+// now" click handler above). pollTimer/consecutiveFailures are kept as no-op state so the
+// old failure-backoff message in syncAll() below doesn't need touching, but nothing ever
+// calls setInterval here anymore.
 let pollTimer = null;
-function restartPolling() { if (pollTimer) clearInterval(pollTimer); pollTimer = setInterval(syncAll, REFRESH_MS); }
 
 /* =====================================================================================
    DASHBOARD ASSISTANT — fully rule-based / client-side. Answers are computed directly
@@ -3149,9 +3172,27 @@ document.getElementById("cbForm").addEventListener("submit", (e) => {
   input.value = "";
 });
 
+// Per explicit product decision: the dashboard must never sync on its own — not on first
+// visit, not on a return visit, not on a timer. render() below draws immediately from
+// whatever is already cached (LIVE_CACHE from localStorage, falling back to
+// DEFAULT_SNAPSHOTS), so the page is never blank. The ONLY way to fetch live data is the
+// "Refresh now" button (see its click handler above), which calls syncAll() directly and
+// does not start any recurring timer.
+// The top-right status pill defaults to "Connecting…" in the HTML, which used to be
+// accurate for the instant before the old auto-sync landed. Since nothing auto-syncs now,
+// set it once here to reflect the cached data actually on screen instead of leaving stale
+// "Connecting…" text up forever.
+(function initSyncPill() {
+  const mostRecent = REGIONS.reduce((acc, r) => (r.lastSynced && (!acc || r.lastSynced > acc) ? r.lastSynced : acc), null);
+  document.getElementById("syncDot").className = "dot live";
+  document.getElementById("syncText").textContent = mostRecent
+    ? "Cached · last synced " + mostRecent.toLocaleTimeString() + " — tap Refresh now"
+    : "Showing cached data — tap Refresh now for live";
+  document.getElementById("footNote").textContent = "Sources: live Google Sheets (\"Regional Summary\" tab). " + (mostRecent
+    ? "Showing cached data last synced " + mostRecent.toLocaleTimeString() + " — tap Refresh now for the latest."
+    : "Showing cached data — tap Refresh now for the latest.");
+})();
 render();
-syncAll();
-restartPolling();
 </script>
 </body>
 </html>
