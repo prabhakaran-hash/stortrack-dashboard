@@ -1641,7 +1641,12 @@ let REFRESH_MS = 1800000;
    Lives in localStorage, so it's per-browser and clears if the user clears
    site data — that's fine, DEFAULT_SNAPSHOTS below covers that gap.
    ------------------------------------------------------------------------ */
-const LIVE_CACHE_KEY = "stortrack_live_cache_v1";
+// Bumped to v2 because this update changes the shape of facilityDetail/facilityOperatorNrsf/
+// pricingHistory (semantic yes/no/total fields -> a generic {columns, rows} sheet mirror).
+// A browser holding a v1 cache from before this change would otherwise feed the new renderer
+// old-shaped data and crash on load; bumping the key makes that old cache simply not match,
+// so it falls through to the built-in default snapshot (or a fresh sync) instead of erroring.
+const LIVE_CACHE_KEY = "stortrack_live_cache_v2";
 function loadLiveCache() {
   try { return JSON.parse(localStorage.getItem(LIVE_CACHE_KEY)) || {}; } catch (e) { return {}; }
 }
