@@ -2159,15 +2159,18 @@ function renderMainPanel() {
       focusedHtml = `<div class="card empty mp-empty-state">Pick a section from the sidebar to view its data.</div>`;
     }
   }
-  // The full-screen toggle only ever shows once there's actually something selected to view —
-  // never over the top region/KPI cards, and never on the "pick a section" empty state.
-  const toolbarHtml = hasSelection ? `<div class="mp-viewer-toolbar">
+  // The full-screen toggle sits in its own small toolbar row directly above whichever content
+  // is currently showing — never over the top region/KPI cards — and is now always available,
+  // even on the "pick a section" / "compare mode is on" empty states, so it's never gated
+  // behind having made a selection first. Opening it with nothing selected just shows the
+  // popup's own "pick one or more tables" empty state, which already exists.
+  const toolbarHtml = `<div class="mp-viewer-toolbar">
     <button type="button" id="mpFullscreenBtn" class="mp-fs-toggle" aria-label="View full screen" title="View full screen">
       <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
         <path d="M9 4H5a1 1 0 0 0-1 1v4M15 4h4a1 1 0 0 1 1 1v4M9 20H5a1 1 0 0 1-1-1v-4M15 20h4a1 1 0 0 0 1-1v-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
     </button>
-  </div>` : "";
+  </div>`;
   body.innerHTML = `${parsed.headHtml}${parsed.kpiHtml}${toolbarHtml}${focusedHtml}`;
   body.querySelectorAll(".mp-compare-remove").forEach((btn) => {
     btn.addEventListener("click", () => {
