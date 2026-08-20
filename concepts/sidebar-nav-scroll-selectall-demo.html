@@ -2128,7 +2128,7 @@ if (d.developments && d.developments.length) {
     <div class="region-head" style="--accent-color:${accent}"><h2>${region.name}</h2><span class="rh-sub">${
       region.status === "loaded" ? "Live · synced " + (region.lastSynced ? region.lastSynced.toLocaleTimeString() : "—")
       : region.status === "stale" ? "Sync error, showing last good sync — " + (region.error || "")
-      : (region.lastSynced ? "Cached snapshot · last synced " + region.lastSynced.toLocaleTimeString() + " — refreshing…" : "Cached snapshot — waiting on first live sync")
+      : (region.lastSynced ? "Cached snapshot · last synced " + region.lastSynced.toLocaleTimeString() + " — tap Refresh now for the latest" : "Cached snapshot — tap Refresh now for live data")
     }</span></div>
     ${kpis}
     <div class="chart-row">
@@ -3165,6 +3165,17 @@ document.getElementById("cbForm").addEventListener("submit", (e) => {
 // DEFAULT_SNAPSHOTS), so the page is never blank. The ONLY way to fetch live data is the
 // "Refresh now" button (see its click handler above), which calls syncAll() directly and
 // does not start any recurring timer.
+// The top-right status pill defaults to "Connecting…" in the HTML, which used to be
+// accurate for the instant before the old auto-sync landed. Since nothing auto-syncs now,
+// set it once here to reflect the cached data actually on screen instead of leaving stale
+// "Connecting…" text up forever.
+(function initSyncPill() {
+  const mostRecent = REGIONS.reduce((acc, r) => (r.lastSynced && (!acc || r.lastSynced > acc) ? r.lastSynced : acc), null);
+  document.getElementById("syncDot").className = "dot live";
+  document.getElementById("syncText").textContent = mostRecent
+    ? "Cached · last synced " + mostRecent.toLocaleTimeString() + " — tap Refresh now"
+    : "Showing cached data — tap Refresh now for live";
+})();
 render();
 </script>
 </body>
