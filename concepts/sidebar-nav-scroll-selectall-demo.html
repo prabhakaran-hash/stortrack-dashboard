@@ -793,9 +793,17 @@
     width: fit-content;
     max-width: 100%;
   }
+  /* The outer .mp-compare-item wrapper is the flex item that actually grows (via
+     flex-grow:1 above) to fill leftover row space — but its content wasn't stretching to
+     match, since .card/.chart-row defaulted to fit-content (sized to their own content
+     only), leaving visible dead space inside a grown wrapper. width:100% here makes the
+     card itself fill whatever width flexbox gave its wrapper, so growth is actually
+     visible (a wide table's card spreads its columns via its existing min-width:100%
+     table rule; a short KPI-style card centers/spreads its content within the extra
+     width rather than leaving it unused). */
   .mp-fs-panel:not(.benchmark-mode) #mpFsGrid > * .card,
   .mp-fs-panel:not(.benchmark-mode) #mpFsGrid > * .chart-row {
-    width: fit-content;
+    width: 100%;
     max-width: 100%;
   }
   /* A lone selected table has nothing to flow beside, so it takes the whole row's width
