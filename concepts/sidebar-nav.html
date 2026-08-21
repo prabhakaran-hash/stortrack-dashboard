@@ -1330,6 +1330,19 @@ function pickTotalColIndex(columns) {
   if (idx === -1) idx = columns.length - 1;
   return idx;
 }
+// Deliberately strict: stop at the first column with neither a header label nor any
+// data in this table's row range. A more tolerant version (skip past a blank column,
+// keep scanning) was tried and reverted — on sheets that place a second, unrelated
+// table just one blank column to the right on the same header row (found live in
+// Canada's Pricing History tab: a per-province pricing table starts one blank column
+// after the Category/Available/Not Available table ends), any nonzero tolerance
+// silently spliced that unrelated table's cells in as if they belonged to this one —
+// worse than the problem it was meant to fix. A genuinely blank spacer column WITHIN
+// one table (e.g. New Zealand's "Owner Company Summary*", which has one between its
+// two "%" columns) can't be told apart from a table boundary by looking at this column
+// alone — see `parseOwnersSection`'s `minCols` parameter for how that specific,
+// known-safe case (two structurally parallel sibling blocks in the same tab) is
+// handled instead, without loosening this general-purpose function.
 function readCols(grid, headerRow, startC, rowStart, rowEnd) {
   const rs = rowStart != null ? rowStart : headerRow + 1;
   const re = rowEnd != null ? rowEnd : grid.length;
@@ -1635,14 +1648,33 @@ function parseStoreProfile(grid, regionKey) {
   }
   return { status, groupHeader, nameHeader, attrColumns: attrCols.map((c) => c.name), attributes };
 }
-function parseOwnersSection(grid, sectionLabel, cacheKey) {
+function parseOwnersSection(grid, sectionLabel, cacheKey, minCols) {
   const hit = anchorPos(cacheKey, findCells(grid, exact(sectionLabel))[0], grid);
   if (!hit) return null;
   const headerRow = hit.r + 1;
   const startC = hit.c;
   const rowIdxs = readLabelRows(grid, headerRow + 1, startC);
   const lastRow = rowIdxs.length ? rowIdxs[rowIdxs.length - 1] + 1 : headerRow + 1;
-  const cols = readCols(grid, headerRow, startC + 1, headerRow + 1, lastRow);
+  let cols = readCols(grid, headerRow, startC + 1, headerRow + 1, lastRow);
+  // Owner Company Summary and Contacts Summary are two structurally parallel blocks in
+  // the same tab (same fields, same order — Store Count / <updated> / % / <found-or-not>
+  // / % / Yet to research & update / Completed %). New Zealand's Owner Company Summary*
+  // has a genuinely blank, unlabeled column in the middle of that pattern (between its
+  // two "%" columns) where Contacts Summary has "Info Not Found" — readCols' own strict
+  // scan correctly stops right at that blank column and would otherwise drop every real
+  // field after it (Yet to research & update, Completed %). `minCols`, passed in by
+  // parseOwnersContacts as the sibling block's own real width, forces this block to be
+  // read exactly that many columns wide (blank or not) instead — safe specifically
+  // because it's bounded by a width we already know is real from the parallel block,
+  // not a general "tolerate blank columns" rule (see readCols' own comment for why that
+  // general version was tried and reverted).
+  if (minCols && cols.length < minCols) {
+    cols = [];
+    for (let i = 0; i < minCols; i++) {
+      const c = startC + 1 + i;
+      cols.push({ col: c, name: cell(grid, headerRow, c) });
+    }
+  }
   if (!cols.length) return null;
   const labelHeader = cell(grid, headerRow, startC) || "Category";
   const rows = rowIdxs.map((r) => ({ label: cell(grid, r, startC), values: cols.map((cc) => numOf(cell(grid, r, cc.col))) }));
@@ -1650,8 +1682,15 @@ function parseOwnersSection(grid, sectionLabel, cacheKey) {
 }
 function parseOwnersContacts(grid, regionKey) {
   const rk = regionKey || "default";
-  const ownerCompany = parseOwnersSection(grid, "Owner Company Summary*", rk + ":ownersCompanyStar") || parseOwnersSection(grid, "Owner Company Summary", rk + ":ownersCompany");
-  const contacts = parseOwnersSection(grid, "Contacts Summary", rk + ":ownersContacts");
+  function readOwnerCompany(minCols) {
+    return parseOwnersSection(grid, "Owner Company Summary*", rk + ":ownersCompanyStar", minCols) ||
+           parseOwnersSection(grid, "Owner Company Summary", rk + ":ownersCompany", minCols);
+  }
+  const ownerCompanyNatural = readOwnerCompany(null);
+  const contactsNatural = parseOwnersSection(grid, "Contacts Summary", rk + ":ownersContacts", null);
+  const naturalWidth = Math.max(ownerCompanyNatural ? ownerCompanyNatural.columns.length : 0, contactsNatural ? contactsNatural.columns.length : 0);
+  const ownerCompany = (ownerCompanyNatural && ownerCompanyNatural.columns.length < naturalWidth) ? readOwnerCompany(naturalWidth) : ownerCompanyNatural;
+  const contacts = (contactsNatural && contactsNatural.columns.length < naturalWidth) ? parseOwnersSection(grid, "Contacts Summary", rk + ":ownersContacts", naturalWidth) : contactsNatural;
   return (ownerCompany || contacts) ? { ownerCompany, contacts } : null;
 }
 // "Region / Stage" is the normal anchor text for this table, but a region's sheet can
