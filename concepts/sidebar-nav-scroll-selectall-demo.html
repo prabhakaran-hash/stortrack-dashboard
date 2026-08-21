@@ -1984,10 +1984,17 @@ function renderDynamicTable(opts) {
     });
     bodyRows = groups.map((grp) => grp.rows.map((row, i) => {
       const groupCell = i === 0 ? `<td rowspan="${grp.rows.length}">${grp.key || "—"}</td>` : "";
-      return `<tr>${groupCell}<td>${opts.itemOf(row) || "—"}</td>${row.values.map((v) => `<td class="num">${fmtNum(v)}</td>`).join("")}</tr>`;
+      // A row whose own label is the sheet's literal "Total"/"Grand Total" row gets the
+      // same dark total-row treatment as a synthesized total below — the highlight
+      // shouldn't depend on whether the total came from the sheet or was computed here.
+      const isTotal = TOTAL_RE.test(opts.itemOf(row) || "");
+      return `<tr${isTotal ? ' class="total-row"' : ''}>${groupCell}<td>${opts.itemOf(row) || "—"}</td>${row.values.map((v) => `<td class="num">${isTotal ? `<strong>${fmtNum(v)}</strong>` : fmtNum(v)}</td>`).join("")}</tr>`;
     }).join("")).join("");
   } else {
-    bodyRows = opts.rows.map((row) => `<tr><td>${opts.itemOf(row) || "—"}</td>${row.values.map((v) => `<td class="num">${fmtNum(v)}</td>`).join("")}</tr>`).join("");
+    bodyRows = opts.rows.map((row) => {
+      const isTotal = TOTAL_RE.test(opts.itemOf(row) || "");
+      return `<tr${isTotal ? ' class="total-row"' : ''}><td>${opts.itemOf(row) || "—"}</td>${row.values.map((v) => `<td class="num">${isTotal ? `<strong>${fmtNum(v)}</strong>` : fmtNum(v)}</td>`).join("")}</tr>`;
+    }).join("");
   }
   const leadColspan = grouped ? 2 : 1;
   const totalRowHtml = sheetHasOwnTotalRow ? "" : `<tr class="total-row"><td colspan="${leadColspan}">${opts.totalLabel || "Total"}</td>${colTotals.map((v) => `<td class="num"><strong>${fmtNum(v)}</strong></td>`).join("")}</tr>`;
