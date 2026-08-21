@@ -1719,9 +1719,22 @@ function findDevelopmentsHeaderRows(grid) {
   return rows;
 }
 function parseDevelopments(grid, regionKey) {
+  // A sheet can have MORE THAN ONE "Region / Stage" section (Canada has "Self
+  // Storage" and "Parking Storage"). Earlier this only fell back to the
+  // stage-vocabulary scan when the literal text was missing from EVERY section —
+  // so losing the label on just one section (e.g. Canada's "Parking Storage") still
+  // left a nonzero hit count from the other section and silently dropped the one
+  // that lost its label, instead of just that section's header text. Every header
+  // row is now found independently by BOTH detectors and merged by row number, so
+  // one section losing its literal "Region / Stage" text can never cost any OTHER
+  // section — each section stands on its own.
   const liveHits = findCells(grid, exact("Region / Stage"));
-  const hits = anchorPosMulti((regionKey || "default") + ":developments", liveHits, grid);
-  const finalHits = hits.length ? hits : findDevelopmentsHeaderRows(grid);
+  anchorPosMulti((regionKey || "default") + ":developments", liveHits, grid);
+  const vocabHits = findDevelopmentsHeaderRows(grid);
+  const byRow = new Map();
+  liveHits.forEach((h) => byRow.set(h.r, h));
+  vocabHits.forEach((h) => { if (!byRow.has(h.r)) byRow.set(h.r, h); });
+  const finalHits = Array.from(byRow.values()).sort((a, b) => a.r - b.r);
   if (!finalHits.length) return null;
   const sections = finalHits.map((hit) => {
     const titleRaw = hit.r > 0 ? cell(grid, hit.r - 1, hit.c) : "";
