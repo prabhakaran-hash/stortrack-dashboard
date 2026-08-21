@@ -2806,7 +2806,10 @@ function renderIntervalStepper() {
 }
 function stepInterval(delta) {
   const idx = REFRESH_OPTIONS.findIndex((o) => o.value === REFRESH_MS);
-  const nextIdx = Math.min(REFRESH_OPTIONS.length - 1, Math.max(0, (idx < 0 ? 3 : idx) + delta));
+  const n = REFRESH_OPTIONS.length;
+  // Wraps around at both ends (infinite loop) rather than clamping — from the last
+  // option, › moves back to the first; from the first option, ‹ moves to the last.
+  const nextIdx = (((idx < 0 ? 3 : idx) + delta) % n + n) % n;
   REFRESH_MS = REFRESH_OPTIONS[nextIdx].value;
   // Changing the interval (even via the stepper) is still the one explicit,
   // user-initiated action that turns on periodic auto-refresh (see restartPolling()'s
