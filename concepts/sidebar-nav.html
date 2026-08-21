@@ -1401,9 +1401,25 @@ function parseOperatorBlocks(grid, regionKey) {
   }
   const blockAHit = anchorPos(rk + ":operatorBlocksA", catHits.find((h) => cell(grid, h.r, h.c + 1) === "Store Count"), grid);
   const blockBHit = anchorPos(rk + ":operatorBlocksB", catHits.find((h) => { const hdrs = headerNamesOf(h); return hdrs.includes("Available") && hdrs.includes("Not Available"); }), grid);
-  if (!blockAHit) return null;
-  const rowIdxsA = readLabelRows(grid, blockAHit.r + 1, blockAHit.c);
-  const rows = rowIdxsA.map((r) => ({ label: cell(grid, r, blockAHit.c), stores: numOf(cell(grid, r, blockAHit.c + 1)) }));
+  if (!blockAHit && !blockBHit) return null;
+  // Block A ("Operator Type Summary") and Block B ("Pricing Yes/No by Operator Type")
+  // are two independent tables in the sheet — editing one's row list must not silently
+  // truncate the other. The old version built its result by mapping over Block A's rows
+  // only, so an operator type removed from Block A (but still present in Block B) lost
+  // its pricing data too, even though Block B's own row for it was untouched. Now every
+  // label seen in EITHER block gets a row, in first-seen order, with whichever fields
+  // (stores from A, yes/no from B) that block actually has — same "pure mirror" rule
+  // as everywhere else on this page: a change to one table can't reach into another.
+  const storesByLabel = {};
+  const orderedLabels = [];
+  if (blockAHit) {
+    const rowIdxsA = readLabelRows(grid, blockAHit.r + 1, blockAHit.c);
+    rowIdxsA.forEach((r) => {
+      const label = cell(grid, r, blockAHit.c);
+      storesByLabel[label] = numOf(cell(grid, r, blockAHit.c + 1));
+      orderedLabels.push(label);
+    });
+  }
   const priceByLabel = {};
   if (blockBHit) {
     const rowIdxsB = readLabelRows(grid, blockBHit.r + 1, blockBHit.c);
@@ -1414,9 +1430,15 @@ function parseOperatorBlocks(grid, regionKey) {
     rowIdxsB.forEach((r) => {
       const label = cell(grid, r, blockBHit.c);
       priceByLabel[label] = { yes: availCol ? numOf(cell(grid, r, availCol.col)) : null, no: naCol ? numOf(cell(grid, r, naCol.col)) : null };
+      if (!(label in storesByLabel)) orderedLabels.push(label);
     });
   }
-  return rows.map((r) => ({ label: r.label, stores: r.stores, yes: priceByLabel[r.label] ? priceByLabel[r.label].yes : null, no: priceByLabel[r.label] ? priceByLabel[r.label].no : null }));
+  return orderedLabels.map((label) => ({
+    label,
+    stores: label in storesByLabel ? storesByLabel[label] : null,
+    yes: priceByLabel[label] ? priceByLabel[label].yes : null,
+    no: priceByLabel[label] ? priceByLabel[label].no : null
+  }));
 }
 
 // Pure dynamic mirror of the sheet's Facility Type breakdown: whatever columns the sheet has
@@ -1792,10 +1814,24 @@ const REGION_ACCENT = { "Canada": "#3987e5", "United Kingdom": "#d95926", "Austr
 function accentFor(name) { return REGION_ACCENT[name] || "#3987e5"; }
 
 /* ------------------------------ Fetch + parse (live) ------------------------------ */
+// A slow/cold-starting Apps Script call used to be able to hang a sync indefinitely (no
+// timeout at all on any of these fetches) — one stuck region kept the whole "Syncing…"
+// state up for everyone. FETCH_TIMEOUT_MS caps every request so a bad one fails fast into
+// cached/error instead of stalling the page.
+const FETCH_TIMEOUT_MS = 8000;
+async function fetchWithTimeout(url, opts) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...(opts || {}), signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
 async function fetchGrid(cfg) {
   // Preferred path: your private Apps Script endpoint (sheet stays unshared).
   if (APPS_SCRIPT_URL) {
-    const res = await fetch(`${APPS_SCRIPT_URL}?region=${cfg.key}&_ts=${Date.now()}`, { cache: "no-store" });
+    const res = await fetchWithTimeout(`${APPS_SCRIPT_URL}?region=${cfg.key}&_ts=${Date.now()}`, { cache: "no-store" });
     if (!res.ok) throw new Error("HTTP " + res.status);
     const json = await res.json();
     if (json.error) throw new Error(json.error);
@@ -1803,7 +1839,7 @@ async function fetchGrid(cfg) {
   }
   // Fallback path: Google's public CSV export (needs "anyone with the link").
   const url = `https://docs.google.com/spreadsheets/d/${cfg.id}/gviz/tq?tqx=out:csv&gid=${cfg.gid}&_ts=${Date.now()}`;
-  const res = await fetch(url, { cache: "no-store" });
+  const res = await fetchWithTimeout(url, { cache: "no-store" });
   if (!res.ok) throw new Error("HTTP " + res.status);
   const csvText = await res.text();
   const parsed = Papa.parse(csvText, { skipEmptyLines: false });
@@ -1813,7 +1849,7 @@ async function fetchGrid(cfg) {
 async function fetchExtraTab(cfg, tabName) {
   if (!APPS_SCRIPT_URL || !tabName) return null;
   try {
-    const res = await fetch(`${APPS_SCRIPT_URL}?region=${cfg.key}&tab=${encodeURIComponent(tabName)}&_ts=${Date.now()}`, { cache: "no-store" });
+    const res = await fetchWithTimeout(`${APPS_SCRIPT_URL}?region=${cfg.key}&tab=${encodeURIComponent(tabName)}&_ts=${Date.now()}`, { cache: "no-store" });
     if (!res.ok) return null;
     const json = await res.json();
     if (json.error) return null;
@@ -1863,7 +1899,18 @@ async function syncAll() {
   document.getElementById("syncDot").className = "dot live";
   document.getElementById("syncText").textContent = "Syncing…";
   try {
-    await Promise.all(REGIONS.map(syncRegion));
+    // Render each region the moment ITS OWN fetch finishes, instead of waiting for every
+    // region to finish before the page updates at all. Regions sync in parallel already
+    // (this is still one Promise.all), but previously the UI only repainted once *all
+    // four* settled — so a fast region (done in ~1s) sat invisible until the slowest one
+    // (an Apps Script cold start can take several seconds) finally caught up. This is
+    // what actually made sync *feel* slow even though the network calls were already
+    // parallel. Now each card flips to "Live" as soon as its own data is in.
+    await Promise.all(REGIONS.map(async (region) => {
+      await syncRegion(region);
+      saveLiveCache();
+      render();
+    }));
   } catch (e) {
     // syncRegion never rethrows, but guard anyway so one bad tick can't kill polling.
   }
