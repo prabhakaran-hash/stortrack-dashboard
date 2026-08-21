@@ -782,14 +782,28 @@
     align-content: start;
     gap: 16px;
   }
+  /* flex-grow:1 here is what actually organizes multi-table rows: flexbox distributes a
+     wrapped line's leftover width proportionally among that line's own items (this is
+     per-line, automatic — no JS needed), so 2+ narrow tables stretch to use the full row
+     instead of left-aligning with dead space on the right. Each card's table still uses
+     min-width:100% internally (existing .card/table.data-table rule), so the extra width
+     spreads its columns out rather than leaving blank space inside the card either. */
   .mp-fs-panel:not(.benchmark-mode) #mpFsGrid > * {
-    flex: 0 1 auto;
+    flex: 1 1 auto;
     width: fit-content;
     max-width: 100%;
   }
+  /* The outer .mp-compare-item wrapper is the flex item that actually grows (via
+     flex-grow:1 above) to fill leftover row space — but its content wasn't stretching to
+     match, since .card/.chart-row defaulted to fit-content (sized to their own content
+     only), leaving visible dead space inside a grown wrapper. width:100% here makes the
+     card itself fill whatever width flexbox gave its wrapper, so growth is actually
+     visible (a wide table's card spreads its columns via its existing min-width:100%
+     table rule; a short KPI-style card centers/spreads its content within the extra
+     width rather than leaving it unused). */
   .mp-fs-panel:not(.benchmark-mode) #mpFsGrid > * .card,
   .mp-fs-panel:not(.benchmark-mode) #mpFsGrid > * .chart-row {
-    width: fit-content;
+    width: 100%;
     max-width: 100%;
   }
   /* A lone selected table has nothing to flow beside, so it takes the whole row's width
@@ -955,7 +969,7 @@
         <!-- Auto-refresh has been removed (sync is manual-only via "Refresh now" below), so
              this interval picker no longer does anything and is hidden rather than shown
              inert/misleading. -->
-        <div class="glass-select" id="intervalSelectWrap" style="display:none;">
+        <div class="glass-select" id="intervalSelectWrap">
           <button type="button" class="glass-select-btn glass" id="intervalSelectBtn" title="Auto-refresh interval" aria-haspopup="listbox" aria-expanded="false">
             <span id="intervalSelectLabel">Refresh: 30 min</span>
             <svg class="gs-caret" viewBox="0 0 12 8" fill="none"><path d="M1 1.5L6 6.5L11 1.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -2672,6 +2686,9 @@ function renderIntervalSelect() {
   menu.querySelectorAll(".gs-option").forEach((btn) => {
     btn.onclick = () => {
       REFRESH_MS = Number(btn.dataset.value);
+      // Picking an interval is the one explicit, user-initiated action that turns on
+      // periodic auto-refresh (see restartPolling()'s comment) — never automatic.
+      restartPolling();
       renderIntervalSelect();
       closeGlassSelect(document.getElementById("intervalSelectWrap"));
     };
@@ -2739,11 +2756,13 @@ document.getElementById("hardRefreshBtn").addEventListener("click", (e) => {
   }, 900);
 });
 
-// Auto-refresh timer intentionally removed — syncing is manual-only now (see the "Refresh
-// now" click handler above). pollTimer/consecutiveFailures are kept as no-op state so the
-// old failure-backoff message in syncAll() below doesn't need touching, but nothing ever
-// calls setInterval here anymore.
+// Auto-refresh is opt-in only: nothing calls this on page load or from the manual
+// "Refresh now" button (see its click handler above) — the ONLY place that starts a
+// recurring timer is picking an interval from the "Refresh: N min" dropdown below.
+// That keeps the dashboard fully manual by default while still letting the user turn
+// on periodic auto-refresh at whichever cadence they explicitly choose.
 let pollTimer = null;
+function restartPolling() { if (pollTimer) clearInterval(pollTimer); pollTimer = setInterval(syncAll, REFRESH_MS); }
 
 /* =====================================================================================
    DASHBOARD ASSISTANT — fully rule-based / client-side. Answers are computed directly
