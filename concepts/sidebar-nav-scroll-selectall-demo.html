@@ -127,11 +127,6 @@
   .dot.error { background: #ff6a6a; }
   .dot.live { animation: pulse 1.8s ease-in-out infinite; }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
-  button#refreshNow {
-    font: inherit; font-size:13px; font-weight:600; color: #f2f6fb;
-    border-radius:10px; padding:7px 12px; cursor:pointer;
-  }
-
   /* --- Custom glass dropdowns (region picker + refresh interval) -----------------------
      Native <select> popups can't be styled — most browsers render them with the OS's own
      unthemed list, which looked half-invisible against this dark UI. These replace that
@@ -265,38 +260,44 @@
   html[data-theme="light"] .sidebar .gs-option:hover { background: rgba(13,50,46,0.08); }
   html[data-theme="light"] .sidebar .gs-option.selected { background: rgba(33,163,126,0.16); color: var(--text-primary); }
 
-  /* --- Refresh button + hard-refresh glass dropdown ------------------------------------ */
-  .refresh-group { position:relative; display:flex; }
-  .refresh-group button#refreshNow { border-radius:10px 0 0 10px; border-right:none; }
-  #refreshCaret {
-    font: inherit; font-size:12px; color:#f2f6fb;
-    border-left:1px solid rgba(255,255,255,0.34);
-    border-radius:0 10px 10px 0; padding:7px 9px; cursor:pointer; display:flex; align-items:center;
+  /* --- Consolidated refresh control: "Refresh now" + "Hard refresh" + the auto-refresh
+     interval picker all live inside ONE premium dropdown (previously three separate
+     controls eating extra header width). Reuses the same .glass-select/.glass-select-menu
+     machinery the interval picker used before, so it opens/closes/positions identically —
+     just with a richer menu body and some "pro" polish (sheen sweep on hover, icon glow,
+     spring pop-open) so it reads as a considered flagship control, not a plain list. */
+  .refresh-control-btn { position:relative; overflow:hidden; }
+  .refresh-control-btn::before {
+    content:""; position:absolute; inset:0; border-radius:inherit; pointer-events:none;
+    background: linear-gradient(115deg, transparent 20%, rgba(255,255,255,0.35) 42%, rgba(255,255,255,0.35) 46%, transparent 68%);
+    transform: translateX(-120%);
   }
-  #refreshCaret.open { transform: rotate(180deg); }
-  #refreshCaret svg { display:block; width:11px; height:11px; }
-  .refresh-menu {
-    position:absolute; top: calc(100% + 8px); right:0; min-width:220px; z-index:40;
-    background: linear-gradient(160deg, rgba(255,255,255,0.16), rgba(13,50,46,0.30) 60%);
-    backdrop-filter: blur(24px) saturate(180%); -webkit-backdrop-filter: blur(24px) saturate(180%);
-    border:1px solid rgba(255,255,255,0.30); border-radius:16px;
-    box-shadow: 0 14px 38px rgba(0,0,0,0.38), inset 0 1px 0 rgba(255,255,255,0.30);
-    padding:6px; opacity:0; transform: translateY(-6px) scale(.98); pointer-events:none;
-    transition: opacity .16s ease, transform .16s ease;
-  }
-  .refresh-menu.open { opacity:1; transform: translateY(0) scale(1); pointer-events:auto; }
-  .refresh-menu button {
+  .refresh-control-btn:hover::before { transform: translateX(120%); transition: transform .85s ease; }
+  .refresh-control-menu { min-width:248px; }
+  .rc-action {
     width:100%; display:flex; align-items:center; gap:9px; text-align:left; font: inherit;
     font-size:13px; font-weight:600; color:#f2f6fb; background:transparent; border:none;
-    border-radius:10px; padding:9px 10px; cursor:pointer; transition: background .12s ease;
+    border-radius:10px; padding:9px 10px; cursor:pointer; transition: background .12s ease, transform .12s ease;
   }
-  .refresh-menu button:hover { background: rgba(255,255,255,0.16); }
-  .refresh-menu button .rm-icon {
+  .rc-action:hover { background: rgba(255,255,255,0.16); transform: translateX(1px); }
+  .rc-action .rm-icon {
     width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center;
     background: rgba(88,225,150,0.18); border:1px solid rgba(88,225,150,0.4); flex:none;
+    transition: box-shadow .15s ease;
   }
-  .refresh-menu button svg { width:14px; height:14px; }
-  .refresh-menu .rm-sub { display:block; font-size:11px; font-weight:500; color:#aebbd4; margin-top:1px; }
+  .rc-action:hover .rm-icon { box-shadow: 0 0 0 4px rgba(88,225,150,0.14); }
+  .rc-action svg { width:14px; height:14px; }
+  .rc-action .rm-sub { display:block; font-size:11px; font-weight:500; color:#aebbd4; margin-top:1px; }
+  .rc-divider {
+    margin:6px 4px 4px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.16);
+    font-size:10.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:#9fc2ea;
+  }
+  html[data-theme="light"] .rc-action { color: var(--text-primary); }
+  html[data-theme="light"] .rc-action .rm-sub { color:#6b7789; }
+  html[data-theme="light"] .rc-divider { border-top-color: rgba(13,50,46,0.14); color:#3d5a4c; }
+  /* Spring pop-open, same feel as the sidebar's region dropdown, so this flagship control
+     reads as more deliberate than a flat fade. */
+  .refresh-control.open .refresh-control-menu { animation: sbGlassPop 0.32s cubic-bezier(.2,1.4,.4,1) both; }
 
   /* --- Hard refresh: iOS-style "jiggle" wave rippling out from the button that was pressed,
      instead of a screen flash — every card gets a light springy wobble, timed so it visibly
@@ -767,56 +768,49 @@
   .mp-fs-grid > * { min-width:0; }
   .mp-fs-grid .card, .mp-fs-grid .chart-row { min-width:0; }
   @media (max-width: 900px) { .mp-fs-grid { grid-template-columns: 1fr; } .mp-fs-controls .glass-select-btn { min-width:130px; } }
-  /* Pinterest-style auto-flow for the single-region Full Screen View (not Benchmark View):
-     each selected table renders at its own natural full size (every column visible) and
-     cards flow left-to-right, wrapping to a new row only when they don't fit — instead of
-     a fixed 2-column split. A single table takes the whole row on its own; two narrow
-     tables sit side by side; a wide table (e.g. Store List) gets its own full-width row
-     rather than being squeezed. No placeholder is ever needed to "fill" an unused slot.
-     Scoped to :not(.benchmark-mode) so Benchmark View's own grid (fixed columns, one per
-     region) is untouched. */
+  /* True Pinterest/masonry layout for the single-region Full Screen View (not Benchmark
+     View): #mpFsGrid itself just stacks its children top to bottom, full width. Each child
+     is either a wide table's .mp-compare-item rendered directly (full width, full size —
+     never squeezed into a column) or a .mp-masonry-row containing 2-3 .mp-masonry-col
+     tracks that narrower cards get packed into shortest-column-first (layoutFullscreenGrid()
+     in JS) — so a short card doesn't leave a dead gap below it before the next row starts;
+     the next card slots in underneath it instead. Scoped to :not(.benchmark-mode) so
+     Benchmark View's own grid (fixed columns, one per region) is untouched. */
   .mp-fs-panel:not(.benchmark-mode) #mpFsGrid {
     display: flex;
-    flex-wrap: wrap;
-    align-items: flex-start;
-    align-content: start;
+    flex-direction: column;
     gap: 16px;
   }
-  /* flex-grow:1 here is what actually organizes multi-table rows: flexbox distributes a
-     wrapped line's leftover width proportionally among that line's own items (this is
-     per-line, automatic — no JS needed), so 2+ narrow tables stretch to use the full row
-     instead of left-aligning with dead space on the right. Each card's table still uses
-     min-width:100% internally (existing .card/table.data-table rule), so the extra width
-     spreads its columns out rather than leaving blank space inside the card either. */
-  .mp-fs-panel:not(.benchmark-mode) #mpFsGrid > * {
-    flex: 1 1 auto;
-    width: fit-content;
-    max-width: 100%;
+  .mp-fs-panel:not(.benchmark-mode) #mpFsGrid > .mp-compare-item {
+    width: 100%;
   }
-  /* The outer .mp-compare-item wrapper is the flex item that actually grows (via
-     flex-grow:1 above) to fill leftover row space — but its content wasn't stretching to
-     match, since .card/.chart-row defaulted to fit-content (sized to their own content
-     only), leaving visible dead space inside a grown wrapper. width:100% here makes the
-     card itself fill whatever width flexbox gave its wrapper, so growth is actually
-     visible (a wide table's card spreads its columns via its existing min-width:100%
-     table rule; a short KPI-style card centers/spreads its content within the extra
-     width rather than leaving it unused). */
-  .mp-fs-panel:not(.benchmark-mode) #mpFsGrid > * .card,
-  .mp-fs-panel:not(.benchmark-mode) #mpFsGrid > * .chart-row {
+  .mp-fs-panel:not(.benchmark-mode) #mpFsGrid > .mp-compare-item .card,
+  .mp-fs-panel:not(.benchmark-mode) #mpFsGrid > .mp-compare-item .chart-row {
     width: 100%;
     max-width: 100%;
   }
-  /* A lone selected table has nothing to flow beside, so it takes the whole row's width
-     rather than shrinking to just its own content — matches the approved single-table
-     mockup. Only applies when exactly one table is selected (see JS). */
-  .mp-fs-panel:not(.benchmark-mode) #mpFsGrid > .mp-compare-solo {
+  .mp-fs-panel:not(.benchmark-mode) .mp-masonry-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
     width: 100%;
   }
-  .mp-fs-panel:not(.benchmark-mode) #mpFsGrid > .mp-compare-solo .card,
-  .mp-fs-panel:not(.benchmark-mode) #mpFsGrid > .mp-compare-solo .chart-row {
+  .mp-fs-panel:not(.benchmark-mode) .mp-masonry-col {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .mp-fs-panel:not(.benchmark-mode) .mp-masonry-col > .mp-compare-item {
     width: 100%;
   }
-  @media (max-width: 900px) { .mp-fs-panel:not(.benchmark-mode) #mpFsGrid > * { width: 100%; } }
+  .mp-fs-panel:not(.benchmark-mode) .mp-masonry-col > .mp-compare-item .card,
+  .mp-fs-panel:not(.benchmark-mode) .mp-masonry-col > .mp-compare-item .chart-row {
+    width: 100%;
+    max-width: 100%;
+  }
+  @media (max-width: 900px) { .mp-fs-panel:not(.benchmark-mode) .mp-masonry-row { flex-direction: column; } }
 
   /* --- Benchmark View: a second mode inside the same full-screen popup, for comparing the
      same table(s) across up to all 4 regions at once. The toggle reuses the sidebar's own
@@ -966,26 +960,26 @@
       </div>
       <div class="status-cluster">
         <span class="status-pill glass"><span class="dot live" id="syncDot"></span><span id="syncText">Connecting…</span></span>
-        <!-- Auto-refresh has been removed (sync is manual-only via "Refresh now" below), so
-             this interval picker no longer does anything and is hidden rather than shown
-             inert/misleading. -->
-        <div class="glass-select" id="intervalSelectWrap">
-          <button type="button" class="glass-select-btn glass" id="intervalSelectBtn" title="Auto-refresh interval" aria-haspopup="listbox" aria-expanded="false">
-            <span id="intervalSelectLabel">Refresh: 30 min</span>
+        <!-- Consolidated refresh control: "Refresh now", "Hard refresh", and the auto-refresh
+             interval picker all live inside this one dropdown now (previously three separate
+             header controls). Picking an interval is still the only thing that starts a
+             recurring timer — see restartPolling()'s comment in the script below. -->
+        <div class="glass-select refresh-control" id="refreshControlWrap">
+          <button type="button" class="glass-select-btn glass refresh-control-btn" id="refreshControlBtn" title="Refresh options" aria-haspopup="true" aria-expanded="false">
+            <span id="intervalSelectLabel">Refresh: 1 hr</span>
             <svg class="gs-caret" viewBox="0 0 12 8" fill="none"><path d="M1 1.5L6 6.5L11 1.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
-          <div class="glass-select-menu" id="intervalSelectMenu" role="listbox"></div>
-        </div>
-        <div class="refresh-group">
-          <button id="refreshNow" class="glass">Refresh now</button>
-          <button id="refreshCaret" class="glass" title="More refresh options" aria-haspopup="true" aria-expanded="false">
-            <svg viewBox="0 0 12 8" fill="none"><path d="M1 1.5L6 6.5L11 1.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </button>
-          <div class="refresh-menu" id="refreshMenu" role="menu">
-            <button id="hardRefreshBtn" role="menuitem">
+          <div class="glass-select-menu refresh-control-menu" id="refreshControlMenu" role="menu">
+            <button type="button" class="rc-action" id="refreshNow" role="menuitem">
               <span class="rm-icon"><svg viewBox="0 0 24 24" fill="none"><path d="M20 11A8 8 0 1 0 18.5 16" stroke="#8cc8ff" stroke-width="2" stroke-linecap="round"/><path d="M20 5v6h-6" stroke="#8cc8ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+              <span>Refresh now<span class="rm-sub">Sync live data immediately</span></span>
+            </button>
+            <button type="button" class="rc-action" id="hardRefreshBtn" role="menuitem">
+              <span class="rm-icon"><svg viewBox="0 0 24 24" fill="none"><path d="M20 11A8 8 0 1 0 18.5 16" stroke="#ffb27a" stroke-width="2" stroke-linecap="round"/><path d="M20 5v6h-6" stroke="#ffb27a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
               <span>Hard refresh<span class="rm-sub">Clears remembered positions, reloads everything fresh</span></span>
             </button>
+            <div class="rc-divider"><span>Auto-refresh every</span></div>
+            <div id="intervalSelectMenu" role="listbox"></div>
           </div>
         </div>
         <button id="themeToggle" class="glass" title="Switch between dark and light theme" aria-label="Toggle dark/light theme" aria-pressed="false">
@@ -1094,7 +1088,7 @@
     </div>
   </div>
 
-  <footer class="foot" id="footNote">Sources: live Google Sheets, polled client-side. Showing cached data — tap Refresh now for live.</footer>
+  <footer class="foot" id="footNote">Sources: live Google Sheets, polled client-side.</footer>
   </div>
 
   <button class="cb-launcher" id="cbLauncher" aria-label="Open Dashboard Assistant" title="Dashboard Assistant">
@@ -1680,7 +1674,7 @@ const EXTRA_TABS = {
   "Canada": { sqft: "Square Footage", sqftLabel: "Sqft", profile: "Store Profile Creation", owners: "Owners Company and Contacts", developments: "Known Developments" },
   "United Kingdom": { sqft: "Square Footage", sqftLabel: "Sqft", profile: "Store Profile Creation", owners: "Owners Company and Contacts", developments: "Known Developments" }
 };
-let REFRESH_MS = 1800000;
+let REFRESH_MS = 3600000; // default auto-refresh interval: 1 hour
 
 /* ------------------------------------------------------------------------
    LIVE CACHE — the real result of the last successful sync for each region,
@@ -1712,6 +1706,14 @@ function saveLiveCache() {
 }
 const LIVE_CACHE = loadLiveCache();
 
+// Tracks whether THIS browser tab session has already performed its one-time auto-sync.
+// sessionStorage (unlike localStorage) is cleared when the tab closes or a new tab is
+// opened, but survives ordinary in-tab navigations — e.g. going to Store List and back —
+// which is exactly the "once per session" boundary this dashboard needs.
+const SESSION_SYNCED_KEY = "stortrack_session_synced";
+let alreadySyncedThisSession = false;
+try { alreadySyncedThisSession = sessionStorage.getItem(SESSION_SYNCED_KEY) === "1"; } catch (e) {}
+
 /* ------------------------------------------------------------------------
    DEFAULT SNAPSHOT — a built-in, last-resort placeholder baked into this
    file (not localStorage, so it can never be lost by clearing site data).
@@ -1732,7 +1734,11 @@ const DEFAULT_SNAPSHOTS = {
 const REGIONS = Object.keys(SHEETS).map((name) => {
   const cached = LIVE_CACHE[name];
   if (cached && cached.data) {
-    return { name, status: "cached", lastSynced: cached.lastSynced ? new Date(cached.lastSynced) : null, error: null, data: cached.data };
+    // Data already in LIVE_CACHE (localStorage) is real synced data from a previous
+    // sync. If this tab session already ran its one-time auto-sync, treat it as "loaded"
+    // (Live) rather than "cached" — it's genuinely this session's live data, not a stale
+    // snapshot waiting on a manual refresh.
+    return { name, status: alreadySyncedThisSession ? "loaded" : "cached", lastSynced: cached.lastSynced ? new Date(cached.lastSynced) : null, error: null, data: cached.data };
   }
   if (DEFAULT_SNAPSHOTS[name]) {
     return { name, status: "cached", lastSynced: null, error: null, data: DEFAULT_SNAPSHOTS[name] };
@@ -1843,7 +1849,7 @@ async function syncAll() {
   else if (REGIONS.some((r) => r.status === "loaded")) { dot.className = "dot error"; text.textContent = "Partially synced — some regions failed"; consecutiveFailures++; }
   else { dot.className = "dot error"; text.textContent = "Sync failed — check sheet sharing"; consecutiveFailures++; }
   document.getElementById("corsWarning").style.display = anyCorsError ? "block" : "none";
-  document.getElementById("footNote").textContent = "Sources: live Google Sheets (\"Regional Summary\" tab). Last synced " + new Date().toLocaleTimeString() + " — tap Refresh now for the latest.";
+  document.getElementById("footNote").textContent = "Sources: live Google Sheets (\"Regional Summary\" tab). Last synced " + new Date().toLocaleTimeString() + ".";
   render();
 }
 
@@ -2152,7 +2158,7 @@ if (d.developments && d.developments.length) {
     <div class="region-head" style="--accent-color:${accent}"><h2>${region.name}</h2><span class="rh-sub">${
       region.status === "loaded" ? "Live · synced " + (region.lastSynced ? region.lastSynced.toLocaleTimeString() : "—")
       : region.status === "stale" ? "Sync error, showing last good sync — " + (region.error || "")
-      : (region.lastSynced ? "Cached snapshot · last synced " + region.lastSynced.toLocaleTimeString() + " — tap Refresh now for the latest" : "Cached snapshot — tap Refresh now for live data")
+      : (region.lastSynced ? "Cached snapshot · last synced " + region.lastSynced.toLocaleTimeString() : "Cached snapshot")
     }</span></div>
     ${kpis}
     <div class="chart-row">
@@ -2385,6 +2391,78 @@ let benchmarkTableSet = new Set();
 // no horizontal scroll at all — same content, denser presentation.
 let benchmarkFitMode = false;
 
+// True Pinterest-style masonry for the single-region Full Screen View: cards are packed by
+// shortest-column-first (like Pinterest's own layout), so a short card doesn't leave a dead
+// gap below it before the next row starts — the next card just slots in underneath it. A
+// card is only put into a column if it's "narrow enough" to share a row; anything wide (a
+// data table with many columns, judged by its own natural/max-content width, not by how much
+// space flexbox happened to give it) still gets the full row's width so it's never squeezed
+// down to a column's width — this preserves the "wide tables stay full-size" requirement
+// while still closing the vertical gaps between the narrower cards.
+function layoutFullscreenGrid(grid, items) {
+  grid.innerHTML = "";
+  if (!items.length) return;
+  const gridWidth = grid.getBoundingClientRect().width || grid.parentElement.getBoundingClientRect().width || 0;
+  const WIDE_FRACTION = 0.5; // a card needing more than half the row's width renders full-width
+  // Measure each card's own natural (max-content) width off-screen, so the wide/narrow
+  // decision isn't skewed by whatever width it happens to have from a previous layout pass.
+  const probe = document.createElement("div");
+  probe.style.cssText = "position:absolute; visibility:hidden; left:-99999px; top:0;";
+  document.body.appendChild(probe);
+  const measured = items.map((el) => {
+    el.style.width = "fit-content";
+    probe.appendChild(el);
+    const natural = el.scrollWidth || el.getBoundingClientRect().width;
+    return { el, natural };
+  });
+  probe.remove();
+  items.forEach((el) => { el.style.width = ""; });
+
+  let pendingNarrow = [];
+  function flushNarrow() {
+    if (!pendingNarrow.length) return;
+    if (pendingNarrow.length === 1) {
+      pendingNarrow[0].classList.add("mp-compare-solo");
+      grid.appendChild(pendingNarrow[0]);
+    } else {
+      const colCount = Math.min(pendingNarrow.length, 3);
+      const row = document.createElement("div");
+      row.className = "mp-masonry-row";
+      const cols = [];
+      for (let i = 0; i < colCount; i++) {
+        const col = document.createElement("div");
+        col.className = "mp-masonry-col";
+        row.appendChild(col);
+        cols.push(col);
+      }
+      // Shortest-column-first placement — the actual masonry step. Heights are read live
+      // (getBoundingClientRect) after each placement, since a column's height only becomes
+      // known once its previous card has actually rendered.
+      pendingNarrow.forEach((el) => {
+        let target = cols[0];
+        let minHeight = target.getBoundingClientRect().height;
+        for (let i = 1; i < cols.length; i++) {
+          const h = cols[i].getBoundingClientRect().height;
+          if (h < minHeight) { minHeight = h; target = cols[i]; }
+        }
+        target.appendChild(el);
+      });
+      grid.appendChild(row);
+    }
+    pendingNarrow = [];
+  }
+  measured.forEach(({ el, natural }) => {
+    if (gridWidth && natural / gridWidth > WIDE_FRACTION) {
+      flushNarrow();
+      el.classList.add("mp-compare-solo");
+      grid.appendChild(el);
+    } else {
+      pendingNarrow.push(el);
+    }
+  });
+  flushNarrow();
+}
+
 function renderFullscreenOverlay() {
   if (!fsOverlayOpen) return;
   const region = REGIONS.find((r) => r.name === selectedRegion);
@@ -2524,23 +2602,28 @@ function renderFullscreenOverlay() {
     // Same small "×" the main panel's single-table and compare views already have — lets you
     // drop just one table straight from its card here in full screen, instead of having to
     // reopen the table dropdown (or go back to the sidebar) to untick it.
-    const filled = [];
-    // A single selected table takes the full available width (matches the approved mockup);
-    // two or more flow Pinterest-style at their own natural size, wrapping wherever they fit.
-    const soloClass = selected.size === 1 ? " mp-compare-solo" : "";
+    // Real DOM nodes (not HTML strings) so layoutFullscreenGrid() can measure natural widths
+    // and move cards between masonry columns. card is the same cached node getRegionParsed()
+    // hands out elsewhere via .outerHTML (a read-only serialization) — moving it here doesn't
+    // break those other read sites.
+    const items = [];
     tableTitles.filter((t) => selected.has(t)).forEach((t) => {
       const idx = tableTitles.indexOf(t);
       const card = idx >= 0 ? parsed.cards[idx] : null;
       if (!card) return;
-      filled.push(`<div class="mp-compare-item${soloClass}">
-        <button type="button" class="mp-compare-remove" data-title="${encodeURIComponent(t)}" aria-label="Remove ${t} from view">×</button>
-        ${card.outerHTML}
-      </div>`);
+      const wrap = document.createElement("div");
+      wrap.className = "mp-compare-item";
+      const removeBtn = document.createElement("button");
+      removeBtn.type = "button";
+      removeBtn.className = "mp-compare-remove";
+      removeBtn.dataset.title = encodeURIComponent(t);
+      removeBtn.setAttribute("aria-label", `Remove ${t} from view`);
+      removeBtn.textContent = "×";
+      wrap.appendChild(removeBtn);
+      wrap.appendChild(card);
+      items.push(wrap);
     });
-    // Pinterest-style auto-flow (see #mpFsGrid CSS above) sizes and wraps each card on its
-    // own — there's no fixed column count to "fill", so no placeholder padding is needed
-    // regardless of how many tables are selected.
-    grid.innerHTML = filled.join("");
+    layoutFullscreenGrid(grid, items);
     grid.querySelectorAll(".mp-compare-remove").forEach((btn) => {
       btn.addEventListener("click", () => {
         selected.delete(decodeURIComponent(btn.dataset.title));
@@ -2628,9 +2711,15 @@ function render() {
   renderFullscreenOverlay();
 }
 
-// Manual-only sync: this button is now the sole trigger for a live sync anywhere on the
-// page — no automatic timer runs alongside it (see restartPolling()'s comment below).
-document.getElementById("refreshNow").addEventListener("click", () => { consecutiveFailures = 0; syncAll(); });
+// This "Refresh now" entry inside the consolidated refresh dropdown is one of two direct,
+// user-initiated ways to force a live sync right now (the other being "Hard refresh"
+// below) — neither one starts a recurring timer on its own (see restartPolling()'s
+// comment below).
+document.getElementById("refreshNow").addEventListener("click", () => {
+  consecutiveFailures = 0;
+  syncAll();
+  closeGlassSelect(document.getElementById("refreshControlWrap"));
+});
 
 // --- Theme toggle: dark/light, remembered across visits. The attribute is actually set as
 // early as possible by a tiny inline script in <head> (before first paint) to avoid a flash
@@ -2680,7 +2769,7 @@ const REFRESH_OPTIONS = [
   { value: 3600000, label: "Refresh: 1 hr" }
 ];
 function renderIntervalSelect() {
-  document.getElementById("intervalSelectLabel").textContent = (REFRESH_OPTIONS.find((o) => o.value === REFRESH_MS) || REFRESH_OPTIONS[2]).label;
+  document.getElementById("intervalSelectLabel").textContent = (REFRESH_OPTIONS.find((o) => o.value === REFRESH_MS) || REFRESH_OPTIONS[3]).label;
   const menu = document.getElementById("intervalSelectMenu");
   menu.innerHTML = REFRESH_OPTIONS.map((o) => `<button type="button" class="gs-option${o.value === REFRESH_MS ? " selected" : ""}" role="option" aria-selected="${o.value === REFRESH_MS}" data-value="${o.value}">${o.label}</button>`).join("");
   menu.querySelectorAll(".gs-option").forEach((btn) => {
@@ -2690,28 +2779,16 @@ function renderIntervalSelect() {
       // periodic auto-refresh (see restartPolling()'s comment) — never automatic.
       restartPolling();
       renderIntervalSelect();
-      closeGlassSelect(document.getElementById("intervalSelectWrap"));
+      closeGlassSelect(document.getElementById("refreshControlWrap"));
     };
   });
 }
 renderIntervalSelect();
-document.getElementById("intervalSelectBtn").addEventListener("click", (e) => { e.stopPropagation(); toggleGlassSelect(document.getElementById("intervalSelectWrap")); });
+// "Refresh now", "Hard refresh", and the interval list all now live inside one dropdown —
+// one button opens/closes the whole thing, same open/close machinery every other glass
+// dropdown on this page already uses.
+document.getElementById("refreshControlBtn").addEventListener("click", (e) => { e.stopPropagation(); toggleGlassSelect(document.getElementById("refreshControlWrap")); });
 
-// --- Hard refresh: clears the remembered anchor-position cache and forces a genuinely
-// fresh reload (bypassing this browser's own cache). Instead of a screen flash, every card
-// does a light springy "jiggle" — like iOS app icons wiggling — timed to radiate outward
-// from wherever the button was pressed, so it visibly reads as a wave, not a glitch. -------
-const refreshCaret = document.getElementById("refreshCaret");
-const refreshMenu = document.getElementById("refreshMenu");
-function closeRefreshMenu() { refreshMenu.classList.remove("open"); refreshCaret.classList.remove("open"); refreshCaret.setAttribute("aria-expanded", "false"); }
-function toggleRefreshMenu() {
-  const opening = !refreshMenu.classList.contains("open");
-  closeAllGlassSelects();
-  refreshMenu.classList.toggle("open", opening);
-  refreshCaret.classList.toggle("open", opening);
-  refreshCaret.setAttribute("aria-expanded", String(opening));
-}
-refreshCaret.addEventListener("click", (e) => { e.stopPropagation(); toggleRefreshMenu(); });
 document.addEventListener("click", (e) => {
   // Multi-select rows inside the full-screen table dropdown call render() on every click, which
   // rebuilds that dropdown's option list (innerHTML) — so by the time this bubbles up to
@@ -2722,12 +2799,14 @@ document.addEventListener("click", (e) => {
   // reports the click's real ancestry even once the target itself has been torn out.
   const path = typeof e.composedPath === "function" ? e.composedPath() : [e.target];
   const insideGlassSelect = path.some((el) => el.classList && el.classList.contains("glass-select"));
-  const insideRefreshGroup = path.some((el) => el.classList && el.classList.contains("refresh-group"));
-  if (!insideRefreshGroup) closeRefreshMenu();
   if (!insideGlassSelect) closeAllGlassSelects();
 });
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeRefreshMenu(); closeAllGlassSelects(); } });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeAllGlassSelects(); });
 
+// --- Hard refresh: clears the remembered anchor-position cache and forces a genuinely
+// fresh reload (bypassing this browser's own cache). Instead of a screen flash, every card
+// does a light springy "jiggle" — like iOS app icons wiggling — timed to radiate outward
+// from wherever the button was pressed, so it visibly reads as a wave, not a glitch. -------
 function playHardRefreshWave(originEl) {
   const originRect = (originEl || document.getElementById("refreshNow")).getBoundingClientRect();
   const ox = originRect.left + originRect.width / 2, oy = originRect.top + originRect.height / 2;
@@ -2746,7 +2825,7 @@ function playHardRefreshWave(originEl) {
   }, 950);
 }
 document.getElementById("hardRefreshBtn").addEventListener("click", (e) => {
-  closeRefreshMenu();
+  closeGlassSelect(document.getElementById("refreshControlWrap"));
   playHardRefreshWave(e.currentTarget);
   try { localStorage.removeItem("stortrack_pos_cache_v1"); POS_CACHE = {}; } catch (e2) {}
   setTimeout(() => {
@@ -3191,27 +3270,29 @@ document.getElementById("cbForm").addEventListener("submit", (e) => {
   input.value = "";
 });
 
-// Per explicit product decision: the dashboard must never sync on its own — not on first
-// visit, not on a return visit, not on a timer. render() below draws immediately from
-// whatever is already cached (LIVE_CACHE from localStorage, falling back to
-// DEFAULT_SNAPSHOTS), so the page is never blank. The ONLY way to fetch live data is the
-// "Refresh now" button (see its click handler above), which calls syncAll() directly and
-// does not start any recurring timer.
-// The top-right status pill defaults to "Connecting…" in the HTML, which used to be
-// accurate for the instant before the old auto-sync landed. Since nothing auto-syncs now,
-// set it once here to reflect the cached data actually on screen instead of leaving stale
-// "Connecting…" text up forever.
-(function initSyncPill() {
+// Auto-sync fires exactly ONCE per browser tab session (per explicit product decision):
+// a genuinely new tab/session (fresh URL entry, new tab, browser restart) triggers one
+// automatic sync so the first paint of a brand-new session is live data, not a stale
+// cached snapshot. Any subsequent load within the SAME tab session — including
+// navigating to Store List and clicking "Back to Dashboard" — must NOT re-trigger a
+// sync; it must keep showing this session's already-synced data labeled "Live", never
+// "Cached" and never with "tap Refresh now" wording. Only closing the tab (or opening a
+// new one) resets this, via sessionStorage — unlike localStorage, it's scoped to a
+// single tab's lifetime, which is exactly the boundary we want here.
+render();
+if (!alreadySyncedThisSession) {
+  try { sessionStorage.setItem(SESSION_SYNCED_KEY, "1"); } catch (e) {}
+  syncAll();
+} else {
   const mostRecent = REGIONS.reduce((acc, r) => (r.lastSynced && (!acc || r.lastSynced > acc) ? r.lastSynced : acc), null);
   document.getElementById("syncDot").className = "dot live";
   document.getElementById("syncText").textContent = mostRecent
-    ? "Cached · last synced " + mostRecent.toLocaleTimeString() + " — tap Refresh now"
-    : "Showing cached data — tap Refresh now for live";
-  document.getElementById("footNote").textContent = "Sources: live Google Sheets (\"Regional Summary\" tab). " + (mostRecent
-    ? "Showing cached data last synced " + mostRecent.toLocaleTimeString() + " — tap Refresh now for the latest."
-    : "Showing cached data — tap Refresh now for the latest.");
-})();
-render();
+    ? "Live · synced " + mostRecent.toLocaleTimeString()
+    : "Live";
+  document.getElementById("footNote").textContent = "Sources: live Google Sheets (\"Regional Summary\" tab)." + (mostRecent
+    ? " Last synced " + mostRecent.toLocaleTimeString() + "."
+    : "");
+}
 </script>
 </body>
 </html>
