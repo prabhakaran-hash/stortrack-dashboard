@@ -1339,14 +1339,18 @@ function pickTotalColIndex(columns) {
 // research & update, Completed %) from the render, even though the sheet clearly has
 // real data there. A blank column is now skipped (not shown — there's nothing to show)
 // but scanning continues past it; only MAX_BLANK_STREAK consecutive blank columns in a
-// row is treated as the table's real end, same tolerance value readLabelRows uses.
+// row is treated as the table's real end. Kept at 1 (not readLabelRows' larger row
+// tolerance) deliberately: sheets often have a genuinely different, unrelated table
+// sitting a few columns to the right on the same header row, and a larger tolerance
+// here was found (during testing) to wander across that gap and splice in that other
+// table's stray cells as if they belonged to this one — worse than the original bug.
 function readCols(grid, headerRow, startC, rowStart, rowEnd) {
   const rs = rowStart != null ? rowStart : headerRow + 1;
   const re = rowEnd != null ? rowEnd : grid.length;
   let width = (grid[headerRow] || []).length;
   for (let r = rs; r < re; r++) width = Math.max(width, (grid[r] || []).length);
   const cols = [];
-  const MAX_BLANK_STREAK = 5;
+  const MAX_BLANK_STREAK = 1;
   let blankStreak = 0;
   for (let c = startC; c < width; c++) {
     const h = cell(grid, headerRow, c);
