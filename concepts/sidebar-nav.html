@@ -1411,25 +1411,23 @@ function parseOperatorBlocks(grid, regionKey) {
   const blockAHit = anchorPos(rk + ":operatorBlocksA", catHits.find((h) => cell(grid, h.r, h.c + 1) === "Store Count"), grid);
   const blockBHit = anchorPos(rk + ":operatorBlocksB", catHits.find((h) => { const hdrs = headerNamesOf(h); return hdrs.includes("Available") && hdrs.includes("Not Available"); }), grid);
   if (!blockAHit && !blockBHit) return null;
-  // Block A ("Operator Type Summary") and Block B ("Pricing Yes/No by Operator Type")
-  // are two independent tables in the sheet — editing one's row list must not silently
-  // truncate the other. The old version built its result by mapping over Block A's rows
-  // only, so an operator type removed from Block A (but still present in Block B) lost
-  // its pricing data too, even though Block B's own row for it was untouched. Now every
-  // label seen in EITHER block gets a row, in first-seen order, with whichever fields
-  // (stores from A, yes/no from B) that block actually has — same "pure mirror" rule
-  // as everywhere else on this page: a change to one table can't reach into another.
-  const storesByLabel = {};
-  const orderedLabels = [];
+  // Block A ("Operator Type Summary") and Block B ("Pricing Yes/No by Operator Type") are
+  // two fully independent tables in the sheet. Each is returned as its OWN row list, in its
+  // OWN sheet row order, with ONLY the labels that block actually has right now — an exact
+  // mirror of that one table, nothing more. Earlier this used to build a single merged/union
+  // list shared by both charts: removing a label from one block didn't drop it from that
+  // chart, it just got re-appended at the END of the shared list (wrong row position) while
+  // still showing in the OTHER chart too. Keeping the two blocks separate means deleting a
+  // row from Block A only ever shortens Block A's own chart, in Block A's own order, and
+  // never touches Block B's chart (or its order) at all — and vice versa.
+  const blockA = [];
   if (blockAHit) {
     const rowIdxsA = readLabelRows(grid, blockAHit.r + 1, blockAHit.c);
     rowIdxsA.forEach((r) => {
-      const label = cell(grid, r, blockAHit.c);
-      storesByLabel[label] = numOf(cell(grid, r, blockAHit.c + 1));
-      orderedLabels.push(label);
+      blockA.push({ label: cell(grid, r, blockAHit.c), stores: numOf(cell(grid, r, blockAHit.c + 1)) });
     });
   }
-  const priceByLabel = {};
+  const blockB = [];
   if (blockBHit) {
     const rowIdxsB = readLabelRows(grid, blockBHit.r + 1, blockBHit.c);
     const lastRowB = rowIdxsB.length ? rowIdxsB[rowIdxsB.length - 1] + 1 : blockBHit.r + 1;
@@ -1437,11 +1435,19 @@ function parseOperatorBlocks(grid, regionKey) {
     const availCol = cols.find((c) => c.name === "Available");
     const naCol = cols.find((c) => c.name === "Not Available");
     rowIdxsB.forEach((r) => {
-      const label = cell(grid, r, blockBHit.c);
-      priceByLabel[label] = { yes: availCol ? numOf(cell(grid, r, availCol.col)) : null, no: naCol ? numOf(cell(grid, r, naCol.col)) : null };
-      if (!(label in storesByLabel)) orderedLabels.push(label);
+      blockB.push({ label: cell(grid, r, blockBHit.c), yes: availCol ? numOf(cell(grid, r, availCol.col)) : null, no: naCol ? numOf(cell(grid, r, naCol.col)) : null });
     });
   }
+  return { blockA, blockB };
+}
+// Chatbot-only helper: a single readable "operator breakdown" list combining both blocks by
+// label (Block A order first, any Block B-only labels after). This is text, not a rendered
+// table, so union-with-appended-extras is fine here — it must NOT be used to drive either of
+// the two on-screen charts (see parseOperatorBlocks' comment above for why).
+function mergeOperatorBlocks(blockA, blockB) {
+  const storesByLabel = {}; const priceByLabel = {}; const orderedLabels = [];
+  (blockA || []).forEach((o) => { storesByLabel[o.label] = o.stores; orderedLabels.push(o.label); });
+  (blockB || []).forEach((o) => { priceByLabel[o.label] = { yes: o.yes, no: o.no }; if (!(o.label in storesByLabel)) orderedLabels.push(o.label); });
   return orderedLabels.map((label) => ({
     label,
     stores: label in storesByLabel ? storesByLabel[label] : null,
@@ -1500,9 +1506,11 @@ function parseFacilityOperatorNrsf(grid, regionKey) {
 }
 
 function parseCanada(grid, regionKey) {
-  const operatorType = parseOperatorBlocks(grid, regionKey) || [];
-  const totalStores = operatorType.reduce((s, o) => s + (o.stores || 0), 0);
-  const pricing = { yes: operatorType.reduce((s, o) => s + (o.yes || 0), 0), no: operatorType.reduce((s, o) => s + (o.no || 0), 0) };
+  const ob = parseOperatorBlocks(grid, regionKey) || { blockA: [], blockB: [] };
+  const operatorStores = ob.blockA, operatorPricingRows = ob.blockB;
+  const operatorType = mergeOperatorBlocks(operatorStores, operatorPricingRows);
+  const totalStores = operatorStores.reduce((s, o) => s + (o.stores || 0), 0);
+  const pricing = { yes: operatorPricingRows.reduce((s, o) => s + (o.yes || 0), 0), no: operatorPricingRows.reduce((s, o) => s + (o.no || 0), 0) };
   const rb = parseRegionBlocks(grid, regionKey);
   const regionSplit = buildRegionSplit(rb);
   const regionPriceSplit = buildRegionPriceSplit(rb);
@@ -1516,15 +1524,17 @@ function parseCanada(grid, regionKey) {
     const totalIdx = pickTotalColIndex(facilityDetail.columns);
     facilityDetail.rows.forEach((r) => { facilityType[r.category] = (facilityType[r.category] || 0) + (r.values[totalIdx] || 0); });
   }
-  return { totalStores, pricing, operatorType,
+  return { totalStores, pricing, operatorType, operatorStores, operatorPricingRows,
     regionSplit, regionPriceSplit, facilityType, pricingHistory: parsePricingHistory(grid, regionKey), facilityDetail, facilityOperatorNrsf: null, facilityOperatorNrsfTable: null, units: parseUnitsSummary(grid, regionKey), sqftTotal: null, regionLabel: rb ? rb.label : null };
 }
 
 const UK_REGIONS = ["England", "Northern Ireland", "Scotland", "Wales"];
 function parseUK(grid, regionKey) {
-  const operatorType = parseOperatorBlocks(grid, regionKey) || [];
-  const totalStores = operatorType.reduce((s, o) => s + (o.stores || 0), 0);
-  const pricing = { yes: operatorType.reduce((s, o) => s + (o.yes || 0), 0), no: operatorType.reduce((s, o) => s + (o.no || 0), 0) };
+  const ob = parseOperatorBlocks(grid, regionKey) || { blockA: [], blockB: [] };
+  const operatorStores = ob.blockA, operatorPricingRows = ob.blockB;
+  const operatorType = mergeOperatorBlocks(operatorStores, operatorPricingRows);
+  const totalStores = operatorStores.reduce((s, o) => s + (o.stores || 0), 0);
+  const pricing = { yes: operatorPricingRows.reduce((s, o) => s + (o.yes || 0), 0), no: operatorPricingRows.reduce((s, o) => s + (o.no || 0), 0) };
   const rb = parseRegionBlocks(grid, regionKey);
   const regionSplit = buildRegionSplit(rb);
   const regionPriceSplit = buildRegionPriceSplit(rb);
@@ -1548,25 +1558,29 @@ function parseUK(grid, regionKey) {
     facilityOperatorNrsf.forEach((d) => { facilityType[d.facility] = (facilityType[d.facility] || 0) + (d.stores || 0); });
     sqftTotal = facilityOperatorNrsf.reduce((s, d) => s + (d.nrsf || 0), 0);
   }
-  return { totalStores, pricing, operatorType, regionSplit, regionPriceSplit, facilityType, facilityOperatorNrsf, facilityOperatorNrsfTable: nrsfTable, pricingHistory: parsePricingHistory(grid, regionKey), facilityDetail: null, units: parseUnitsSummary(grid, regionKey), sqftTotal, regionLabel: rb ? rb.label : null };
+  return { totalStores, pricing, operatorType, operatorStores, operatorPricingRows, regionSplit, regionPriceSplit, facilityType, facilityOperatorNrsf, facilityOperatorNrsfTable: nrsfTable, pricingHistory: parsePricingHistory(grid, regionKey), facilityDetail: null, units: parseUnitsSummary(grid, regionKey), sqftTotal, regionLabel: rb ? rb.label : null };
 }
 
 const AU_STATES = ["Australian Capital Territory", "New South Wales", "Northern Territory", "Queensland", "South Australia", "Tasmania", "Victoria", "Western Australia"];
 function parseAustralia(grid, regionKey) {
-  const operatorType = parseOperatorBlocks(grid, regionKey) || [];
-  const totalStores = operatorType.reduce((s, o) => s + (o.stores || 0), 0);
-  const pricing = { yes: operatorType.reduce((s, o) => s + (o.yes || 0), 0), no: operatorType.reduce((s, o) => s + (o.no || 0), 0) };
+  const ob = parseOperatorBlocks(grid, regionKey) || { blockA: [], blockB: [] };
+  const operatorStores = ob.blockA, operatorPricingRows = ob.blockB;
+  const operatorType = mergeOperatorBlocks(operatorStores, operatorPricingRows);
+  const totalStores = operatorStores.reduce((s, o) => s + (o.stores || 0), 0);
+  const pricing = { yes: operatorPricingRows.reduce((s, o) => s + (o.yes || 0), 0), no: operatorPricingRows.reduce((s, o) => s + (o.no || 0), 0) };
   const rb = parseRegionBlocks(grid, regionKey);
   const regionSplit = buildRegionSplit(rb);
   const regionPriceSplit = buildRegionPriceSplit(rb);
-  return { totalStores, pricing, operatorType, regionSplit, regionPriceSplit, facilityType: null, pricingHistory: parsePricingHistory(grid, regionKey), facilityDetail: null, facilityOperatorNrsf: null, facilityOperatorNrsfTable: null, units: parseUnitsSummary(grid, regionKey), sqftTotal: null, regionLabel: rb ? rb.label : null };
+  return { totalStores, pricing, operatorType, operatorStores, operatorPricingRows, regionSplit, regionPriceSplit, facilityType: null, pricingHistory: parsePricingHistory(grid, regionKey), facilityDetail: null, facilityOperatorNrsf: null, facilityOperatorNrsfTable: null, units: parseUnitsSummary(grid, regionKey), sqftTotal: null, regionLabel: rb ? rb.label : null };
 }
 
 function parseNewZealand(grid, regionKey) {
-  const operatorType = parseOperatorBlocks(grid, regionKey) || [];
-  const totalStores = operatorType.reduce((s, o) => s + (o.stores || 0), 0);
-  const pricing = { yes: operatorType.reduce((s, o) => s + (o.yes || 0), 0), no: operatorType.reduce((s, o) => s + (o.no || 0), 0) };
-  return { totalStores, pricing, operatorType, regionSplit: null, facilityType: null, pricingHistory: parsePricingHistory(grid, regionKey), facilityDetail: null, facilityOperatorNrsf: null, facilityOperatorNrsfTable: null, units: parseUnitsSummary(grid, regionKey), sqftTotal: null, regionLabel: null };
+  const ob = parseOperatorBlocks(grid, regionKey) || { blockA: [], blockB: [] };
+  const operatorStores = ob.blockA, operatorPricingRows = ob.blockB;
+  const operatorType = mergeOperatorBlocks(operatorStores, operatorPricingRows);
+  const totalStores = operatorStores.reduce((s, o) => s + (o.stores || 0), 0);
+  const pricing = { yes: operatorPricingRows.reduce((s, o) => s + (o.yes || 0), 0), no: operatorPricingRows.reduce((s, o) => s + (o.no || 0), 0) };
+  return { totalStores, pricing, operatorType, operatorStores, operatorPricingRows, regionSplit: null, facilityType: null, pricingHistory: parsePricingHistory(grid, regionKey), facilityDetail: null, facilityOperatorNrsf: null, facilityOperatorNrsfTable: null, units: parseUnitsSummary(grid, regionKey), sqftTotal: null, regionLabel: null };
 }
 
 function parseSourceCoverage(grid, unitLabel, regionKey) {
@@ -2101,8 +2115,15 @@ function renderRegionBlock(region) {
       <div class="sub">${d.sqftTotal ? fmtNum(d.sqftTotal) + " sq ft" : "actual + estimated unit counts"}</div></div>
   </div>`;
 
-  const operatorBar = barList(d.operatorType.map((o) => ({label: o.label, value: o.stores})), () => accent);
-  const operatorPricing = stackedYesNoList(d.operatorType.map((o) => ({label: o.label, yes: o.yes, no: o.no})));
+  // Each chart mirrors its OWN sheet block independently (see parseOperatorBlocks) — never a
+  // merged/union list — so removing a row from one table can't leave a stray leftover row (in
+  // the wrong position) in the other. `operatorStores`/`operatorPricingRows` are the live split
+  // fields; the `d.operatorType` fallback only covers old cached/default snapshots saved before
+  // this split existed and is otherwise unused for rendering.
+  const opStoresRows = d.operatorStores || (d.operatorType || []).map((o) => ({ label: o.label, stores: o.stores }));
+  const opPricingRows = d.operatorPricingRows || (d.operatorType || []).map((o) => ({ label: o.label, yes: o.yes, no: o.no }));
+  const operatorBar = barList(opStoresRows.map((o) => ({label: o.label, value: o.stores})), () => accent);
+  const operatorPricing = stackedYesNoList(opPricingRows.map((o) => ({label: o.label, yes: o.yes, no: o.no})));
 
   let regionCharts = "";
   if (d.regionSplit && d.regionSplit.length) {
