@@ -292,6 +292,15 @@
   }
   .rc-action:hover .rm-icon { box-shadow: 0 0 0 4px rgba(88,225,150,0.14); }
   .rc-action svg { width:12px; height:12px; }
+  /* Light theme: the pastel icon strokes (#8cc8ff / #ffb27a) and the faint green glass ring
+     were tuned to pop against the dark navy panel, but on the light theme's pale frosted
+     glass they wash out to near-invisible — the exact "low visibility on symbols" complaint.
+     Darken/saturate both the ring and the stroke colors (via CSS vars the inline SVGs read,
+     falling back to the dark-theme colors) so the same glassy, translucent material stays,
+     just with enough contrast to read clearly on a light background. */
+  html[data-theme="light"] .rc-action .rm-icon { background: rgba(13,50,46,0.09); border-color: rgba(13,50,46,0.32); }
+  html[data-theme="light"] .rc-action:hover .rm-icon { box-shadow: 0 0 0 4px rgba(13,50,46,0.12); }
+  html[data-theme="light"] #refreshControlMenu { --rm-icon-refresh:#0f66c9; --rm-icon-hard:#c25a06; }
   .rc-divider {
     margin:5px 4px 3px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.16);
     font-size:9.5px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:#9fc2ea;
@@ -988,11 +997,11 @@
           </button>
           <div class="glass-select-menu refresh-control-menu" id="refreshControlMenu" role="menu">
             <button type="button" class="rc-action" id="refreshNow" role="menuitem" title="Sync live data immediately">
-              <span class="rm-icon"><svg viewBox="0 0 24 24" fill="none"><path d="M20 11A8 8 0 1 0 18.5 16" stroke="#8cc8ff" stroke-width="2" stroke-linecap="round"/><path d="M20 5v6h-6" stroke="#8cc8ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+              <span class="rm-icon"><svg viewBox="0 0 24 24" fill="none"><path d="M20 11A8 8 0 1 0 18.5 16" stroke="var(--rm-icon-refresh, #8cc8ff)" stroke-width="2" stroke-linecap="round"/><path d="M20 5v6h-6" stroke="var(--rm-icon-refresh, #8cc8ff)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
               <span>Refresh now</span>
             </button>
             <button type="button" class="rc-action" id="hardRefreshBtn" role="menuitem" title="Clears remembered positions, reloads everything fresh">
-              <span class="rm-icon"><svg viewBox="0 0 24 24" fill="none"><path d="M20 11A8 8 0 1 0 18.5 16" stroke="#ffb27a" stroke-width="2" stroke-linecap="round"/><path d="M20 5v6h-6" stroke="#ffb27a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+              <span class="rm-icon"><svg viewBox="0 0 24 24" fill="none"><path d="M20 11A8 8 0 1 0 18.5 16" stroke="var(--rm-icon-hard, #ffb27a)" stroke-width="2" stroke-linecap="round"/><path d="M20 5v6h-6" stroke="var(--rm-icon-hard, #ffb27a)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
               <span>Hard refresh</span>
             </button>
             <div class="rc-divider"><span>Auto-refresh every</span></div>
