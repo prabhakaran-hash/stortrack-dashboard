@@ -273,28 +273,45 @@
     transform: translateX(-120%);
   }
   .refresh-control-btn:hover::before { transform: translateX(120%); transition: transform .85s ease; }
-  .refresh-control-menu { min-width:248px; }
+  /* Compact body (per explicit feedback that the first version — full sub-captions under
+     each action plus a 4-row interval list — felt too tall): no descriptive sub-text under
+     "Refresh now"/"Hard refresh", tighter row padding/icon size, and the interval picker is
+     a single stepper row (‹ value ›) instead of a 4-row list — the option the user picked
+     out of several compact mockups. */
+  .refresh-control-menu { min-width:200px; }
   .rc-action {
-    width:100%; display:flex; align-items:center; gap:9px; text-align:left; font: inherit;
-    font-size:13px; font-weight:600; color:#f2f6fb; background:transparent; border:none;
-    border-radius:10px; padding:9px 10px; cursor:pointer; transition: background .12s ease, transform .12s ease;
+    width:100%; display:flex; align-items:center; gap:8px; text-align:left; font: inherit;
+    font-size:12.5px; font-weight:600; color:#f2f6fb; background:transparent; border:none;
+    border-radius:8px; padding:7px 8px; cursor:pointer; transition: background .12s ease, transform .12s ease;
   }
   .rc-action:hover { background: rgba(255,255,255,0.16); transform: translateX(1px); }
   .rc-action .rm-icon {
-    width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+    width:20px; height:20px; border-radius:50%; display:flex; align-items:center; justify-content:center;
     background: rgba(88,225,150,0.18); border:1px solid rgba(88,225,150,0.4); flex:none;
     transition: box-shadow .15s ease;
   }
   .rc-action:hover .rm-icon { box-shadow: 0 0 0 4px rgba(88,225,150,0.14); }
-  .rc-action svg { width:14px; height:14px; }
-  .rc-action .rm-sub { display:block; font-size:11px; font-weight:500; color:#aebbd4; margin-top:1px; }
+  .rc-action svg { width:12px; height:12px; }
   .rc-divider {
-    margin:6px 4px 4px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.16);
-    font-size:10.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:#9fc2ea;
+    margin:5px 4px 3px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.16);
+    font-size:9.5px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:#9fc2ea;
   }
   html[data-theme="light"] .rc-action { color: var(--text-primary); }
-  html[data-theme="light"] .rc-action .rm-sub { color:#6b7789; }
   html[data-theme="light"] .rc-divider { border-top-color: rgba(13,50,46,0.14); color:#3d5a4c; }
+  .rc-stepper {
+    display:flex; align-items:center; justify-content:space-between; padding:5px 4px 3px;
+  }
+  .rc-step-btn {
+    width:24px; height:24px; border-radius:50%; flex:none; cursor:pointer;
+    border:1px solid rgba(255,255,255,0.28); background:rgba(255,255,255,0.08); color:#f2f6fb;
+    font: inherit; font-size:14px; line-height:1; display:flex; align-items:center; justify-content:center;
+    transition: background .12s ease, transform .1s ease;
+  }
+  .rc-step-btn:hover { background: rgba(255,255,255,0.18); }
+  .rc-step-btn:active { transform: scale(0.92); }
+  .rc-step-val { font-size:13px; font-weight:700; color:#f2f6fb; min-width:52px; text-align:center; }
+  html[data-theme="light"] .rc-step-btn { border-color: rgba(13,50,46,0.22); background: rgba(13,50,46,0.06); color: var(--text-primary); }
+  html[data-theme="light"] .rc-step-val { color: var(--text-primary); }
   /* Spring pop-open, same feel as the sidebar's region dropdown, so this flagship control
      reads as more deliberate than a flat fade. */
   .refresh-control.open .refresh-control-menu { animation: sbGlassPop 0.32s cubic-bezier(.2,1.4,.4,1) both; }
@@ -970,16 +987,20 @@
             <svg class="gs-caret" viewBox="0 0 12 8" fill="none"><path d="M1 1.5L6 6.5L11 1.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
           <div class="glass-select-menu refresh-control-menu" id="refreshControlMenu" role="menu">
-            <button type="button" class="rc-action" id="refreshNow" role="menuitem">
+            <button type="button" class="rc-action" id="refreshNow" role="menuitem" title="Sync live data immediately">
               <span class="rm-icon"><svg viewBox="0 0 24 24" fill="none"><path d="M20 11A8 8 0 1 0 18.5 16" stroke="#8cc8ff" stroke-width="2" stroke-linecap="round"/><path d="M20 5v6h-6" stroke="#8cc8ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-              <span>Refresh now<span class="rm-sub">Sync live data immediately</span></span>
+              <span>Refresh now</span>
             </button>
-            <button type="button" class="rc-action" id="hardRefreshBtn" role="menuitem">
+            <button type="button" class="rc-action" id="hardRefreshBtn" role="menuitem" title="Clears remembered positions, reloads everything fresh">
               <span class="rm-icon"><svg viewBox="0 0 24 24" fill="none"><path d="M20 11A8 8 0 1 0 18.5 16" stroke="#ffb27a" stroke-width="2" stroke-linecap="round"/><path d="M20 5v6h-6" stroke="#ffb27a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-              <span>Hard refresh<span class="rm-sub">Clears remembered positions, reloads everything fresh</span></span>
+              <span>Hard refresh</span>
             </button>
             <div class="rc-divider"><span>Auto-refresh every</span></div>
-            <div id="intervalSelectMenu" role="listbox"></div>
+            <div class="rc-stepper" id="intervalStepper" role="group" aria-label="Auto-refresh interval">
+              <button type="button" class="rc-step-btn" id="intervalPrev" aria-label="Shorter interval">‹</button>
+              <span class="rc-step-val" id="intervalStepperVal">1 hr</span>
+              <button type="button" class="rc-step-btn" id="intervalNext" aria-label="Longer interval">›</button>
+            </div>
           </div>
         </div>
         <button id="themeToggle" class="glass" title="Switch between dark and light theme" aria-label="Toggle dark/light theme" aria-pressed="false">
@@ -2773,22 +2794,30 @@ const REFRESH_OPTIONS = [
   { value: 1800000, label: "Refresh: 30 min" },
   { value: 3600000, label: "Refresh: 1 hr" }
 ];
-function renderIntervalSelect() {
-  document.getElementById("intervalSelectLabel").textContent = (REFRESH_OPTIONS.find((o) => o.value === REFRESH_MS) || REFRESH_OPTIONS[3]).label;
-  const menu = document.getElementById("intervalSelectMenu");
-  menu.innerHTML = REFRESH_OPTIONS.map((o) => `<button type="button" class="gs-option${o.value === REFRESH_MS ? " selected" : ""}" role="option" aria-selected="${o.value === REFRESH_MS}" data-value="${o.value}">${o.label}</button>`).join("");
-  menu.querySelectorAll(".gs-option").forEach((btn) => {
-    btn.onclick = () => {
-      REFRESH_MS = Number(btn.dataset.value);
-      // Picking an interval is the one explicit, user-initiated action that turns on
-      // periodic auto-refresh (see restartPolling()'s comment) — never automatic.
-      restartPolling();
-      renderIntervalSelect();
-      closeGlassSelect(document.getElementById("refreshControlWrap"));
-    };
-  });
+// Per explicit user feedback that the first version of this menu felt too tall (full
+// sub-captions under each action + a 4-row interval list), the interval picker is a
+// compact stepper (‹ value ›) instead of a list — the option the user picked out of
+// several compact mockups. renderIntervalStepper() keeps both the stepper's own value
+// and the header button's label in sync with REFRESH_MS.
+function renderIntervalStepper() {
+  const opt = REFRESH_OPTIONS.find((o) => o.value === REFRESH_MS) || REFRESH_OPTIONS[3];
+  document.getElementById("intervalSelectLabel").textContent = opt.label;
+  document.getElementById("intervalStepperVal").textContent = opt.label.replace(/^Refresh:\s*/, "");
 }
-renderIntervalSelect();
+function stepInterval(delta) {
+  const idx = REFRESH_OPTIONS.findIndex((o) => o.value === REFRESH_MS);
+  const nextIdx = Math.min(REFRESH_OPTIONS.length - 1, Math.max(0, (idx < 0 ? 3 : idx) + delta));
+  REFRESH_MS = REFRESH_OPTIONS[nextIdx].value;
+  // Changing the interval (even via the stepper) is still the one explicit,
+  // user-initiated action that turns on periodic auto-refresh (see restartPolling()'s
+  // comment) — never automatic. The menu deliberately stays open here (unlike the old
+  // list, which closed on selection) so the user can click ‹ / › repeatedly.
+  restartPolling();
+  renderIntervalStepper();
+}
+document.getElementById("intervalPrev").addEventListener("click", (e) => { e.stopPropagation(); stepInterval(-1); });
+document.getElementById("intervalNext").addEventListener("click", (e) => { e.stopPropagation(); stepInterval(1); });
+renderIntervalStepper();
 // "Refresh now", "Hard refresh", and the interval list all now live inside one dropdown —
 // one button opens/closes the whole thing, same open/close machinery every other glass
 // dropdown on this page already uses.
