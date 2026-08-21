@@ -1330,17 +1330,34 @@ function pickTotalColIndex(columns) {
   if (idx === -1) idx = columns.length - 1;
   return idx;
 }
+// Same "pending/lookahead" tolerance as readLabelRows, applied to columns instead of
+// rows: a sheet can have a genuinely blank spacer column (no header, no data in any
+// row of this table) with real, labeled columns sitting right after it — found live in
+// New Zealand's "Owner Company Summary*" table, which has TWO "%" columns with one
+// truly empty column between them. Stopping at the first blank column (the old
+// behavior) silently dropped that second "%" column and everything after it (Yet to
+// research & update, Completed %) from the render, even though the sheet clearly has
+// real data there. A blank column is now skipped (not shown — there's nothing to show)
+// but scanning continues past it; only MAX_BLANK_STREAK consecutive blank columns in a
+// row is treated as the table's real end, same tolerance value readLabelRows uses.
 function readCols(grid, headerRow, startC, rowStart, rowEnd) {
   const rs = rowStart != null ? rowStart : headerRow + 1;
   const re = rowEnd != null ? rowEnd : grid.length;
   let width = (grid[headerRow] || []).length;
   for (let r = rs; r < re; r++) width = Math.max(width, (grid[r] || []).length);
   const cols = [];
+  const MAX_BLANK_STREAK = 5;
+  let blankStreak = 0;
   for (let c = startC; c < width; c++) {
     const h = cell(grid, headerRow, c);
     let hasData = false;
     for (let r = rs; r < re; r++) { if (cell(grid, r, c) !== "") { hasData = true; break; } }
-    if (!h && !hasData) break;
+    if (!h && !hasData) {
+      blankStreak++;
+      if (blankStreak > MAX_BLANK_STREAK) break;
+      continue;
+    }
+    blankStreak = 0;
     cols.push({ col: c, name: h });
   }
   return cols;
