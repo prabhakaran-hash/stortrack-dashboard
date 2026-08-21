@@ -2435,6 +2435,12 @@ function layoutFullscreenGrid(grid, items) {
         row.appendChild(col);
         cols.push(col);
       }
+      // Connect the row (and its columns) to the document BEFORE placing any cards into
+      // it. getBoundingClientRect() on a detached node always reports 0 — with the row
+      // appended only at the end, every column would read height 0 forever and every card
+      // would pile into cols[0], which is exactly the "everything stacks in one column,
+      // huge empty gap next to it" bug this rewrite is meant to fix.
+      grid.appendChild(row);
       // Shortest-column-first placement — the actual masonry step. Heights are read live
       // (getBoundingClientRect) after each placement, since a column's height only becomes
       // known once its previous card has actually rendered.
@@ -2447,7 +2453,6 @@ function layoutFullscreenGrid(grid, items) {
         }
         target.appendChild(el);
       });
-      grid.appendChild(row);
     }
     pendingNarrow = [];
   }
