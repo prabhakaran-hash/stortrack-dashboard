@@ -432,7 +432,7 @@
   .scroll-table { max-height:360px; overflow-y:auto; overflow-x:auto; border:1px solid var(--gridline); border-radius:6px; }
   .scroll-table table.data-table { border-collapse:separate; }
   .scroll-table thead th { position:sticky; top:0; background: var(--surface-1); z-index:1; }
-  table.data-table tr.total-row td { font-weight:700; border-top:1.5px solid var(--baseline); }
+  table.data-table tr.total-row td { font-weight:700; border-top:1.5px solid var(--baseline); background: var(--navy); color:#fff; }
 
   .foot-note { font-size:11.5px; color: var(--text-muted); margin-top:8px; line-height:1.5; }
   footer.foot { margin-top:22px; font-size:12px; color: var(--text-muted); text-align:center; }
@@ -1486,7 +1486,7 @@ function parseCanada(grid, regionKey) {
     facilityDetail.rows.forEach((r) => { facilityType[r.category] = (facilityType[r.category] || 0) + (r.values[totalIdx] || 0); });
   }
   return { totalStores, pricing, operatorType,
-    regionSplit, regionPriceSplit, facilityType, pricingHistory: parsePricingHistory(grid, regionKey), facilityDetail, facilityOperatorNrsf: null, facilityOperatorNrsfTable: null, units: parseUnitsSummary(grid, regionKey), sqftTotal: null, regionLabel: "Province" };
+    regionSplit, regionPriceSplit, facilityType, pricingHistory: parsePricingHistory(grid, regionKey), facilityDetail, facilityOperatorNrsf: null, facilityOperatorNrsfTable: null, units: parseUnitsSummary(grid, regionKey), sqftTotal: null, regionLabel: rb ? rb.label : null };
 }
 
 const UK_REGIONS = ["England", "Northern Ireland", "Scotland", "Wales"];
@@ -1517,7 +1517,7 @@ function parseUK(grid, regionKey) {
     facilityOperatorNrsf.forEach((d) => { facilityType[d.facility] = (facilityType[d.facility] || 0) + (d.stores || 0); });
     sqftTotal = facilityOperatorNrsf.reduce((s, d) => s + (d.nrsf || 0), 0);
   }
-  return { totalStores, pricing, operatorType, regionSplit, regionPriceSplit, facilityType, facilityOperatorNrsf, facilityOperatorNrsfTable: nrsfTable, pricingHistory: parsePricingHistory(grid, regionKey), facilityDetail: null, units: parseUnitsSummary(grid, regionKey), sqftTotal, regionLabel: "Region" };
+  return { totalStores, pricing, operatorType, regionSplit, regionPriceSplit, facilityType, facilityOperatorNrsf, facilityOperatorNrsfTable: nrsfTable, pricingHistory: parsePricingHistory(grid, regionKey), facilityDetail: null, units: parseUnitsSummary(grid, regionKey), sqftTotal, regionLabel: rb ? rb.label : null };
 }
 
 const AU_STATES = ["Australian Capital Territory", "New South Wales", "Northern Territory", "Queensland", "South Australia", "Tasmania", "Victoria", "Western Australia"];
@@ -1528,7 +1528,7 @@ function parseAustralia(grid, regionKey) {
   const rb = parseRegionBlocks(grid, regionKey);
   const regionSplit = buildRegionSplit(rb);
   const regionPriceSplit = buildRegionPriceSplit(rb);
-  return { totalStores, pricing, operatorType, regionSplit, regionPriceSplit, facilityType: null, pricingHistory: parsePricingHistory(grid, regionKey), facilityDetail: null, facilityOperatorNrsf: null, facilityOperatorNrsfTable: null, units: parseUnitsSummary(grid, regionKey), sqftTotal: null, regionLabel: "State" };
+  return { totalStores, pricing, operatorType, regionSplit, regionPriceSplit, facilityType: null, pricingHistory: parsePricingHistory(grid, regionKey), facilityDetail: null, facilityOperatorNrsf: null, facilityOperatorNrsfTable: null, units: parseUnitsSummary(grid, regionKey), sqftTotal: null, regionLabel: rb ? rb.label : null };
 }
 
 function parseNewZealand(grid, regionKey) {
@@ -1631,7 +1631,12 @@ function parseDevelopments(grid, regionKey) {
       const total = totalIdx > -1 ? numOf(cell(grid, r, totalIdx)) : null;
       rows.push({ region, stages, total });
     }
-    return { title, rows };
+    // regionHeader is read live from the sheet's own header cell for this column every
+    // time (not a hardcoded per-region string) — if the user blanks or renames it, this
+    // table's header reflects that immediately, same "pure dynamic mirror" rule as every
+    // other detail table on this page.
+    const regionHeader = cell(grid, hit.r, hit.c);
+    return { title, regionHeader, rows };
   }).filter((s) => s.rows.length);
   return sections.length ? sections : null;
 }
@@ -2169,7 +2174,7 @@ if (d.developments && d.developments.length) {
     const devTables = d.developments.map((section) => {
       const stageLabels = section.rows[0].stages.map((s) => s.label);
       const subtitle = section.title ? `<div class="card-sub" style="margin-top:14px;"><strong>${section.title}</strong></div>` : "";
-      return subtitle + `<table class="data-table"><thead><tr><th>${d.regionLabel || "Region"}</th>${stageLabels.map((l) => `<th class="num">${l}</th>`).join("")}<th class="num">Total</th></tr></thead>
+      return subtitle + `<table class="data-table"><thead><tr><th>${section.regionHeader || "—"}</th>${stageLabels.map((l) => `<th class="num">${l}</th>`).join("")}<th class="num">Total</th></tr></thead>
       <tbody>${section.rows.map((row) => `<tr><td>${row.region}</td>${row.stages.map((s) => `<td class="num">${fmtNum(s.value)}</td>`).join("")}<td class="num"><strong>${fmtNum(row.total)}</strong></td></tr>`).join("")}</tbody></table>`;
     }).join("");
     detailTables += `<div class="card"><h3>Known Developments</h3><div class="card-sub">Pipeline stage counts</div>${devTables}</div>`;
