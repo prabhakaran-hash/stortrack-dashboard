@@ -2140,10 +2140,23 @@ function renderRegionBlock(region) {
     const regionKeys = regionSplitNorm[0].columns;
     const rl = d.regionLabel || "Region";
     const storeBar = barList(regionSplitNorm.map((s) => ({label: s.label, value: s.total})), () => accent);
-    const pricingBar = stackedYesNoList(regionSplitNorm.map((s) => ({label: s.label, yes: s.priceYes, no: s.priceNo})));
+    // Block A ("<Region> — Operator Type breakdown") and Block B ("<Region> — Pricing
+    // Yes/No breakdown") are two independent sheet tables, same as parseOperatorBlocks
+    // above — a state/province removed from one must not disappear from (or leak a
+    // stray row into) the other. `priceRows` is Block B's OWN row list/order
+    // (buildRegionPriceSplit, an independent mirror — same shape the literal "Pricing
+    // Yes/No breakdown" table below renders), so the pricing CHART is built from that
+    // directly instead of from regionSplitNorm's `priceYes`/`priceNo` (which used to be
+    // attached to Block A's rows by a by-label lookup into Block B — the same
+    // cross-block coupling bug already fixed for the operator charts: a row present in
+    // Block B but removed from Block A would silently vanish from this chart even
+    // though Block B's own row for it was untouched).
     const priceRows = (d.regionPriceSplit && d.regionPriceSplit.length) ? d.regionPriceSplit : regionSplitNorm.map((s) => ({label: s.label, columns: ["Price - No","Price - Yes"], values: [s.priceNo, s.priceYes], total: s.total}));
     const priceKeys = priceRows[0].columns;
     const priceGrandTotal = priceRows.reduce((sum,s)=>sum+(s.total||0),0);
+    const priceNoIdx = priceKeys.findIndex((k) => /no/i.test(k));
+    const priceYesIdx = priceKeys.findIndex((k) => /yes/i.test(k));
+    const pricingBar = stackedYesNoList(priceRows.map((s) => ({label: s.label, yes: priceYesIdx >= 0 ? s.values[priceYesIdx] : null, no: priceNoIdx >= 0 ? s.values[priceNoIdx] : null})));
     regionCharts = `<div class="chart-row">
       <div class="card"><h3>Stores by ${rl}</h3><div class="card-sub">Store count</div>${storeBar}</div>
       <div class="card"><h3>Pricing Yes/No by ${rl}</h3><div class="card-sub">Actual counts, not just a percentage</div>
