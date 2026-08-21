@@ -1654,10 +1654,37 @@ function parseOwnersContacts(grid, regionKey) {
   const contacts = parseOwnersSection(grid, "Contacts Summary", rk + ":ownersContacts");
   return (ownerCompany || contacts) ? { ownerCompany, contacts } : null;
 }
+// "Region / Stage" is the normal anchor text for this table, but a region's sheet can
+// have that exact header cell cleared (seen on New Zealand's Known Developments tab)
+// while every stage column and the data row underneath are still fully intact. Anchoring
+// on that one literal string alone would make the whole table vanish for anyone whose
+// browser never cached its position with the header intact — silently hiding real data
+// instead of mirroring it. DEV_STAGE_WORDS lets us recognize the header ROW by its stage
+// vocabulary (which pipeline-stage columns exist varies by region/sheet, so we only need
+// a couple of matches, not all of them) even when the leading "Region / Stage" label is
+// gone, so the table is still found and still shown as a real mirror of the sheet.
+const DEV_STAGE_WORDS = ["closed", "deferred", "final planning", "in construction", "planning", "rejected", "unconfirmed", "withdrawn", "dormant", "abandoned"];
+function findDevelopmentsHeaderRows(grid) {
+  const rows = [];
+  for (let r = 0; r < grid.length; r++) {
+    const row = grid[r] || [];
+    let stageHits = 0, totalIdx = -1;
+    for (let c = 0; c < row.length; c++) {
+      const v = cell(grid, r, c).toLowerCase();
+      if (!v) continue;
+      if (DEV_STAGE_WORDS.includes(v)) stageHits++;
+      else if (v === "total" && totalIdx === -1) totalIdx = c;
+    }
+    if (stageHits >= 2 && totalIdx > -1) rows.push({ r, c: 0, v: cell(grid, r, 0) });
+  }
+  return rows;
+}
 function parseDevelopments(grid, regionKey) {
-  const hits = anchorPosMulti((regionKey || "default") + ":developments", findCells(grid, exact("Region / Stage")), grid);
-  if (!hits.length) return null;
-  const sections = hits.map((hit) => {
+  const liveHits = findCells(grid, exact("Region / Stage"));
+  const hits = anchorPosMulti((regionKey || "default") + ":developments", liveHits, grid);
+  const finalHits = hits.length ? hits : findDevelopmentsHeaderRows(grid);
+  if (!finalHits.length) return null;
+  const sections = finalHits.map((hit) => {
     const titleRaw = hit.r > 0 ? cell(grid, hit.r - 1, hit.c) : "";
     const title = titleRaw && titleRaw.trim() ? titleRaw.trim() : null;
     const headerRow = grid[hit.r] || [];
@@ -1665,7 +1692,12 @@ function parseDevelopments(grid, regionKey) {
     for (let i = hit.c + 1; i < headerRow.length; i++) { if (cell(grid, hit.r, i).toLowerCase() === "total") { totalIdx = i; break; } }
     const stageCols = [];
     for (let cc = hit.c + 1; cc < (totalIdx > -1 ? totalIdx : headerRow.length); cc++) {
-      stageCols.push({ col: cc, label: cell(grid, hit.r, cc) });
+      // Skip a column with no header label at all — that's a blank spacer column in the
+      // sheet, not a real stage, and showing it as a "—" stage with no value would be
+      // fabricating a row that isn't really there rather than mirroring the sheet.
+      const label = cell(grid, hit.r, cc);
+      if (!label) continue;
+      stageCols.push({ col: cc, label });
     }
     const devSpan = tableRowSpan(grid, hit.r, hit.c);
     const rows = [];
