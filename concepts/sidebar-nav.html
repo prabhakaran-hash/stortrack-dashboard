@@ -2326,21 +2326,49 @@ function renderRegionBlock(region) {
       ${sc.total ? `<tr class="total-row"><td>${sc.total.label}</td>${sc.total.values.map((v,i)=> `<td class="num">${v==null?"—":(sc.columns[i].includes("%")?Math.round(v*100)+"%":`<strong>${fmtNum(v)}</strong>`)}</td>`).join("")}</tr>` : ""}
       </tbody></table></div>`;
   }
-if (d.storeProfile && (d.storeProfile.status || (d.storeProfile.attributes && d.storeProfile.attributes.length))) {
+// Store Profile Research Status and Attribute Population are two genuinely separate
+  // sheet blocks (read from two different anchors in parseStoreProfile) — they must each
+  // get their own <div class="card"> so the sidebar's "one h3 -> one card" section picker
+  // (getRegionParsed) can tell them apart. Previously both h3s lived inside one shared
+  // card, so picking either sidebar entry rendered the exact same combined card — that's
+  // why they looked like "the same data": it was literally the same DOM either way, not
+  // duplicated data. Splitting them is the fix; no parser change needed.
+  if (d.storeProfile && d.storeProfile.status) {
+    const st = d.storeProfile.status;
+    // Status columns are a consistent shape across all 4 regions: Total Stores, Research
+    // Completed, Research Pending, Completed %. Rendered as a donut (Completed vs Pending
+    // slices, Total Stores in the center) instead of a bare table — same pattern already
+    // used for Facility Type Mix elsewhere on this page — so it reads at a glance instead
+    // of as four raw numbers in a row.
+    const completedIdx = st.columns.findIndex((c) => /completed/i.test(c) && !/%/.test(c));
+    const pendingIdx = st.columns.findIndex((c) => /pending/i.test(c));
+    const totalIdx = st.columns.findIndex((c) => /^total/i.test(c));
+    const completedVal = completedIdx >= 0 ? st.values[completedIdx] : null;
+    const pendingVal = pendingIdx >= 0 ? st.values[pendingIdx] : null;
+    const totalVal = totalIdx >= 0 ? st.values[totalIdx] : (completedVal || 0) + (pendingVal || 0);
+    if (completedVal != null || pendingVal != null) {
+      const statusEntries = [
+        { label: st.columns[completedIdx] || "Research Completed", value: completedVal || 0, color: PALETTE_HEX[0] },
+        { label: st.columns[pendingIdx] || "Research Pending", value: pendingVal || 0, color: PALETTE_HEX[2] }
+      ];
+      detailTables += `<div class="card"><h3>Store Profile Research Status</h3><div class="card-sub">${st.region || ""}</div>
+        <div class="donut-wrap">${donutSVG(statusEntries, totalVal, "stores", 150)}</div></div>`;
+    } else {
+      // Fallback for a region whose sheet doesn't have the expected Completed/Pending
+      // columns (a genuinely different layout) — never silently drop the section, just
+      // show it as the plain table it always was instead of forcing a chart that doesn't fit.
+      const fmtSp = (v, name) => v == null ? "—" : (name.includes("%") ? Math.round(v * 100) + "%" : fmtNum(v));
+      detailTables += `<div class="card"><h3>Store Profile Research Status</h3><div class="card-sub">${st.region || ""}</div>
+        <table class="data-table"><thead><tr>${st.columns.map((c)=>`<th class="num">${c}</th>`).join("")}</tr></thead>
+        <tbody><tr>${st.values.map((v,i)=> `<td class="num">${fmtSp(v, st.columns[i])}</td>`).join("")}</tr></tbody></table></div>`;
+    }
+  }
+  if (d.storeProfile && d.storeProfile.attributes && d.storeProfile.attributes.length) {
     const sp = d.storeProfile;
     const fmtSp = (v, name) => v == null ? "—" : (name.includes("%") ? Math.round(v * 100) + "%" : fmtNum(v));
-    let spBlock = `<div class="card"><h3>Store Profile Research Status</h3><div class="card-sub">${sp.status ? sp.status.region : ""}</div>`;
-    if (sp.status) {
-      spBlock += `<table class="data-table"><thead><tr>${sp.status.columns.map((c)=>`<th class="num">${c}</th>`).join("")}</tr></thead>
-        <tbody><tr>${sp.status.values.map((v,i)=> `<td class="num">${fmtSp(v, sp.status.columns[i])}</td>`).join("")}</tr></tbody></table>`;
-    }
-    if (sp.attributes && sp.attributes.length) {
-      spBlock += `<h3 style="margin-top:18px;">Attribute Population</h3><div class="card-sub">How many stores have each field researched</div>
-        <div class="scroll-table"><table class="data-table"><thead><tr><th>${sp.groupHeader}</th><th>${sp.nameHeader}</th>${sp.attrColumns.map((c)=>`<th class="num">${c}</th>`).join("")}</tr></thead>
-        <tbody>${sp.attributes.map((a) => `<tr><td>${a.group}</td><td>${a.name}</td>${a.values.map((v,i)=> `<td class="num">${fmtSp(v, sp.attrColumns[i])}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
-    }
-    spBlock += `</div>`;
-    detailTables += spBlock;
+    detailTables += `<div class="card"><h3>Attribute Population</h3><div class="card-sub">How many stores have each field researched</div>
+      <div class="scroll-table"><table class="data-table"><thead><tr><th>${sp.groupHeader}</th><th>${sp.nameHeader}</th>${sp.attrColumns.map((c)=>`<th class="num">${c}</th>`).join("")}</tr></thead>
+      <tbody>${sp.attributes.map((a) => `<tr><td>${a.group}</td><td>${a.name}</td>${a.values.map((v,i)=> `<td class="num">${fmtSp(v, sp.attrColumns[i])}</td>`).join("")}</tr>`).join("")}</tbody></table></div></div>`;
   }
 if (d.owners && (d.owners.ownerCompany || d.owners.contacts)) {
     const fmtOw = (v, name) => v == null ? "—" : (name.includes("%") ? Math.round(v * 100) + "%" : fmtNum(v));
