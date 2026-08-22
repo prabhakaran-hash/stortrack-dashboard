@@ -1756,24 +1756,37 @@ function parseDevelopments(grid, regionKey) {
     const headerRow = grid[hit.r] || [];
     let totalIdx = -1;
     for (let i = hit.c + 1; i < headerRow.length; i++) { if (cell(grid, hit.r, i).toLowerCase() === "total") { totalIdx = i; break; } }
-    const stageCols = [];
-    for (let cc = hit.c + 1; cc < (totalIdx > -1 ? totalIdx : headerRow.length); cc++) {
-      // Skip a column with no header label at all — that's a blank spacer column in the
-      // sheet, not a real stage, and showing it as a "—" stage with no value would be
-      // fabricating a row that isn't really there rather than mirroring the sheet.
-      const label = cell(grid, hit.r, cc);
-      if (!label) continue;
-      stageCols.push({ col: cc, label });
-    }
     const devSpan = tableRowSpan(grid, hit.r, hit.c);
-    const rows = [];
+    // Find this section's data rows BEFORE deciding which stage columns are real — a
+    // column can lose its header text (blanked, e.g. the "Abandoned" header on UK's
+    // second Known Developments section) while its data is still fully intact one row
+    // down, and losing the header text alone must never cost that column its data too.
+    const dataRowIdxs = [];
     for (let r = hit.r + 1; r < grid.length; r++) {
       const region = cell(grid, r, hit.c);
       if (!region && !rowHasDataInSpan(grid, r, hit.c + 1, devSpan)) break;
+      dataRowIdxs.push(r);
+    }
+    const stageCols = [];
+    for (let cc = hit.c + 1; cc < (totalIdx > -1 ? totalIdx : headerRow.length); cc++) {
+      // A column with no header label AND no data anywhere in this section's rows is a
+      // genuine blank spacer column in the sheet (seen on New Zealand) — skip it, since
+      // showing it as a "—" stage with no value would be fabricating a row that isn't
+      // really there. But a column with no header label that DOES still have data is a
+      // stage whose header was blanked, not an empty column — keep it under the same
+      // "—" convention used everywhere else on this page for a blanked live label,
+      // rather than silently dropping real data because only its header disappeared.
+      const label = cell(grid, hit.r, cc);
+      const hasData = dataRowIdxs.some((r) => cell(grid, r, cc) !== "");
+      if (!label && !hasData) continue;
+      stageCols.push({ col: cc, label: label || "—" });
+    }
+    const rows = dataRowIdxs.map((r) => {
+      const region = cell(grid, r, hit.c);
       const stages = stageCols.map((s) => ({ label: s.label, value: numOf(cell(grid, r, s.col)) }));
       const total = totalIdx > -1 ? numOf(cell(grid, r, totalIdx)) : null;
-      rows.push({ region, stages, total });
-    }
+      return { region, stages, total };
+    });
     // regionHeader is read live from the sheet's own header cell for this column every
     // time (not a hardcoded per-region string) — if the user blanks or renames it, this
     // table's header reflects that immediately, same "pure dynamic mirror" rule as every
