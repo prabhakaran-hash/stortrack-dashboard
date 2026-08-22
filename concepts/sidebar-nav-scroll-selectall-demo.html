@@ -1242,13 +1242,23 @@ function parseUnitsSummary(grid, regionKey) {
   // individual row labels ("Total Stores", "No. of Units not available", etc.) since we never
   // search for that text again once the header row itself has been located.
   const hit = anchorPos(rk + ":anchor", findCells(grid, exact("Summary")).find((m) => cell(grid, m.r, m.c + 1) === "Obtained Method" && cell(grid, m.r, m.c + 2) === "Total"), grid);
+  // A row's specific label usually sits one column right of the anchor (c+1); when that's
+  // blank (as with "Not available"/"Total Stores", whose only label is at the anchor column
+  // itself), fall back to the anchor column. This mirrors the sheet's own live text instead of
+  // a hardcoded string, so clearing/editing a label cell in the sheet now shows up on the
+  // dashboard the same way clearing a value would.
+  const liveLabel = (r, c) => cell(grid, r, c + 1) || cell(grid, r, c) || "—";
   if (hit) {
     const totalCol = hit.c + 2;
     return {
       actual: numOf(cell(grid, hit.r + 1, totalCol)),
       estimated: numOf(cell(grid, hit.r + 2, totalCol)),
       notAvailable: numOf(cell(grid, hit.r + 3, totalCol)),
-      totalStoresInUnitsTab: numOf(cell(grid, hit.r + 4, totalCol))
+      totalStoresInUnitsTab: numOf(cell(grid, hit.r + 4, totalCol)),
+      actualLabel: liveLabel(hit.r + 1, hit.c),
+      estimatedLabel: liveLabel(hit.r + 2, hit.c),
+      notAvailableLabel: liveLabel(hit.r + 3, hit.c),
+      totalStoresLabel: liveLabel(hit.r + 4, hit.c)
     };
   }
   // Fallback (kept for safety): the older per-row text search, only used if the header row
@@ -1261,7 +1271,11 @@ function parseUnitsSummary(grid, regionKey) {
     actual: actualHit ? firstNumberRightOf(grid, actualHit.r, actualHit.c) : null,
     estimated: estHit ? firstNumberRightOf(grid, estHit.r, estHit.c) : null,
     notAvailable: naHit ? firstNumberRightOf(grid, naHit.r, naHit.c) : null,
-    totalStoresInUnitsTab: totalHit ? firstNumberRightOf(grid, totalHit.r, totalHit.c) : null
+    totalStoresInUnitsTab: totalHit ? firstNumberRightOf(grid, totalHit.r, totalHit.c) : null,
+    actualLabel: actualHit ? cell(grid, actualHit.r, actualHit.c) : "Actual (from website)",
+    estimatedLabel: estHit ? cell(grid, estHit.r, estHit.c) : "Estimated",
+    notAvailableLabel: naHit ? cell(grid, naHit.r, naHit.c) : "Not available",
+    totalStoresLabel: totalHit ? cell(grid, totalHit.r, totalHit.c) : "Total Stores"
   };
 }
 
@@ -2123,9 +2137,9 @@ function renderRegionStrip() {
 /* ------------------------------ Generic chart builders ------------------------------ */
 function barList(items, colorFn) {
   const max = Math.max(1, ...items.map((i) => i.value || 0));
-  return items.map((i) => `
+  return items.map((i, idx) => `
     <div class="bar-row"><div class="bar-label">${i.label}</div>
-      <div class="bar-track"><div class="bar-fill" style="width:${((i.value||0)/max*100).toFixed(1)}%;background:${colorFn(i)}">
+      <div class="bar-track"><div class="bar-fill" style="width:${((i.value||0)/max*100).toFixed(1)}%;background:${colorFn(i, idx)}">
       <span class="bar-value">${i.display != null ? i.display : fmtNum(i.value)}</span></div></div>
     </div>`).join("");
 }
@@ -2319,11 +2333,17 @@ function renderRegionBlock(region) {
   } else {
     facilitySection = "";
   }
+  // Labels come from the sheet's own "Units Summary" row text (see parseUnitsSummary's
+  // liveLabel helper) rather than a hardcoded string, so editing/clearing a label cell in the
+  // sheet now shows up here the same way clearing a value does. Color is assigned by fixed
+  // position (actual/estimated/not-available), not by matching the label text, since the live
+  // text no longer reliably starts with "Actual"/"Estimated".
+  const unitsChartColors = ["var(--series-3)", "var(--series-1)", "var(--text-muted)"];
   const unitsChart = barList([
-    {label:"Actual (from website)", value:d.units.actual},
-    {label:"Estimated", value:d.units.estimated},
-    {label:"Not available", value:d.units.notAvailable}
-  ], (i) => i.label.startsWith("Actual") ? "var(--series-3)" : i.label.startsWith("Estimated") ? "var(--series-1)" : "var(--text-muted)");
+    {label:d.units.actualLabel || "Actual (from website)", value:d.units.actual},
+    {label:d.units.estimatedLabel || "Estimated", value:d.units.estimated},
+    {label:d.units.notAvailableLabel || "Not available", value:d.units.notAvailable}
+  ], (i, idx) => unitsChartColors[idx] || "var(--text-muted)");
   const unitsNote = (d.units.totalStoresInUnitsTab != null && d.units.totalStoresInUnitsTab !== storeTotal)
     ? `<div class="foot-note">Note: the sheet's "Units Summary" section totals ${fmtNum(d.units.totalStoresInUnitsTab)} stores — this differs from the ${fmtNum(storeTotal)} total elsewhere on the tab. Shown as reported.</div>` : "";
 
