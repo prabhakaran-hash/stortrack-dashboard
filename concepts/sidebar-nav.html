@@ -1372,6 +1372,42 @@ function readCols(grid, headerRow, startC, rowStart, rowEnd) {
   }
   return cols;
 }
+// A bounded, RECOVERABLE sibling of readCols above — used only where a caller has
+// independently proven a safe window (an exact sibling-anchor column, or a small cap
+// checked against every region's real live sheet), never as a general replacement for
+// readCols' strict scan. Within that window, a column whose header got blanked but still
+// has live data underneath is kept under the usual "—" label instead of ending the scan
+// (readCols' documented failure mode for this exact case — see its comment above); a
+// column with neither header nor data anywhere in the window is skipped, not treated as
+// a stop signal, so one blanked/removed column no longer costs every OTHER real column
+// in the same table its data. `maxCols` is a hard cap, not a heuristic — it exists
+// specifically so this can never run far enough down a shared sheet row to reach
+// unrelated content the way an open-ended tolerant scan already did once (see readCols).
+function readColsBounded(grid, headerRow, startC, rowStart, rowEnd, maxCols) {
+  const rs = rowStart != null ? rowStart : headerRow + 1;
+  const re = rowEnd != null ? rowEnd : grid.length;
+  const endC = startC + Math.max(0, maxCols || 0);
+  function isReal(c) {
+    if (cell(grid, headerRow, c) !== "") return true;
+    for (let r = rs; r < re; r++) { if (cell(grid, r, c) !== "") return true; }
+    return false;
+  }
+  let lastReal = -1;
+  for (let c = startC; c < endC; c++) { if (isReal(c)) lastReal = c; }
+  const cols = [];
+  for (let c = startC; c <= lastReal; c++) {
+    const h = cell(grid, headerRow, c);
+    if (!h) {
+      let hasOwnData = false;
+      for (let r = rs; r < re; r++) { if (cell(grid, r, c) !== "") { hasOwnData = true; break; } }
+      if (!hasOwnData) continue;
+      cols.push({ col: c, name: "—" });
+    } else {
+      cols.push({ col: c, name: h });
+    }
+  }
+  return cols;
+}
 
 const CA_PROVINCES = ["AB","BC","MB","NB","NL","NS","NT","ON","PE","QC","SK","YT"];
 function parseRegionBlocks(grid, regionKey) {
@@ -1383,11 +1419,11 @@ function parseRegionBlocks(grid, regionKey) {
   }
   hits = anchorPosPair((regionKey || "default") + ":regionBlocks", hits, grid);
   if (!hits) return null;
-  function readBlock(hit) {
+  function readBlock(hit, maxCols) {
     const headerRow = hit.r, startC = hit.c;
     const rowIdxs = readLabelRows(grid, headerRow + 1, startC);
     const lastRow = rowIdxs.length ? rowIdxs[rowIdxs.length - 1] + 1 : headerRow + 1;
-    let cols = readCols(grid, headerRow, startC + 1, headerRow + 1, lastRow);
+    let cols = readColsBounded(grid, headerRow, startC + 1, headerRow + 1, lastRow, maxCols);
     let totalCol = null;
     if (cols.length && /^(grand )?total$/i.test(cols[cols.length - 1].name)) {
       totalCol = cols.pop().col;
@@ -1399,7 +1435,16 @@ function parseRegionBlocks(grid, regionKey) {
     }));
     return { columns: cols.map((c) => c.name), rows };
   }
-  return { label, blockA: readBlock(hits[0]), blockB: readBlock(hits[1]) };
+  // Block A's window is bounded EXACTLY by where Block B's own sibling anchor starts (both
+  // hits are already known above) — no guessing, so it safely recovers a blanked-but-live
+  // column anywhere in between (the item 7 fix: dropping "Large Operator" no longer costs
+  // every other operator column its data) without any risk of spilling into Block B's own
+  // cells. Block B has no sibling anchor after it, so it gets a small cap instead, verified
+  // against Canada/UK/Australia's real live sheets (each has 3 real columns here — a
+  // No/Yes/Total-shaped table) — wide enough to recover one blanked column but well short
+  // of reaching unrelated content some regions place further along the same row (e.g. UK's
+  // "Store Category Summary - From Database").
+  return { label, blockA: readBlock(hits[0], hits[1].c - hits[0].c - 1), blockB: readBlock(hits[1], 4) };
 }
 
 function buildRegionSplit(rb) {
@@ -1494,7 +1539,11 @@ function parseFacilityDetail(grid, regionKey) {
   if (!hit) return null;
   const rowIdxs = readLabelRows(grid, hit.r + 1, hit.c + 1);
   const lastRow = rowIdxs.length ? rowIdxs[rowIdxs.length - 1] + 1 : hit.r + 1;
-  const cols = readCols(grid, hit.r, hit.c + 2, hit.r + 1, lastRow);
+  // Bounded/recoverable, not the strict readCols: this table's own header row has been
+  // checked live and has nothing else on it after its own Grand Total column (item 8's
+  // fix) — the cap of 6 covers its real Price-Yes/Price-No/Total/Grand Total columns plus
+  // room to recover one blanked column, e.g. dropping "Yes" no longer costs "No" its data.
+  const cols = readColsBounded(grid, hit.r, hit.c + 2, hit.r + 1, lastRow, 6);
   const rows = [];
   let lastCategory = "";
   rowIdxs.forEach((r) => {
