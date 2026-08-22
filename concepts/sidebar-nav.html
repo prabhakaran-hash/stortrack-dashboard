@@ -2175,6 +2175,23 @@ function donutSVG(entries, centerValue, centerLabel, size) {
     <text x="${cx}" y="${cy-3}" text-anchor="middle" class="donut-center-value">${fmtCompact(centerValue)}</text>
     <text x="${cx}" y="${cy+13}" text-anchor="middle" class="donut-center-label">${centerLabel}</text></svg><ul class="legend">${legend}</ul>`;
 }
+// Gauge/speedometer arc — used for Store Profile Research Status (a "progress toward done"
+// metric) so it reads visually distinct from donutSVG, which elsewhere shows composition
+// (e.g. Facility Type Mix). Draws a semicircular track + filled arc for pctValue (0-100),
+// with the percent centered underneath. Caller renders the Total/Researched/Pending stats
+// row separately (see storeProfile block) so labels stay flexible per-region.
+function gaugeSVG(pctValue, size) {
+  size = size || 180;
+  const w = size, r = size * 0.4167, cy = size * 0.5556, h = size * 0.6111, margin = size * 0.0833;
+  const clamped = Math.max(0, Math.min(100, pctValue || 0));
+  const circumference = Math.PI * r;
+  const dash = (clamped / 100) * circumference, gap = circumference - dash;
+  return `<svg width="${w}" height="${h + 14}" viewBox="0 0 ${w} ${h + 14}" role="img">
+    <path d="M ${margin} ${cy} A ${r} ${r} 0 0 1 ${w - margin} ${cy}" fill="none" stroke="var(--gridline)" stroke-width="14" stroke-linecap="round"></path>
+    <path d="M ${margin} ${cy} A ${r} ${r} 0 0 1 ${w - margin} ${cy}" fill="none" stroke="var(--good)" stroke-width="14" stroke-linecap="round" stroke-dasharray="${dash} ${gap}"></path>
+    <text x="${w/2}" y="${cy - 8}" text-anchor="middle" class="donut-center-value" style="font-size:22px;">${Math.round(clamped)}%</text>
+  </svg>`;
+}
 const emptyCard = (msg) => `<div class="card empty">${msg}</div>`;
 
 /* ------------------------------ Per-region render ------------------------------ */
@@ -2336,23 +2353,29 @@ function renderRegionBlock(region) {
   if (d.storeProfile && d.storeProfile.status) {
     const st = d.storeProfile.status;
     // Status columns are a consistent shape across all 4 regions: Total Stores, Research
-    // Completed, Research Pending, Completed %. Rendered as a donut (Completed vs Pending
-    // slices, Total Stores in the center) instead of a bare table — same pattern already
-    // used for Facility Type Mix elsewhere on this page — so it reads at a glance instead
-    // of as four raw numbers in a row.
+    // Completed, Research Pending, Completed %. Rendered as a gauge arc (% completed) with
+    // Total/Researched/Pending as stat tiles underneath — a "progress toward done" framing,
+    // deliberately distinct from donutSVG (composition) used elsewhere e.g. Facility Type Mix.
     const completedIdx = st.columns.findIndex((c) => /completed/i.test(c) && !/%/.test(c));
     const pendingIdx = st.columns.findIndex((c) => /pending/i.test(c));
     const totalIdx = st.columns.findIndex((c) => /^total/i.test(c));
+    const pctIdx = st.columns.findIndex((c) => /%/.test(c) && /completed/i.test(c));
     const completedVal = completedIdx >= 0 ? st.values[completedIdx] : null;
     const pendingVal = pendingIdx >= 0 ? st.values[pendingIdx] : null;
     const totalVal = totalIdx >= 0 ? st.values[totalIdx] : (completedVal || 0) + (pendingVal || 0);
     if (completedVal != null || pendingVal != null) {
-      const statusEntries = [
-        { label: st.columns[completedIdx] || "Research Completed", value: completedVal || 0, color: PALETTE_HEX[0] },
-        { label: st.columns[pendingIdx] || "Research Pending", value: pendingVal || 0, color: PALETTE_HEX[2] }
-      ];
+      const pctVal = pctIdx >= 0 && st.values[pctIdx] != null
+        ? st.values[pctIdx] * 100
+        : (totalVal ? ((completedVal || 0) / totalVal) * 100 : 0);
       detailTables += `<div class="card"><h3>Store Profile Research Status</h3><div class="card-sub">${st.region || ""}</div>
-        <div class="donut-wrap">${donutSVG(statusEntries, totalVal, "stores", 150)}</div></div>`;
+        <div class="gauge-wrap" style="display:flex;flex-direction:column;align-items:center;gap:12px;">
+          ${gaugeSVG(pctVal, 180)}
+          <div class="kpi-row" style="width:100%;max-width:360px;">
+            <div class="kpi-tile" style="--kpi-accent:${KPI_STORES_COLOR}"><div class="label">Total Stores</div><div class="value">${fmtNum(totalVal)}</div></div>
+            <div class="kpi-tile" style="--kpi-accent:${PALETTE_HEX[0]}"><div class="label">Researched</div><div class="value">${fmtNum(completedVal || 0)}</div></div>
+            <div class="kpi-tile" style="--kpi-accent:${PALETTE_HEX[2]}"><div class="label">Pending</div><div class="value">${fmtNum(pendingVal || 0)}</div></div>
+          </div>
+        </div></div>`;
     } else {
       // Fallback for a region whose sheet doesn't have the expected Completed/Pending
       // columns (a genuinely different layout) — never silently drop the section, just
