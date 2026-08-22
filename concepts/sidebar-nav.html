@@ -2227,13 +2227,20 @@ function donutSVG(entries, centerValue, centerLabel, size) {
   const r = size >= 150 ? 58 : 44, cx = size/2, cy = size/2, stroke = size >= 150 ? 24 : 18;
   const circumference = 2 * Math.PI * r;
   let acc = 0;
+  // Each segment previously carried no hover affordance at all, and the legend's only
+  // visible number was the percentage — the actual count behind that share was never
+  // shown anywhere on the chart itself (only the donut's center total, which is the sum,
+  // not any one segment's count). A native SVG <title> child gives every browser's default
+  // hover tooltip for free (no JS needed) — putting the count alongside the percentage in
+  // both the tooltip AND the always-visible legend so the number isn't hover-only either.
   const segs = entries.map((e) => {
     const frac = (e.value||0)/total;
     const dash = frac*circumference, gap = circumference-dash;
     const offset = -acc*circumference; acc += frac;
-    return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${e.color}" stroke-width="${stroke}" stroke-dasharray="${dash} ${gap}" stroke-dashoffset="${offset}" transform="rotate(-90 ${cx} ${cy})"></circle>`;
+    const segPct = Math.round(frac*100);
+    return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${e.color}" stroke-width="${stroke}" stroke-dasharray="${dash} ${gap}" stroke-dashoffset="${offset}" transform="rotate(-90 ${cx} ${cy})"><title>${e.label}: ${fmtNum(e.value||0)} (${segPct}%)</title></circle>`;
   }).join("");
-  const legend = entries.map((e) => `<li><span class="swatch" style="background:${e.color}"></span>${e.label}<span class="lv">${Math.round((e.value||0)/total*100)}%</span></li>`).join("");
+  const legend = entries.map((e) => `<li><span class="swatch" style="background:${e.color}"></span>${e.label}<span class="lv">${fmtNum(e.value||0)} &middot; ${Math.round((e.value||0)/total*100)}%</span></li>`).join("");
   return `<svg width="${size}" height="${size}" role="img"><circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--gridline)" stroke-width="${stroke}"></circle>${segs}
     <text x="${cx}" y="${cy-3}" text-anchor="middle" class="donut-center-value">${fmtCompact(centerValue)}</text>
     <text x="${cx}" y="${cy+13}" text-anchor="middle" class="donut-center-label">${centerLabel}</text></svg><ul class="legend">${legend}</ul>`;
