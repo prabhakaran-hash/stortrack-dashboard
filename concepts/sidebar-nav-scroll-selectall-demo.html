@@ -1960,16 +1960,43 @@ async function fetchExtraTab(cfg, tabName) {
     if (!res.ok) return null;
     const json = await res.json();
     if (json.error) return null;
+    // Same truncated-cold-start protection as the main grid fetch (see gridLooksSane) —
+    // a bad extra-tab grid returns null here, same as any other fetch failure, so the
+    // caller's existing "null → skip this section, don't render it broken" fallback
+    // handles it rather than rendering a partially-parsed sqft/profile/owners/developments
+    // section as if it were good live data.
+    if (!gridLooksSane(json.grid)) return null;
     return json.grid;
   } catch (err) { return null; }
 }
 
 let anyCorsError = false;
 
+// Guards against committing a genuinely broken sync as if it were good "Live" data.
+// Apps Script Web Apps can cold-start after the app sits idle for a long time (a closed
+// laptop, a backgrounded tab left open for hours) — and a cold start occasionally
+// returns a truncated-but-still-valid-JSON response (Google's own execution/response
+// limits cutting a slow response short) rather than a clean error. That grid then
+// parses "successfully" with headers/rows silently missing, and — because nothing
+// throws — used to get committed as this session's live data and cached to
+// localStorage, which is exactly the failure mode reported: headers missing under one
+// region after a long halt, fixed only by a full manual reload (which happened to catch
+// a clean, complete grid on retry). This check catches the obviously-truncated case
+// before it's ever parsed, so a bad grid is treated as a fetch failure (old good data
+// stays on screen, unchanged) instead of silently becoming the new "Live" state.
+function gridLooksSane(grid) {
+  if (!Array.isArray(grid) || grid.length < 5) return false;
+  const nonEmptyRows = grid.filter((row) => Array.isArray(row) && row.some((v) => v !== "" && v != null));
+  if (nonEmptyRows.length < 3) return false;
+  const maxWidth = grid.reduce((m, row) => Math.max(m, Array.isArray(row) ? row.length : 0), 0);
+  return maxWidth >= 3;
+}
+
 async function syncRegion(region) {
   const cfg = SHEETS[region.name];
   try {
     const grid = await fetchGrid(cfg);
+    if (!gridLooksSane(grid)) throw new Error("Sheet response looked truncated/incomplete — skipped to protect existing data");
     const data = cfg.parser(grid, cfg.key);
     const extra = EXTRA_TABS[region.name];
     if (extra) {
@@ -2000,8 +2027,13 @@ async function syncRegion(region) {
 }
 
 let consecutiveFailures = 0;
+let syncInFlight = false;
 
 async function syncAll() {
+  if (syncInFlight) return; // guards against overlapping calls (e.g. the visibility-based
+  // re-sync below firing at nearly the same moment as the interval timer or a manual click)
+  // stepping on each other mid-fetch.
+  syncInFlight = true;
   anyCorsError = false;
   document.getElementById("syncDot").className = "dot live";
   document.getElementById("syncText").textContent = "Syncing…";
@@ -2031,6 +2063,7 @@ async function syncAll() {
   document.getElementById("corsWarning").style.display = anyCorsError ? "block" : "none";
   document.getElementById("footNote").textContent = "Sources: live Google Sheets (\"Regional Summary\" tab). Last synced " + new Date().toLocaleTimeString() + ".";
   render();
+  syncInFlight = false;
 }
 
 /* ------------------------------ Region strip + dropdown ------------------------------ */
@@ -3567,6 +3600,28 @@ if (!alreadySyncedThisSession) {
     ? " Last synced " + mostRecent.toLocaleTimeString() + "."
     : "");
 }
+
+// Safety net for the "opened the dashboard after a long halt, some headers/data looked
+// missing until a manual refresh" report: the once-per-session auto-sync above is by
+// design a one-time thing, so a tab left open and backgrounded for hours (laptop closed,
+// browser minimized, just idle) never re-syncs on its own — it keeps showing whatever it
+// last had, however old or (per the gridLooksSane guard added above) however unlucky that
+// last sync was. Track how long this tab has been hidden and, once it becomes visible
+// again after a long stretch, run one fresh sync automatically — turning "had to manually
+// refresh to fix it" into "self-heals the moment you come back," without touching the
+// once-per-load behavior for the common case of quickly switching tabs.
+const LONG_HALT_MS = 10 * 60 * 1000; // 10 minutes hidden counts as "a long halt"
+let hiddenSince = document.hidden ? Date.now() : null;
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    hiddenSince = Date.now();
+    return;
+  }
+  if (hiddenSince && (Date.now() - hiddenSince) >= LONG_HALT_MS) {
+    syncAll();
+  }
+  hiddenSince = null;
+});
 </script>
 </body>
 </html>
