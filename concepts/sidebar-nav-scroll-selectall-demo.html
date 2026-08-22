@@ -1978,8 +1978,11 @@ async function fetchExtraTab(cfg, tabName) {
     // a bad extra-tab grid returns null here, same as any other fetch failure, so the
     // caller's existing "null → skip this section, don't render it broken" fallback
     // handles it rather than rendering a partially-parsed sqft/profile/owners/developments
-    // section as if it were good live data.
-    if (!gridLooksSane(json.grid)) return null;
+    // section as if it were good live data. Uses relaxed thresholds (not the 5-row
+    // default): these tabs can be legitimately tiny — a header row + a single data row
+    // for a region with only one section — so only reject a response that's missing
+    // even that minimum shape (still catches a cut-off-after-the-header response).
+    if (!gridLooksSane(json.grid, { minRows: 2, minNonEmpty: 2, minWidth: 2 })) return null;
     return json.grid;
   } catch (err) { return null; }
 }
@@ -1998,12 +2001,25 @@ let anyCorsError = false;
 // a clean, complete grid on retry). This check catches the obviously-truncated case
 // before it's ever parsed, so a bad grid is treated as a fetch failure (old good data
 // stays on screen, unchanged) instead of silently becoming the new "Live" state.
-function gridLooksSane(grid) {
-  if (!Array.isArray(grid) || grid.length < 5) return false;
+// `opts` lets a caller relax the thresholds for grids that are legitimately small by
+// nature (see the extra-tab call site below) — the defaults (5 rows / 3 non-empty / 3
+// wide) are sized for the main "Summary" grid, which always has many rows across every
+// region and where a short response is a reliable truncation signal. An "extra" tab
+// like Known Developments can be genuinely just a header row + ONE data row for a
+// region with only one section (e.g. New Zealand, which has no Canada-style multi-
+// section split) — applying the 5-row default there rejected that real, complete data
+// as if it were a truncated cold-start response, which is the exact regression this
+// comment is here to prevent happening again.
+function gridLooksSane(grid, opts) {
+  opts = opts || {};
+  const minRows = opts.minRows != null ? opts.minRows : 5;
+  const minNonEmpty = opts.minNonEmpty != null ? opts.minNonEmpty : 3;
+  const minWidth = opts.minWidth != null ? opts.minWidth : 3;
+  if (!Array.isArray(grid) || grid.length < minRows) return false;
   const nonEmptyRows = grid.filter((row) => Array.isArray(row) && row.some((v) => v !== "" && v != null));
-  if (nonEmptyRows.length < 3) return false;
+  if (nonEmptyRows.length < minNonEmpty) return false;
   const maxWidth = grid.reduce((m, row) => Math.max(m, Array.isArray(row) ? row.length : 0), 0);
-  return maxWidth >= 3;
+  return maxWidth >= minWidth;
 }
 
 async function syncRegion(region) {
