@@ -2404,9 +2404,9 @@ function renderRegionBlock(region) {
         <div class="gauge-wrap" style="display:flex;flex-direction:column;align-items:center;gap:12px;">
           ${gaugeSVG(pctVal, 180)}
           <div class="kpi-row" style="width:100%;max-width:360px;">
-            <div class="kpi-tile" style="--kpi-accent:${KPI_STORES_COLOR}"><div class="label">Total Stores</div><div class="value">${fmtNum(totalVal)}</div></div>
-            <div class="kpi-tile" style="--kpi-accent:${PALETTE_HEX[0]}"><div class="label">Researched</div><div class="value">${fmtNum(completedVal || 0)}</div></div>
-            <div class="kpi-tile" style="--kpi-accent:${PALETTE_HEX[2]}"><div class="label">Pending</div><div class="value">${fmtNum(pendingVal || 0)}</div></div>
+            <div class="kpi-tile" style="--kpi-accent:${KPI_STORES_COLOR};text-align:center;"><div class="label">Total Stores</div><div class="value">${fmtNum(totalVal)}</div></div>
+            <div class="kpi-tile" style="--kpi-accent:${PALETTE_HEX[0]};text-align:center;"><div class="label">Researched</div><div class="value">${fmtNum(completedVal || 0)}</div></div>
+            <div class="kpi-tile" style="--kpi-accent:${PALETTE_HEX[2]};text-align:center;"><div class="label">Pending</div><div class="value">${fmtNum(pendingVal || 0)}</div></div>
           </div>
         </div></div>`;
     } else {
