@@ -3200,7 +3200,6 @@ function capOversizedCardBodies(root, capPx) {
 function layoutFullscreenGrid(grid, items) {
   grid.innerHTML = "";
   if (!items.length) return;
-  items.forEach((el) => { ensureScrollableTables(el, 280); capOversizedCardBodies(el, 340); });
   const gridWidth = grid.getBoundingClientRect().width || grid.parentElement.getBoundingClientRect().width || 0;
   const WIDE_FRACTION = 0.5; // a card needing more than half the row's width renders full-width
   // Pinterest-style masonry wants as many columns as comfortably fit, not a fixed cap — a
@@ -3218,6 +3217,13 @@ function layoutFullscreenGrid(grid, items) {
   const measured = items.map((el) => {
     el.style.width = "fit-content";
     probe.appendChild(el);
+    // The probe is off-screen (visibility:hidden) but still attached to the document, so it
+    // has real layout — height caps need that to read an accurate scrollHeight, unlike a
+    // fully detached node (which always reports 0). Do this here, before natural width is
+    // measured and before shortest-column placement, so an oversized card's height is
+    // already capped by the time placement decisions are made.
+    ensureScrollableTables(el, 280);
+    capOversizedCardBodies(el, 340);
     const natural = el.scrollWidth || el.getBoundingClientRect().width;
     return { el, natural };
   });
