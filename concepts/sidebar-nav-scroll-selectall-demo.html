@@ -3178,7 +3178,7 @@ function layoutFullscreenGrid(grid, items) {
   grid.innerHTML = "";
   if (!items.length) return;
   const gridWidth = grid.getBoundingClientRect().width || grid.parentElement.getBoundingClientRect().width || 0;
-  const WIDE_FRACTION = 0.5; // a card needing more than half the row's width renders full-width
+  // No card ever spans full width here (see note below on why "wide" cards were removed).
   // Pinterest-style masonry wants as many columns as comfortably fit, not a fixed cap — a
   // target column width (tuned to this view's compact/auto-sized card density) determines
   // the column count, so wide screens fill every gap instead of being artificially capped
@@ -3208,7 +3208,16 @@ function layoutFullscreenGrid(grid, items) {
 
   grid.classList.add("mp-masonry-absolute");
   const colHeights = new Array(colCount).fill(0);
-  function placeNarrow(el) {
+  // Every card — including wide tables like "State x Operator Type breakdown" — is placed at a
+  // single column's width, never full-bleed. A full-bleed card can only start once every column
+  // reaches the same height (it can't backfill a short column with later content), and that wait
+  // is exactly what produced the "big visible gaps": a short column had nothing left to give it
+  // once a wide card forced a break. Keeping every card at column width means the masonry can
+  // pack continuously with no forced breaks at all — any table too wide for that column scrolls
+  // horizontally inside its own .scroll-table wrapper (already wired up via ensureScrollableTables
+  // above), which matches the user's own call that internal table scrolling is fully acceptable.
+  measured.forEach(({ el }) => {
+    el.style.width = colCount <= 1 && gridWidth ? gridWidth + "px" : colWidth + "px";
     grid.appendChild(el);
     el.style.position = "absolute";
     const ci = minIndex(colHeights);
@@ -3217,31 +3226,7 @@ function layoutFullscreenGrid(grid, items) {
     el.style.top = Math.round(startY) + "px";
     const h = el.getBoundingClientRect().height;
     colHeights[ci] = startY + h + GAP;
-  }
-  function placeWide(el) {
-    grid.appendChild(el);
-    el.style.position = "absolute";
-    el.style.left = "0px";
-    const startY = Math.max(...colHeights);
-    el.style.top = Math.round(startY) + "px";
-    const h = el.getBoundingClientRect().height;
-    for (let i = 0; i < colCount; i++) colHeights[i] = startY + h + GAP;
-  }
-  // Wide (full-bleed) cards are deferred to the end of the placement order, after every narrow
-  // card has been packed. A wide card can only start at Math.max(...colHeights) — it can't
-  // backfill a shorter column the way a narrow card can — so placing all narrow cards first lets
-  // the masonry balance columns across the *whole* card set before any full-width break is
-  // forced, instead of freezing a short column's dead space under an early wide card. This moves
-  // wide/table cards visually to the bottom of the view; it does not reorder rows within any one
-  // table, so it doesn't touch the project's "never reorder literal sheet rows" rule.
-  const narrow = [], wide = [];
-  measured.forEach((m) => {
-    const isWide = (gridWidth && m.natural / gridWidth > WIDE_FRACTION) || colCount <= 1;
-    m.el.style.width = isWide ? (gridWidth ? gridWidth + "px" : "100%") : colWidth + "px";
-    (isWide ? wide : narrow).push(m.el);
   });
-  narrow.forEach(placeNarrow);
-  wide.forEach(placeWide);
   probe.remove();
   grid.style.position = "relative";
   grid.style.height = Math.max(0, Math.max(...colHeights) - GAP) + "px";
