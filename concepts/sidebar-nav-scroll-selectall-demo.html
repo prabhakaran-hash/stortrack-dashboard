@@ -3185,7 +3185,14 @@ function layoutFullscreenGrid(grid, items) {
   // at a fixed number.
   const TARGET_COL_WIDTH = 300;
   const GAP = 12;
-  const colCount = gridWidth ? Math.max(1, Math.floor((gridWidth + GAP) / (TARGET_COL_WIDTH + GAP))) : 3;
+  const baseColCount = gridWidth ? Math.max(1, Math.floor((gridWidth + GAP) / (TARGET_COL_WIDTH + GAP))) : 3;
+  // When fewer cards are on screen than the grid has room for columns, splitting them across
+  // every column just squeezes each one down to a fraction of the width for no reason — a single
+  // selected table then has to horizontally scroll to show columns that would otherwise fit fine.
+  // The purpose of this popup is a full table view, so the column count never exceeds the number
+  // of cards actually being shown: 1 card -> 1 (full-width) column, 2 cards -> 2 columns, and so
+  // on, only reaching the screen's natural column count once there are enough cards to fill it.
+  const colCount = Math.max(1, Math.min(baseColCount, items.length));
   const colWidth = gridWidth ? (gridWidth - GAP * (colCount - 1)) / colCount : 0;
 
   // Measure/cap each card off-screen first, so the wide/narrow decision and the final height
