@@ -440,6 +440,12 @@
   .donut-wrap { display:flex; align-items:center; gap:16px; flex-wrap:wrap; justify-content:center; }
   .donut-center-value { font-size:18px; font-weight:700; fill: var(--text-primary); }
   .donut-center-label { font-size:11px; fill: var(--text-muted); }
+  .history-donut-row { display:flex; gap:26px; flex-wrap:wrap; justify-content:space-around; }
+  .history-donut-item { display:flex; flex-direction:column; align-items:center; gap:6px; }
+  .history-donut-name { font-size:12.5px; font-weight:600; text-align:center; }
+  .history-donut-figs { font-size:11px; color:var(--text-muted); text-align:center; line-height:1.5; }
+  .history-donut-figs b { color:var(--text-primary); font-weight:600; }
+  .history-overshoot { color:var(--bad); }
   .legend { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:7px; }
   .legend li { display:flex; align-items:center; gap:8px; font-size:12px; color: var(--text-secondary); }
   .legend .swatch { width:10px; height:10px; border-radius:3px; flex:none; }
@@ -2376,6 +2382,33 @@ function gaugeSVG(pctValue, size) {
     <text x="${w/2}" y="${cy - 8}" text-anchor="middle" class="donut-center-value" style="font-size:22px;">${Math.round(clamped)}%</text>
   </svg>`;
 }
+// Small-multiple donut for the Pricing Availability - 3+ Year History Coverage table:
+// the ring itself is a plain Available/Not-available composition (same colors as every
+// other Yes/No chart on the dashboard), but the center holds the real, exact "3+ years
+// history" figure — never a compacted/rounded stand-in — since that's the number this
+// table is actually named for and the user explicitly asked for it to be the real number.
+function historyDonutSVG(available, notAvailable, historyValue, size) {
+  size = size || 128;
+  const entries = [{ label: "Available", value: available || 0, color: YES_COLOR }, { label: "Not available", value: notAvailable || 0, color: NO_COLOR }];
+  const total = entries.reduce((s, e) => s + e.value, 0) || 1;
+  const r = size * 0.36, cx = size / 2, cy = size / 2, stroke = size * 0.15;
+  const circumference = 2 * Math.PI * r;
+  let acc = 0;
+  const segs = entries.map((e) => {
+    const frac = e.value / total;
+    const dash = frac * circumference, gap = circumference - dash;
+    const offset = -acc * circumference; acc += frac;
+    return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${e.color}" stroke-width="${stroke}" stroke-dasharray="${dash} ${gap}" stroke-dashoffset="${offset}" transform="rotate(-90 ${cx} ${cy})"><title>${e.label}: ${fmtNum(e.value)}</title></circle>`;
+  }).join("");
+  return `<svg width="${size}" height="${size}" role="img"><circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--gridline)" stroke-width="${stroke}"></circle>${segs}
+    <text x="${cx}" y="${cy-2}" text-anchor="middle" class="donut-center-value" style="font-size:${size*0.16}px;">${fmtNum(historyValue)}</text>
+    <text x="${cx}" y="${cy+15}" text-anchor="middle" class="donut-center-label" style="font-size:${size*0.075}px;">3+ YR HISTORY</text></svg>`;
+}
+// Finds a column by name pattern rather than position: the sheet orders Available/Not
+// Available differently between regions (Canada has Available first, New Zealand has Not
+// Available first), so matching by regex keeps this correct regardless of column order,
+// and returns -1 (never guesses) if a region's sheet doesn't have that column at all.
+function findHistoryCol(columns, re) { return columns.findIndex((c) => re.test(c || "")); }
 const emptyCard = (msg) => `<div class="card empty">${msg}</div>`;
 
 /* ------------------------------ Per-region render ------------------------------ */
@@ -2489,14 +2522,39 @@ function renderRegionBlock(region) {
   // it actually came from — see renderDynamicTable's comment and the parser comments above.
   let detailTables = "";
   if (d.pricingHistory && d.pricingHistory.rows.length) {
-    detailTables += renderDynamicTable({
-      title: "Pricing Availability - 3+ Year History Coverage",
-      subtitle: "Stores with at least 3 years of pricing history, by operator type — exactly as the sheet has it",
-      itemHeader: "Operator Type",
-      itemOf: (r) => r.label,
-      columns: d.pricingHistory.columns,
-      rows: d.pricingHistory.rows
-    });
+    const phCols = d.pricingHistory.columns;
+    const availIdx = findHistoryCol(phCols, /^available$/i);
+    const notAvailIdx = findHistoryCol(phCols, /not\s*available/i);
+    const historyIdx = findHistoryCol(phCols, /history/i);
+    const phRows = d.pricingHistory.rows.filter((r) => !TOTAL_RE.test(r.label || ""));
+    if (availIdx >= 0 && notAvailIdx >= 0 && historyIdx >= 0 && phRows.length) {
+      const donuts = phRows.map((r) => {
+        const avail = r.values[availIdx], notAvail = r.values[notAvailIdx], hist = r.values[historyIdx];
+        const total = (avail || 0) + (notAvail || 0);
+        const overshoot = hist != null && total > 0 && hist > total;
+        return `<div class="history-donut-item">
+          ${historyDonutSVG(avail, notAvail, hist, 128)}
+          <span class="history-donut-name">${r.label}</span>
+          <span class="history-donut-figs">Available <b>${fmtNum(avail)}</b> · Not available <b>${fmtNum(notAvail)}</b>${overshoot ? `<br><span class="history-overshoot">3+ yr history exceeds total by ${fmtNum(hist - total)}</span>` : ""}</span>
+        </div>`;
+      }).join("");
+      detailTables += `<div class="card"><h3>Pricing Availability - 3+ Year History Coverage</h3><div class="card-sub">Stores with at least 3 years of pricing history, by operator type</div>
+        <div class="history-donut-row">${donuts}</div>
+        <div class="legend-row" style="margin-top:16px;"><span><span class="swatch" style="background:${YES_COLOR}"></span>Price available</span><span><span class="swatch" style="background:${NO_COLOR}"></span>Price not available</span></div>
+      </div>`;
+    } else {
+      // A region whose sheet doesn't have the expected Available/Not Available/history
+      // columns (a genuinely different layout) falls back to the plain literal table —
+      // never forces a chart onto a shape it doesn't fit.
+      detailTables += renderDynamicTable({
+        title: "Pricing Availability - 3+ Year History Coverage",
+        subtitle: "Stores with at least 3 years of pricing history, by operator type — exactly as the sheet has it",
+        itemHeader: "Operator Type",
+        itemOf: (r) => r.label,
+        columns: d.pricingHistory.columns,
+        rows: d.pricingHistory.rows
+      });
+    }
   }
 
   if (d.facilityDetail) {
