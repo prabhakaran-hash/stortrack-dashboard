@@ -871,54 +871,23 @@
   .mp-fs-grid .card, .mp-fs-grid .chart-row { min-width:0; }
   @media (max-width: 900px) { .mp-fs-grid { grid-template-columns: 1fr; } .mp-fs-controls .glass-select-btn { min-width:130px; } }
   /* True Pinterest/masonry layout for the single-region Full Screen View (not Benchmark
-     View): #mpFsGrid itself just stacks its children top to bottom, full width. Each child
-     is either a wide table's .mp-compare-item rendered directly (full width, full size —
-     never squeezed into a column) or a .mp-masonry-row containing 2-3 .mp-masonry-col
-     tracks that narrower cards get packed into shortest-column-first (layoutFullscreenGrid()
-     in JS) — so a short card doesn't leave a dead gap below it before the next row starts;
-     the next card slots in underneath it instead. Scoped to :not(.benchmark-mode) so
-     Benchmark View's own grid (fixed columns, one per region) is untouched. */
-  .mp-fs-panel:not(.benchmark-mode) #mpFsGrid {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
+     View): layoutFullscreenGrid() in JS absolute-positions every card directly (left/top/
+     width all computed in JS against ONE continuous set of column-height trackers spanning
+     the whole card list), rather than building row/column wrapper divs. That continuity is
+     what avoids dead gaps — a column that fell behind early can still catch a card placed
+     many items later, exactly like Pinterest's own layout; isolated row-groups couldn't do
+     that; once a group's shorter column had no more cards to give it, the gap under it was
+     permanent. Scoped to :not(.benchmark-mode) so Benchmark View's own grid (fixed columns,
+     one per region) is untouched. */
+  .mp-fs-panel:not(.benchmark-mode) #mpFsGrid.mp-masonry-absolute {
+    position: relative;
   }
-  .mp-fs-panel:not(.benchmark-mode) #mpFsGrid > .mp-compare-item {
-    width: 100%;
-  }
-  .mp-fs-panel:not(.benchmark-mode) #mpFsGrid > .mp-compare-item .card,
-  .mp-fs-panel:not(.benchmark-mode) #mpFsGrid > .mp-compare-item .chart-row {
+  .mp-fs-panel:not(.benchmark-mode) #mpFsGrid.mp-masonry-absolute .card,
+  .mp-fs-panel:not(.benchmark-mode) #mpFsGrid.mp-masonry-absolute .chart-row {
     width: 100%;
     max-width: 100%;
+    margin: 0;
   }
-  .mp-fs-panel:not(.benchmark-mode) .mp-masonry-row {
-    display: flex;
-    align-items: flex-start;
-    gap: 16px;
-    width: 100%;
-  }
-  .mp-fs-panel:not(.benchmark-mode) .mp-masonry-col {
-    flex: 1 1 0;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-  }
-  .mp-fs-panel:not(.benchmark-mode) .mp-masonry-col > .mp-compare-item {
-    width: 100%;
-  }
-  .mp-fs-panel:not(.benchmark-mode) .mp-masonry-col > .mp-compare-item .card,
-  .mp-fs-panel:not(.benchmark-mode) .mp-masonry-col > .mp-compare-item .chart-row {
-    width: 100%;
-    max-width: 100%;
-  }
-  @media (max-width: 900px) { .mp-fs-panel:not(.benchmark-mode) .mp-masonry-row { flex-direction: column; } }
-  /* Auto-sizing is always on for this view (see renderFullscreenOverlay) — tighter gaps
-     between cards (matching Benchmark View's own "Fit to screen" density) so Pinterest-style
-     packing wastes as little space as possible between tiles, not just within them. */
-  .mp-fs-panel:not(.benchmark-mode) #mpFsGrid.fit-compact { gap:12px; }
-  .mp-fs-panel:not(.benchmark-mode) #mpFsGrid.fit-compact .mp-masonry-row { gap:12px; }
-  .mp-fs-panel:not(.benchmark-mode) #mpFsGrid.fit-compact .mp-masonry-col { gap:12px; }
 
   /* --- Benchmark View: a second mode inside the same full-screen popup, for comparing the
      same table(s) across up to all 4 regions at once. The toggle reuses the sidebar's own
@@ -3197,20 +3166,31 @@ function capOversizedCardBodies(root, capPx) {
   });
 }
 
+// True continuous Pinterest masonry: absolute-positioned, one shared set of column-height
+// trackers for the WHOLE card list, never reset partway through. The earlier version grouped
+// consecutive "narrow" cards into isolated row-groups (splitting a fresh group every time a
+// "wide" card interrupted the run) — each group's shorter columns had no way to be backfilled
+// by cards that came later, since layout had already moved on to a new row. That's what
+// produced the big dead gaps under a short column. Tracking column heights globally instead
+// means a card 10 cards later can still land in a column that fell behind early on, exactly
+// like Pinterest's own masonry.
 function layoutFullscreenGrid(grid, items) {
   grid.innerHTML = "";
   if (!items.length) return;
   const gridWidth = grid.getBoundingClientRect().width || grid.parentElement.getBoundingClientRect().width || 0;
-  const WIDE_FRACTION = 0.5; // a card needing more than half the row's width renders full-width
+  // No card ever spans full width here (see note below on why "wide" cards were removed).
   // Pinterest-style masonry wants as many columns as comfortably fit, not a fixed cap — a
   // target column width (tuned to this view's compact/auto-sized card density) determines
-  // how many columns a batch of narrow cards gets, so wide screens fill every gap instead of
-  // being artificially capped at 3.
+  // the column count, so wide screens fill every gap instead of being artificially capped
+  // at a fixed number.
   const TARGET_COL_WIDTH = 300;
-  const MASONRY_GAP = 12;
-  const maxColsForWidth = gridWidth ? Math.max(1, Math.floor((gridWidth + MASONRY_GAP) / (TARGET_COL_WIDTH + MASONRY_GAP))) : 3;
-  // Measure each card's own natural (max-content) width off-screen, so the wide/narrow
-  // decision isn't skewed by whatever width it happens to have from a previous layout pass.
+  const GAP = 12;
+  const colCount = gridWidth ? Math.max(1, Math.floor((gridWidth + GAP) / (TARGET_COL_WIDTH + GAP))) : 3;
+  const colWidth = gridWidth ? (gridWidth - GAP * (colCount - 1)) / colCount : 0;
+
+  // Measure/cap each card off-screen first, so the wide/narrow decision and the final height
+  // used for placement are both based on capped, settled content — not a card that's about
+  // to shrink once ensureScrollableTables/capOversizedCardBodies run on it.
   const probe = document.createElement("div");
   probe.style.cssText = "position:absolute; visibility:hidden; left:-99999px; top:0;";
   document.body.appendChild(probe);
@@ -3219,65 +3199,43 @@ function layoutFullscreenGrid(grid, items) {
     probe.appendChild(el);
     // The probe is off-screen (visibility:hidden) but still attached to the document, so it
     // has real layout — height caps need that to read an accurate scrollHeight, unlike a
-    // fully detached node (which always reports 0). Do this here, before natural width is
-    // measured and before shortest-column placement, so an oversized card's height is
-    // already capped by the time placement decisions are made.
+    // fully detached node (which always reports 0).
     ensureScrollableTables(el, 280);
     capOversizedCardBodies(el, 340);
     const natural = el.scrollWidth || el.getBoundingClientRect().width;
     return { el, natural };
   });
-  probe.remove();
-  items.forEach((el) => { el.style.width = ""; });
 
-  let pendingNarrow = [];
-  function flushNarrow() {
-    if (!pendingNarrow.length) return;
-    if (pendingNarrow.length === 1) {
-      pendingNarrow[0].classList.add("mp-compare-solo");
-      grid.appendChild(pendingNarrow[0]);
-    } else {
-      const colCount = Math.min(pendingNarrow.length, maxColsForWidth);
-      const row = document.createElement("div");
-      row.className = "mp-masonry-row";
-      const cols = [];
-      for (let i = 0; i < colCount; i++) {
-        const col = document.createElement("div");
-        col.className = "mp-masonry-col";
-        row.appendChild(col);
-        cols.push(col);
-      }
-      // Connect the row (and its columns) to the document BEFORE placing any cards into
-      // it. getBoundingClientRect() on a detached node always reports 0 — with the row
-      // appended only at the end, every column would read height 0 forever and every card
-      // would pile into cols[0], which is exactly the "everything stacks in one column,
-      // huge empty gap next to it" bug this rewrite is meant to fix.
-      grid.appendChild(row);
-      // Shortest-column-first placement — the actual masonry step. Heights are read live
-      // (getBoundingClientRect) after each placement, since a column's height only becomes
-      // known once its previous card has actually rendered.
-      pendingNarrow.forEach((el) => {
-        let target = cols[0];
-        let minHeight = target.getBoundingClientRect().height;
-        for (let i = 1; i < cols.length; i++) {
-          const h = cols[i].getBoundingClientRect().height;
-          if (h < minHeight) { minHeight = h; target = cols[i]; }
-        }
-        target.appendChild(el);
-      });
-    }
-    pendingNarrow = [];
-  }
-  measured.forEach(({ el, natural }) => {
-    if (gridWidth && natural / gridWidth > WIDE_FRACTION) {
-      flushNarrow();
-      el.classList.add("mp-compare-solo");
-      grid.appendChild(el);
-    } else {
-      pendingNarrow.push(el);
-    }
+  grid.classList.add("mp-masonry-absolute");
+  const colHeights = new Array(colCount).fill(0);
+  // Every card — including wide tables like "State x Operator Type breakdown" — is placed at a
+  // single column's width, never full-bleed. A full-bleed card can only start once every column
+  // reaches the same height (it can't backfill a short column with later content), and that wait
+  // is exactly what produced the "big visible gaps": a short column had nothing left to give it
+  // once a wide card forced a break. Keeping every card at column width means the masonry can
+  // pack continuously with no forced breaks at all — any table too wide for that column scrolls
+  // horizontally inside its own .scroll-table wrapper (already wired up via ensureScrollableTables
+  // above), which matches the user's own call that internal table scrolling is fully acceptable.
+  measured.forEach(({ el }) => {
+    el.style.width = colCount <= 1 && gridWidth ? gridWidth + "px" : colWidth + "px";
+    grid.appendChild(el);
+    el.style.position = "absolute";
+    const ci = minIndex(colHeights);
+    el.style.left = Math.round(ci * (colWidth + GAP)) + "px";
+    const startY = colHeights[ci];
+    el.style.top = Math.round(startY) + "px";
+    const h = el.getBoundingClientRect().height;
+    colHeights[ci] = startY + h + GAP;
   });
-  flushNarrow();
+  probe.remove();
+  grid.style.position = "relative";
+  grid.style.height = Math.max(0, Math.max(...colHeights) - GAP) + "px";
+
+  function minIndex(arr) {
+    let idx = 0;
+    for (let i = 1; i < arr.length; i++) { if (arr[i] < arr[idx]) idx = i; }
+    return idx;
+  }
 }
 
 function renderFullscreenOverlay() {
