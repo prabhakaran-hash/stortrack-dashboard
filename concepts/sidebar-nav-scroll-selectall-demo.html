@@ -2701,44 +2701,41 @@ if (d.owners && (d.owners.ownerCompany || d.owners.contacts)) {
     const fmtOw = (v, name) => v == null ? "—" : (name.includes("%") ? Math.round(v * 100) + "%" : fmtNum(v));
     const ownersTable = (block) => block ? `<table class="data-table"><thead><tr><th>${block.labelHeader}</th>${block.columns.map((c)=>`<th class="num">${c}</th>`).join("")}</tr></thead>
       <tbody>${block.rows.map((r) => `<tr><td>${r.label}</td>${r.values.map((v,i)=> `<td class="num">${fmtOw(v, block.columns[i])}</td>`).join("")}</tr>`).join("")}</tbody></table>` : "";
-    // Heatmap matrix (option F, chosen 2026-08-24): operator rows x metric columns, each
-    // column's own cell intensity scaled to that column's own max (so a small-scale metric
-    // like "Info Not Found" doesn't wash out next to a much larger one like "Updated").
-    // Columns are located by regex against the sheet's own live column names, never by fixed
-    // position, since exact wording differs slightly between the Owner Company and Contacts
-    // blocks ("Owner company updated" vs "Contacts updated", "Info Not found" vs "Info Not
-    // Found") and across regions. Falls back to the plain literal table (ownersTable above)
-    // if a block's sheet doesn't have the expected Store Count / Updated / Completed % shape.
+    // Heatmap matrix (option F, chosen 2026-08-24): operator rows x metric columns. This is
+    // a TRUE, exact mirror of the sheet's own column set — every literal column the sheet has
+    // (Store Count, Updated, %, Info Not Found, %, Yet to research & update, Completed %, i.e.
+    // all 8 headers including Category) is rendered, in the sheet's own order, never a curated
+    // subset. An earlier version dropped the two bare "%" columns as "derived/duplicate" — the
+    // user caught that this wasn't an exact replica, so every column the sheet has is now kept.
+    // A column is treated as a percentage (formatted as N%, colored green/red by 0-100%+
+    // convention, ⚠ when over 100%) purely by its own literal header containing "%" — this
+    // covers "Completed %" and the two bare "%" columns identically, with no per-column
+    // special-casing. Every other (magnitude) column gets its own independent blue intensity
+    // scale, keyed to that column's own max within this block, so a small-scale column like
+    // "Info Not Found" doesn't wash out next to a much larger one like "Updated".
     const ownersHeatmap = (block) => {
       if (!block) return "";
       const cols = block.columns;
-      const findCol = (re) => cols.findIndex((c) => re.test(c || ""));
-      const storeIdx = findCol(/^store count$/i);
-      const updIdx = findCol(/updated/i);
-      const nfIdx = findCol(/not\s*found/i);
-      const yetIdx = findCol(/yet to research/i);
-      const pctIdx = findCol(/completed/i);
-      if (storeIdx < 0 || updIdx < 0 || pctIdx < 0) return ownersTable(block);
-      const magCols = [storeIdx, updIdx, nfIdx, yetIdx];
-      const maxes = magCols.map((ci) => ci < 0 ? 0 : Math.max(...block.rows.map((r) => Math.abs(r.values[ci] || 0))));
-      const heatCell = (v, maxVal) => {
+      const isPctCol = (name) => /%/.test(name || "");
+      const magMaxes = cols.map((name, i) => isPctCol(name) ? 0 : Math.max(...block.rows.map((r) => Math.abs(r.values[i] || 0))));
+      const heatCell = (v, name, maxVal) => {
         if (v == null) return `<td class="num heat-cell" style="background:transparent;">—</td>`;
+        if (isPctCol(name)) {
+          const over = v > 1;
+          const bg = over ? "var(--bad)" : `rgba(25,158,112,${(0.12 + Math.min(1, v) * 0.68).toFixed(2)})`;
+          const fg = over || v > 0.62 ? "#fff" : "var(--text-primary)";
+          return `<td class="num heat-cell" style="background:${bg};color:${fg};">${Math.round(v * 100)}%${over ? " ⚠" : ""}</td>`;
+        }
         const t = maxVal > 0 ? Math.min(1, Math.abs(v) / maxVal) : 0;
         const bg = `rgba(57,135,229,${(0.12 + t * 0.68).toFixed(2)})`;
         const fg = t > 0.62 ? "#fff" : "var(--text-primary)";
         return `<td class="num heat-cell" style="background:${bg};color:${fg};">${fmtNum(v)}</td>`;
       };
       const rowsHtml = block.rows.map((r) => {
-        const cells = magCols.map((ci, i) => heatCell(ci < 0 ? null : r.values[ci], maxes[i])).join("");
-        const pct = r.values[pctIdx];
-        const over = pct != null && pct > 1;
-        const pctCell = pct == null
-          ? `<td class="num heat-cell" style="background:transparent;">—</td>`
-          : `<td class="num heat-cell" style="background:${over ? "var(--bad)" : `rgba(25,158,112,${(0.12 + Math.min(1, pct) * 0.68).toFixed(2)})`};color:${over || pct > 0.62 ? "#fff" : "var(--text-primary)"};">${Math.round(pct * 100)}%${over ? " ⚠" : ""}</td>`;
-        return `<tr><td>${r.label}</td>${cells}${pctCell}</tr>`;
+        const cells = cols.map((name, i) => heatCell(r.values[i], name, magMaxes[i])).join("");
+        return `<tr><td>${r.label}</td>${cells}</tr>`;
       }).join("");
-      const headerLabels = [storeIdx, updIdx, nfIdx, yetIdx, pctIdx].map((ci) => ci < 0 ? "—" : cols[ci]);
-      return `<table class="data-table heat-table"><thead><tr><th>${block.labelHeader}</th>${headerLabels.map((l) => `<th class="num">${l}</th>`).join("")}</tr></thead>
+      return `<table class="data-table heat-table"><thead><tr><th>${block.labelHeader}</th>${cols.map((c) => `<th class="num">${c}</th>`).join("")}</tr></thead>
         <tbody>${rowsHtml}</tbody></table>`;
     };
     detailTables += `<div class="card"><h3>Owners and Contacts Research Coverage</h3><div class="card-sub">By operator type</div>
