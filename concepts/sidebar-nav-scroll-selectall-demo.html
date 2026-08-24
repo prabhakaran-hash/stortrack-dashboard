@@ -2420,6 +2420,34 @@ function facilityBreakdownH2(block) {
   return `<div class="kpi-row" style="grid-template-columns:repeat(${groups.length + 1}, 1fr);">${tiles}</div>${ranked}
     <div class="legend-row" style="margin-top:14px;"><span><span class="swatch" style="background:${YES_COLOR}"></span>${cols[yesIdx]}</span><span><span class="swatch" style="background:${NO_COLOR}"></span>${cols[noIdx]}</span></div>`;
 }
+// {unitLabel} Research Coverage (Sqft/SQM Research Coverage, option F chosen 2026-08-24):
+// table + inline proportional bar, same pattern already used for the region breakdown
+// tables (e.g. "Canada — Operator Type breakdown") — every literal sheet number stays in
+// its own column, a small bar next to the row label is layered on as a scannable size cue
+// scaled to that row's own magnitude column (the first column whose name doesn't contain
+// "%" — typically "Store Count", but never assumed by position alone), never replacing the
+// number. Bar color is assigned by fixed row order (PALETTE_HEX), matching the categorical
+// color convention used elsewhere, not by matching row label text (which varies: "SQFT
+// Null" vs "SQM Null", etc.) A region whose data doesn't have a magnitude column just skips
+// the bar and renders the plain table, same "never force a chart onto a shape it doesn't
+// fit" rule used throughout this file.
+function sourceCoverageTable(sc) {
+  const magIdx = sc.columns.findIndex((c) => !/%/.test(c || ""));
+  const max = magIdx >= 0 ? Math.max(1, ...sc.rows.map((r) => r.values[magIdx] || 0)) : 0;
+  const fmtSc = (v, name) => v == null ? "—" : (/%/.test(name) ? Math.round(v * 100) + "%" : fmtNum(v));
+  const rowsHtml = sc.rows.map((x, i) => {
+    const bar = magIdx >= 0
+      ? `<div class="inline-bar-track"><div class="inline-bar-fill" style="width:${(((x.values[magIdx] || 0) / max) * 100).toFixed(1)}%;background:${PALETTE_HEX[i % PALETTE_HEX.length]}"></div></div>`
+      : "";
+    return `<tr><td>${x.label}${bar}</td>${x.values.map((v, ci) => `<td class="num">${fmtSc(v, sc.columns[ci])}</td>`).join("")}</tr>`;
+  }).join("");
+  const totalHtml = sc.total ? `<tr class="total-row"><td>${sc.total.label}</td>${sc.total.values.map((v, ci) => `<td class="num">${v == null ? "—" : (/%/.test(sc.columns[ci]) ? Math.round(v * 100) + "%" : `<strong>${fmtNum(v)}</strong>`)}</td>`).join("")}</tr>` : "";
+  return `<div class="card"><h3>${sc.unitLabel} Research Coverage</h3><div class="card-sub">How ${sc.unitLabel.toLowerCase()} data was obtained</div>
+    <table class="data-table"><thead><tr><th>${sc.labelHeader}</th>${sc.columns.map((c) => `<th class="num">${c}</th>`).join("")}</tr></thead>
+    <tbody>${rowsHtml}
+    ${totalHtml}
+    </tbody></table></div>`;
+}
 function donutSVG(entries, centerValue, centerLabel, size) {
   size = size || 150;
   const total = entries.reduce((s,e) => s + (e.value||0), 0) || 1;
@@ -2667,13 +2695,7 @@ function renderRegionBlock(region) {
   }
 
   if (d.sourceCoverage && d.sourceCoverage.rows.length) {
-    const sc = d.sourceCoverage;
-    const fmtSc = (v, name) => v == null ? "—" : (name.includes("%") ? Math.round(v * 100) + "%" : fmtNum(v));
-    detailTables += `<div class="card"><h3>${sc.unitLabel} Research Coverage</h3><div class="card-sub">How ${sc.unitLabel.toLowerCase()} data was obtained</div>
-      <table class="data-table"><thead><tr><th>${sc.labelHeader}</th>${sc.columns.map((c)=>`<th class="num">${c}</th>`).join("")}</tr></thead>
-      <tbody>${sc.rows.map((x) => `<tr><td>${x.label}</td>${x.values.map((v,i)=> `<td class="num">${fmtSc(v, sc.columns[i])}</td>`).join("")}</tr>`).join("")}
-      ${sc.total ? `<tr class="total-row"><td>${sc.total.label}</td>${sc.total.values.map((v,i)=> `<td class="num">${v==null?"—":(sc.columns[i].includes("%")?Math.round(v*100)+"%":`<strong>${fmtNum(v)}</strong>`)}</td>`).join("")}</tr>` : ""}
-      </tbody></table></div>`;
+    detailTables += sourceCoverageTable(d.sourceCoverage);
   }
 // Store Profile Research Status and Attribute Population are two genuinely separate
   // sheet blocks (read from two different anchors in parseStoreProfile) — they must each
