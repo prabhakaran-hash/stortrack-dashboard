@@ -457,6 +457,13 @@
   .scroll-table thead th { position:sticky; top:0; background: var(--surface-1); z-index:1; }
   table.data-table tr.total-row td { font-weight:700; border-top:1.5px solid var(--baseline); background: var(--navy); color:#fff; }
 
+  /* Inline row bar (option D, chosen 2026-08-24 for the "<Region> — Operator Type
+     breakdown" table): a small bar sits above the row's own label, sized to that row's
+     Grand Total relative to the biggest row in the table — keeps every exact number in
+     place, just adds a scannable size cue without turning the table into a chart. */
+  .inline-bar-track { height:5px; max-width:120px; background: var(--gridline); border-radius:3px; overflow:hidden; margin-bottom:4px; }
+  .inline-bar-fill { height:100%; border-radius:3px; }
+
   .foot-note { font-size:11.5px; color: var(--text-muted); margin-top:8px; line-height:1.5; }
   footer.foot { margin-top:22px; font-size:12px; color: var(--text-muted); text-align:center; }
 
@@ -2426,7 +2433,7 @@ function renderRegionBlock(region) {
       <div class="chart-row" style="grid-template-columns:1fr;"><div class="card">
         <h3>${rl} — Operator Type breakdown</h3><div class="card-sub">Sheet order, as sorted in the source</div>
         <table class="data-table"><thead><tr><th>${rl}</th>${regionKeys.map((k)=>`<th class="num">${k}</th>`).join("")}<th class="num">Grand Total</th></tr></thead>
-        <tbody>${regionSplitNorm.map((s) => `<tr><td>${s.label}</td>${s.values.map((v)=>`<td class="num">${fmtNum(v)}</td>`).join("")}<td class="num"><strong>${fmtNum(s.total)}</strong></td></tr>`).join("")}
+        <tbody>${(() => { const maxRowTotal = Math.max(1, ...regionSplitNorm.map((s) => s.total || 0)); return regionSplitNorm.map((s) => `<tr><td><div class="inline-bar-track"><div class="inline-bar-fill" style="width:${((s.total||0)/maxRowTotal*100).toFixed(1)}%;background:${accent}"></div></div>${s.label}</td>${s.values.map((v)=>`<td class="num">${fmtNum(v)}</td>`).join("")}<td class="num"><strong>${fmtNum(s.total)}</strong></td></tr>`).join(""); })()}
         <tr class="total-row"><td>Grand Total</td>${regionKeys.map((k,i)=>`<td class="num">${fmtNum(regionSplitNorm.reduce((sum,s)=>sum+(s.values[i]||0),0))}</td>`).join("")}<td class="num"><strong>${fmtNum(storeTotal)}</strong></td></tr>
         </tbody></table></div></div>
       <div class="chart-row" style="grid-template-columns:1fr;"><div class="card">
