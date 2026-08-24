@@ -913,6 +913,12 @@
     max-width: 100%;
   }
   @media (max-width: 900px) { .mp-fs-panel:not(.benchmark-mode) .mp-masonry-row { flex-direction: column; } }
+  /* Auto-sizing is always on for this view (see renderFullscreenOverlay) — tighter gaps
+     between cards (matching Benchmark View's own "Fit to screen" density) so Pinterest-style
+     packing wastes as little space as possible between tiles, not just within them. */
+  .mp-fs-panel:not(.benchmark-mode) #mpFsGrid.fit-compact { gap:12px; }
+  .mp-fs-panel:not(.benchmark-mode) #mpFsGrid.fit-compact .mp-masonry-row { gap:12px; }
+  .mp-fs-panel:not(.benchmark-mode) #mpFsGrid.fit-compact .mp-masonry-col { gap:12px; }
 
   /* --- Benchmark View: a second mode inside the same full-screen popup, for comparing the
      same table(s) across up to all 4 regions at once. The toggle reuses the sidebar's own
@@ -3151,11 +3157,36 @@ let benchmarkFitMode = false;
 // space flexbox happened to give it) still gets the full row's width so it's never squeezed
 // down to a column's width — this preserves the "wide tables stay full-size" requirement
 // while still closing the vertical gaps between the narrower cards.
+// Any data table that isn't already wrapped in the project's own `.scroll-table` container
+// (some card templates render a bare <table class="data-table"> with no wrapper) gets one
+// here, capped to CAP_PX with its own internal scrollbar — this is the "screen fitting
+// table" fallback: even after auto-sizing, a table with many rows keeps its header pinned
+// and scrolls internally instead of blowing out its column's height (and the whole popup's
+// vertical space) to fit every row.
+function ensureScrollableTables(root, capPx) {
+  root.querySelectorAll("table.data-table").forEach((table) => {
+    if (table.closest(".scroll-table")) return;
+    const wrap = document.createElement("div");
+    wrap.className = "scroll-table";
+    wrap.style.maxHeight = capPx + "px";
+    table.parentNode.insertBefore(wrap, table);
+    wrap.appendChild(table);
+  });
+}
+
 function layoutFullscreenGrid(grid, items) {
   grid.innerHTML = "";
   if (!items.length) return;
+  items.forEach((el) => ensureScrollableTables(el, 280));
   const gridWidth = grid.getBoundingClientRect().width || grid.parentElement.getBoundingClientRect().width || 0;
   const WIDE_FRACTION = 0.5; // a card needing more than half the row's width renders full-width
+  // Pinterest-style masonry wants as many columns as comfortably fit, not a fixed cap — a
+  // target column width (tuned to this view's compact/auto-sized card density) determines
+  // how many columns a batch of narrow cards gets, so wide screens fill every gap instead of
+  // being artificially capped at 3.
+  const TARGET_COL_WIDTH = 300;
+  const MASONRY_GAP = 12;
+  const maxColsForWidth = gridWidth ? Math.max(1, Math.floor((gridWidth + MASONRY_GAP) / (TARGET_COL_WIDTH + MASONRY_GAP))) : 3;
   // Measure each card's own natural (max-content) width off-screen, so the wide/narrow
   // decision isn't skewed by whatever width it happens to have from a previous layout pass.
   const probe = document.createElement("div");
@@ -3177,7 +3208,7 @@ function layoutFullscreenGrid(grid, items) {
       pendingNarrow[0].classList.add("mp-compare-solo");
       grid.appendChild(pendingNarrow[0]);
     } else {
-      const colCount = Math.min(pendingNarrow.length, 3);
+      const colCount = Math.min(pendingNarrow.length, maxColsForWidth);
       const row = document.createElement("div");
       row.className = "mp-masonry-row";
       const cols = [];
@@ -3351,7 +3382,11 @@ function renderFullscreenOverlay() {
     return;
   }
 
-  grid.classList.remove("fit-compact");
+  // Auto-sizing is always on for the single-region Full Screen view (not gated behind a
+  // manual toggle, which stays hidden here per the existing :not(.benchmark-mode) CSS rule) —
+  // denser fonts/padding/row-heights so more cards fit on screen with less wasted space,
+  // same "fit-compact" treatment Benchmark View already uses behind its own toggle.
+  grid.classList.add("fit-compact");
   grid.style.gridTemplateColumns = "";
   if (!selected.size) {
     grid.innerHTML = `<div class="card empty mp-empty-state">Pick one or more tables from the dropdown above (or from the sidebar) to view them here.</div>`;
