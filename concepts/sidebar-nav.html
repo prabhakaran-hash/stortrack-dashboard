@@ -489,6 +489,20 @@
      the color is layered on top rather than replacing it. */
   table.data-table.heat-table td.heat-cell { border-radius:4px; border-bottom:none; font-weight:600; }
 
+  /* Facility Type — full breakdown (option H2, chosen 2026-08-24): category KPI tiles
+     (reusing the standard .kpi-tile look) plus a ranked, Yes/No-split bar list grouped
+     under category sub-headers. A 4th tile carries the Grand Total, visually set apart
+     from the category tiles with a dashed border and a small Σ mark so it reads as "the
+     sum of these," not a 4th category of the same kind. */
+  .fac-cat-label { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color: var(--text-muted); margin:16px 0 8px; padding-bottom:4px; border-bottom:1px solid var(--gridline); }
+  .fac-rank-row { display:flex; align-items:center; gap:10px; margin-bottom:9px; }
+  .fac-rank-name { width:230px; flex-shrink:0; font-size:12.5px; color: var(--text-primary); }
+  .fac-rank-track { height:15px; border-radius:3px; overflow:hidden; display:flex; background: var(--gridline); }
+  .fac-rank-seg { height:100%; }
+  .fac-rank-val { width:230px; text-align:right; font-size:11.5px; color: var(--text-muted); flex-shrink:0; }
+  .kpi-tile.kpi-tile-gt { border-left:none; border:1.5px dashed var(--border); position:relative; }
+  .kpi-tile.kpi-tile-gt::before { content:"Σ"; position:absolute; top:10px; right:12px; font-size:16px; color: var(--text-muted); opacity:.6; }
+
   .foot-note { font-size:11.5px; color: var(--text-muted); margin-top:8px; line-height:1.5; }
   footer.foot { margin-top:22px; font-size:12px; color: var(--text-muted); text-align:center; }
 
@@ -2360,6 +2374,52 @@ function renderDynamicTable(opts) {
     ${totalRowHtml}
     </tbody></table></div></div>`;
 }
+// Facility Type — full breakdown (option H2, chosen 2026-08-24): category KPI tiles +
+// a ranked, Yes/No-split bar list grouped under category sub-headers, plus a 4th
+// "Grand Total" tile. This is a chart LAYOUT over the sheet's own Category/Facility
+// Type/columns shape, not a re-derived table — every number shown (Yes, No, Total,
+// per-category and Grand Total) is a straight sum of the sheet's own literal column
+// values, never invented. Column matching is done by regex against the block's own
+// live column names (/\byes\b/i, /\bno\b/i, /\btotal\b/i) so a slightly reworded sheet
+// header still resolves correctly; a block whose columns don't include all three of
+// Yes/No/Total falls back to the plain literal table (renderDynamicTable) below, same
+// "never force a chart onto a shape it doesn't fit" rule used everywhere else in this file.
+function facilityBreakdownH2(block) {
+  const cols = block.columns || [];
+  const yesIdx = cols.findIndex((c) => /\byes\b/i.test(c || ""));
+  const noIdx = cols.findIndex((c) => /\bno\b/i.test(c || ""));
+  const totalIdx = cols.findIndex((c) => /\btotal\b/i.test(c || ""));
+  if (yesIdx < 0 || noIdx < 0 || totalIdx < 0) return null;
+  const groups = [];
+  block.rows.forEach((row) => {
+    let grp = groups.length ? groups[groups.length - 1] : null;
+    if (!grp || grp.key !== row.category) { grp = { key: row.category, rows: [] }; groups.push(grp); }
+    grp.rows.push(row);
+  });
+  const catColor = {};
+  groups.forEach((g, i) => { catColor[g.key] = PALETTE_HEX[i % PALETTE_HEX.length]; });
+  const sumCol = (rows, idx) => rows.reduce((s, r) => s + (r.values[idx] || 0), 0);
+  const grandYes = sumCol(block.rows, yesIdx), grandNo = sumCol(block.rows, noIdx), grandTotal = sumCol(block.rows, totalIdx);
+  const tiles = groups.map((g) => {
+    const y = sumCol(g.rows, yesIdx), n = sumCol(g.rows, noIdx), t = sumCol(g.rows, totalIdx);
+    return `<div class="kpi-tile" style="--kpi-accent:${catColor[g.key]}"><div class="label">${g.key || "—"}</div><div class="value">${fmtNum(t)}</div><div class="sub">${fmtNum(y)} yes · ${fmtNum(n)} no</div></div>`;
+  }).join("") + `<div class="kpi-tile kpi-tile-gt"><div class="label">Grand Total</div><div class="value">${fmtNum(grandTotal)}</div><div class="sub">${fmtNum(grandYes)} yes · ${fmtNum(grandNo)} no</div></div>`;
+  const globalMax = Math.max(1, ...block.rows.map((r) => r.values[totalIdx] || 0));
+  const ranked = groups.map((g) => {
+    const sorted = [...g.rows].sort((a, b) => (b.values[totalIdx] || 0) - (a.values[totalIdx] || 0));
+    const rowsHtml = sorted.map((r) => {
+      const y = r.values[yesIdx] || 0, n = r.values[noIdx] || 0, t = r.values[totalIdx] || 0;
+      const totalW = Math.max(1, (t / globalMax) * 100);
+      const yesFrac = t ? (y / t) * 100 : 0, noFrac = 100 - yesFrac;
+      return `<div class="fac-rank-row"><div class="fac-rank-name">${r.type || "—"}</div>
+        <div class="fac-rank-track" style="width:${totalW}%;"><div class="fac-rank-seg" style="width:${yesFrac}%;background:${YES_COLOR}"></div><div class="fac-rank-seg" style="width:${noFrac}%;background:${NO_COLOR}"></div></div>
+        <div class="fac-rank-val">${fmtNum(y)} yes · ${fmtNum(n)} no · ${fmtNum(t)} total</div></div>`;
+    }).join("");
+    return `<div class="fac-cat-label" style="color:${catColor[g.key]}">${g.key || "—"}</div>${rowsHtml}`;
+  }).join("");
+  return `<div class="kpi-row" style="grid-template-columns:repeat(${groups.length + 1}, 1fr);">${tiles}</div>${ranked}
+    <div class="legend-row" style="margin-top:14px;"><span><span class="swatch" style="background:${YES_COLOR}"></span>${cols[yesIdx]}</span><span><span class="swatch" style="background:${NO_COLOR}"></span>${cols[noIdx]}</span></div>`;
+}
 function donutSVG(entries, centerValue, centerLabel, size) {
   size = size || 150;
   const total = entries.reduce((s,e) => s + (e.value||0), 0) || 1;
@@ -2575,16 +2635,23 @@ function renderRegionBlock(region) {
   }
 
   if (d.facilityDetail) {
-    detailTables += renderDynamicTable({
-      title: "Facility Type — full breakdown",
-      subtitle: "Every sub-type reported, exactly as the sheet has it",
-      groupHeader: "Category",
-      groupOf: (r) => r.category,
-      itemHeader: "Facility Type",
-      itemOf: (r) => r.type,
-      columns: d.facilityDetail.columns,
-      rows: d.facilityDetail.rows
-    });
+    const h2 = facilityBreakdownH2(d.facilityDetail);
+    if (h2) {
+      detailTables += `<div class="card"><h3>Facility Type — full breakdown</h3><div class="card-sub">By category and sub-type, ranked largest-first within each category</div>${h2}</div>`;
+    } else {
+      // A region whose sheet doesn't have Yes/No/Total columns in this shape falls back
+      // to the plain literal table — never forces a chart onto a shape it doesn't fit.
+      detailTables += renderDynamicTable({
+        title: "Facility Type — full breakdown",
+        subtitle: "Every sub-type reported, exactly as the sheet has it",
+        groupHeader: "Category",
+        groupOf: (r) => r.category,
+        itemHeader: "Facility Type",
+        itemOf: (r) => r.type,
+        columns: d.facilityDetail.columns,
+        rows: d.facilityDetail.rows
+      });
+    }
   }
   if (d.facilityOperatorNrsfTable) {
     detailTables += renderDynamicTable({
