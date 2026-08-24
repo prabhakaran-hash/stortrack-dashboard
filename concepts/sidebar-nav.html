@@ -1335,6 +1335,16 @@ function rowHasDataInSpan(grid, r, fromCol, span) {
   for (let i = 0; i < span; i++) { if (cell(grid, r, fromCol + i) !== "") return true; }
   return false;
 }
+// Same idea as rowHasDataInSpan, but for spans that are supposed to be purely numeric
+// (e.g. Known Developments' stage-count columns) — requires at least one cell that
+// actually parses as a number via numOf, not merely non-empty text. This catches a
+// stray leftover character (seen on UK's Known Developments tab: a lone "." in an
+// otherwise-blank row) that would otherwise satisfy the plain non-empty check and get
+// kept as a phantom data row with no real region and no real numbers.
+function rowHasNumericDataInSpan(grid, r, fromCol, span) {
+  for (let i = 0; i < span; i++) { if (numOf(cell(grid, r, fromCol + i)) != null) return true; }
+  return false;
+}
 const TOTAL_RE = /^(grand )?total$/i;
 function readLabelRows(grid, startRow, labelCol, stopAtTotal, dataSpan) {
   const span = dataSpan || tableRowSpan(grid, startRow - 1, labelCol);
@@ -1841,7 +1851,7 @@ function parseDevelopments(grid, regionKey) {
     const dataRowIdxs = [];
     for (let r = hit.r + 1; r < grid.length; r++) {
       const region = cell(grid, r, hit.c);
-      if (!region && !rowHasDataInSpan(grid, r, hit.c + 1, devSpan)) break;
+      if (!region && !rowHasNumericDataInSpan(grid, r, hit.c + 1, devSpan)) break;
       dataRowIdxs.push(r);
     }
     const stageCols = [];
