@@ -500,6 +500,11 @@
      the color is layered on top rather than replacing it. */
   table.data-table.heat-table td.heat-cell { border-radius:4px; border-bottom:none; font-weight:600; }
 
+  /* Facility Type × Operator Type — NRSF (option D chosen 2026-08-24): the literal
+     grouped table, unchanged, plus a thin left-edge color stripe on each Facility Type
+     group's cell so rows in the same group read as a set without re-reading the label. */
+  table.data-table td.fac-nrsf-grpcell { font-weight:700; vertical-align:middle; padding-left:12px; }
+
   /* Facility Type — full breakdown (option H2, chosen 2026-08-24): category KPI tiles
      (reusing the standard .kpi-tile look) plus a ranked, Yes/No-split bar list grouped
      under category sub-headers. A 4th tile carries the Grand Total, visually set apart
@@ -2385,6 +2390,46 @@ function renderDynamicTable(opts) {
     ${totalRowHtml}
     </tbody></table></div></div>`;
 }
+// Facility Type × Operator Type — NRSF (option D chosen 2026-08-24): the literal
+// grouped table, completely unchanged — same columns (whatever the sheet has, e.g. Store
+// Count / Total Stores / NRSF / Total NRSF), same rows, same "—" for blank cells, same
+// sheet-own Total row treatment — with one addition: a thin left-edge color stripe on
+// each Facility Type group's cell so rows in the same group read as a set without
+// re-reading the label every time. Colors are assigned in fixed order of each group's
+// first appearance in the sheet (PALETTE_HEX, the same categorical convention used
+// throughout this file), never re-derived from the facility name text. No bars, no heat
+// coloring on the numbers themselves — this is deliberately the lightest-touch option.
+function facilityOperatorNrsfStriped(nt) {
+  const cols = nt.columns || [];
+  const lastRow = nt.rows.length ? nt.rows[nt.rows.length - 1] : null;
+  const sheetHasOwnTotalRow = !!lastRow && TOTAL_RE.test(lastRow.facility || lastRow.operator || "");
+  const bodySrc = sheetHasOwnTotalRow ? nt.rows.slice(0, -1) : nt.rows;
+  const groups = [];
+  bodySrc.forEach((row) => {
+    let grp = groups.length ? groups[groups.length - 1] : null;
+    if (!grp || grp.key !== row.facility) { grp = { key: row.facility, rows: [] }; groups.push(grp); }
+    grp.rows.push(row);
+  });
+  const stripeColor = {};
+  groups.forEach((g, i) => { stripeColor[g.key] = PALETTE_HEX[i % PALETTE_HEX.length]; });
+  const bodyRows = groups.map((grp) => grp.rows.map((row, i) => {
+    const groupCell = i === 0
+      ? `<td class="fac-nrsf-grpcell" rowspan="${grp.rows.length}" style="border-left:4px solid ${stripeColor[grp.key]}">${grp.key || "—"}</td>`
+      : "";
+    return `<tr>${groupCell}<td>${row.operator || "—"}</td>${row.values.map((v) => `<td class="num">${fmtNum(v)}</td>`).join("")}</tr>`;
+  }).join("")).join("");
+  const colTotals = cols.map((_, i) => bodySrc.reduce((s, r) => s + (r.values[i] || 0), 0));
+  const totalRowHtml = sheetHasOwnTotalRow
+    ? `<tr class="total-row"><td colspan="2">${lastRow.facility || lastRow.operator}</td>${lastRow.values.map((v) => `<td class="num"><strong>${fmtNum(v)}</strong></td>`).join("")}</tr>`
+    : `<tr class="total-row"><td colspan="2">Total</td>${colTotals.map((v) => `<td class="num"><strong>${fmtNum(v)}</strong></td>`).join("")}</tr>`;
+  const legend = groups.map((g) => `<span><span class="swatch" style="background:${stripeColor[g.key]}"></span>${g.key}</span>`).join("");
+  return `<div class="card"><h3>Facility Type × Operator Type — NRSF</h3><div class="card-sub">Store count and net rentable sq ft per slice, exactly as the sheet has it</div>
+    <div class="scroll-table"><table class="data-table"><thead><tr><th>Facility Type</th><th>Operator Type</th>${cols.map((c) => `<th class="num">${c || "—"}</th>`).join("")}</tr></thead>
+    <tbody>${bodyRows}
+    ${totalRowHtml}
+    </tbody></table></div>
+    <div class="legend-row" style="margin-top:12px;">${legend}</div></div>`;
+}
 // Facility Type — full breakdown (option H2, chosen 2026-08-24): category KPI tiles +
 // a ranked, Yes/No-split bar list grouped under category sub-headers, plus a 4th
 // "Grand Total" tile. This is a chart LAYOUT over the sheet's own Category/Facility
@@ -2700,16 +2745,7 @@ function renderRegionBlock(region) {
     }
   }
   if (d.facilityOperatorNrsfTable) {
-    detailTables += renderDynamicTable({
-      title: "Facility Type × Operator Type — NRSF",
-      subtitle: "Store count and net rentable sq ft per slice, exactly as the sheet has it",
-      groupHeader: "Facility Type",
-      groupOf: (r) => r.facility,
-      itemHeader: "Operator Type",
-      itemOf: (r) => r.operator,
-      columns: d.facilityOperatorNrsfTable.columns,
-      rows: d.facilityOperatorNrsfTable.rows
-    });
+    detailTables += facilityOperatorNrsfStriped(d.facilityOperatorNrsfTable);
   }
 
   if (d.sourceCoverage && d.sourceCoverage.rows.length) {
