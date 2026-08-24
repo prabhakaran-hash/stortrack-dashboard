@@ -423,6 +423,20 @@
   .stack-seg { height:100%; transition: width .4s ease; }
   .stack-label { font-size:12px; margin-left:10px; color: var(--text-secondary); white-space:nowrap; }
 
+  /* Diverging Yes/No bar (option C, chosen 2026-08-24 for the Pricing Yes/No by
+     Region/State/Province card): No extends left of a shared center label, Yes extends
+     right, so which side "wins" per row reads at a glance without reading numbers first. */
+  .diverge-list { margin-top:2px; }
+  .diverge-row { display:grid; grid-template-columns: 1fr 64px 1fr; align-items:center; gap:6px; margin:9px 0; }
+  .diverge-label { text-align:center; font-size:12px; font-weight:600; color: var(--text-secondary); }
+  .diverge-no, .diverge-yes { display:flex; align-items:center; gap:8px; min-width:0; }
+  .diverge-no { justify-content:flex-end; }
+  .diverge-yes { justify-content:flex-start; }
+  .diverge-track { flex:0 1 140px; min-width:0; height:13px; border-radius:4px; background: var(--gridline); overflow:hidden; }
+  .diverge-no .diverge-track { display:flex; justify-content:flex-end; }
+  .diverge-fill { height:100%; border-radius:4px; transition:width .4s ease; }
+  .diverge-value { flex:none; font-size:11.5px; font-weight:600; color: var(--text-secondary); white-space:nowrap; }
+
   .donut-wrap { display:flex; align-items:center; gap:16px; flex-wrap:wrap; justify-content:center; }
   .donut-center-value { font-size:18px; font-weight:700; fill: var(--text-primary); }
   .donut-center-label { font-size:11px; fill: var(--text-muted); }
@@ -2231,6 +2245,22 @@ function stackedYesNoList(items) {
       <div class="stack-label">${fmtNum(i.yes)} yes · ${fmtNum(i.no)} no · ${fmtNum(total)} total</div></div>`;
   }).join("");
 }
+// Diverging Yes/No bar — No bars grow left, Yes bars grow right, from a shared center
+// label column. Chosen (option C) specifically for the "Pricing Yes/No by
+// Region/State/Province" card; the separate "Pricing Yes/No by Operator Type" card still
+// uses stackedYesNoList above until/unless that table gets its own design pass.
+function divergingYesNoList(items) {
+  const max = Math.max(1, ...items.map((i) => Math.max(i.yes || 0, i.no || 0)));
+  return `<div class="diverge-list">${items.map((i) => {
+    const yesW = ((i.yes || 0) / max * 100).toFixed(1);
+    const noW = ((i.no || 0) / max * 100).toFixed(1);
+    return `<div class="diverge-row">
+      <div class="diverge-no"><div class="diverge-track"><div class="diverge-fill" style="width:${noW}%;background:${NO_COLOR}"></div></div><span class="diverge-value">${fmtNum(i.no)}</span></div>
+      <div class="diverge-label">${i.label}</div>
+      <div class="diverge-yes"><span class="diverge-value">${fmtNum(i.yes)}</span><div class="diverge-track"><div class="diverge-fill" style="width:${yesW}%;background:${YES_COLOR}"></div></div></div>
+    </div>`;
+  }).join("")}</div>`;
+}
 // Renders a {columns, rows} table (from parseFacilityDetail / parseFacilityOperatorNrsf /
 // parsePricingHistory) exactly as the sheet has it right now: the header cells shown are the
 // sheet's own column headers (whatever they currently say), and every row's numbers sit under
@@ -2387,7 +2417,7 @@ function renderRegionBlock(region) {
     const priceGrandTotal = priceRows.reduce((sum,s)=>sum+(s.total||0),0);
     const priceNoIdx = priceKeys.findIndex((k) => /no/i.test(k));
     const priceYesIdx = priceKeys.findIndex((k) => /yes/i.test(k));
-    const pricingBar = stackedYesNoList(priceRows.map((s) => ({label: s.label, yes: priceYesIdx >= 0 ? s.values[priceYesIdx] : null, no: priceNoIdx >= 0 ? s.values[priceNoIdx] : null})));
+    const pricingBar = divergingYesNoList(priceRows.map((s) => ({label: s.label, yes: priceYesIdx >= 0 ? s.values[priceYesIdx] : null, no: priceNoIdx >= 0 ? s.values[priceNoIdx] : null})));
     regionCharts = `<div class="chart-row">
       <div class="card"><h3>Stores by ${rl}</h3><div class="card-sub">Store count</div>${storeBar}</div>
       <div class="card"><h3>Pricing Yes/No by ${rl}</h3><div class="card-sub">Actual counts, not just a percentage</div>
