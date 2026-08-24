@@ -3174,10 +3174,33 @@ function ensureScrollableTables(root, capPx) {
   });
 }
 
+// Generic fallback for any card whose content ISN'T a literal <table> (e.g. Attribute
+// Population's bar-list rows) but still ends up taller than the view's target card height —
+// caps the card's body (everything below its h3/card-sub header) with its own internal
+// scrollbar instead of letting one oversized card blow out its whole masonry column. Skipped
+// for cards that already fit within the budget (their content already got capped by
+// ensureScrollableTables, or they were just never that tall to begin with).
+function capOversizedCardBodies(root, capPx) {
+  root.querySelectorAll(".card").forEach((card) => {
+    if (card.dataset.fsCapped) return;
+    if (card.scrollHeight <= capPx + 60) return;
+    const head = Array.from(card.children).filter((c) => c.tagName === "H3" || c.classList.contains("card-sub"));
+    const body = Array.from(card.children).filter((c) => !head.includes(c));
+    if (!body.length) return;
+    const wrap = document.createElement("div");
+    wrap.className = "fs-card-scroll-body";
+    wrap.style.maxHeight = capPx + "px";
+    wrap.style.overflowY = "auto";
+    body[0].parentNode.insertBefore(wrap, body[0]);
+    body.forEach((el) => wrap.appendChild(el));
+    card.dataset.fsCapped = "1";
+  });
+}
+
 function layoutFullscreenGrid(grid, items) {
   grid.innerHTML = "";
   if (!items.length) return;
-  items.forEach((el) => ensureScrollableTables(el, 280));
+  items.forEach((el) => { ensureScrollableTables(el, 280); capOversizedCardBodies(el, 340); });
   const gridWidth = grid.getBoundingClientRect().width || grid.parentElement.getBoundingClientRect().width || 0;
   const WIDE_FRACTION = 0.5; // a card needing more than half the row's width renders full-width
   // Pinterest-style masonry wants as many columns as comfortably fit, not a fixed cap — a
