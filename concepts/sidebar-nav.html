@@ -464,6 +464,13 @@
   .inline-bar-track { height:5px; max-width:120px; background: var(--gridline); border-radius:3px; overflow:hidden; margin-bottom:4px; }
   .inline-bar-fill { height:100%; border-radius:3px; }
 
+  /* Heatmap cell (option C, chosen 2026-08-24 for Known Developments): each stage cell
+     gets its own background color scaled to its value relative to the section's own
+     max (Self Storage and Parking Storage, where both exist, are scaled independently
+     so a much-smaller section doesn't wash out to solid white) — the number stays put,
+     the color is layered on top rather than replacing it. */
+  table.data-table.heat-table td.heat-cell { border-radius:4px; border-bottom:none; font-weight:600; }
+
   .foot-note { font-size:11.5px; color: var(--text-muted); margin-top:8px; line-height:1.5; }
   footer.foot { margin-top:22px; font-size:12px; color: var(--text-muted); text-align:center; }
 
@@ -2579,8 +2586,18 @@ if (d.developments && d.developments.length) {
     const devTables = d.developments.map((section) => {
       const stageLabels = section.rows[0].stages.map((s) => s.label);
       const subtitle = section.title ? `<div class="card-sub" style="margin-top:14px;"><strong>${section.title}</strong></div>` : "";
-      return subtitle + `<table class="data-table"><thead><tr><th>${section.regionHeader || "—"}</th>${stageLabels.map((l) => `<th class="num">${l}</th>`).join("")}<th class="num">Total</th></tr></thead>
-      <tbody>${section.rows.map((row) => `<tr><td>${row.region}</td>${row.stages.map((s) => `<td class="num">${fmtNum(s.value)}</td>`).join("")}<td class="num"><strong>${fmtNum(row.total)}</strong></td></tr>`).join("")}</tbody></table>`;
+      // Each section (e.g. Canada's separate "Self Storage" and "Parking Storage"
+      // tables) gets its own color scale — a much smaller section would otherwise
+      // wash out to near-white next to a bigger one sharing the same max.
+      const maxVal = Math.max(1, ...section.rows.flatMap((row) => row.stages.map((s) => s.value || 0)));
+      const heatCell = (v) => {
+        const t = Math.max(0, Math.min(1, (v || 0) / maxVal));
+        const bg = `rgb(${Math.round(240 - t*90)},${Math.round(230 - t*150)},${Math.round(210 - t*175)})`;
+        const fg = t > 0.55 ? '#fff' : '#3a2e22';
+        return `<td class="num heat-cell" style="background:${bg};color:${fg};">${fmtNum(v)}</td>`;
+      };
+      return subtitle + `<table class="data-table heat-table"><thead><tr><th>${section.regionHeader || "—"}</th>${stageLabels.map((l) => `<th class="num">${l}</th>`).join("")}<th class="num">Total</th></tr></thead>
+      <tbody>${section.rows.map((row) => `<tr><td>${row.region}</td>${row.stages.map((s) => heatCell(s.value)).join("")}<td class="num"><strong>${fmtNum(row.total)}</strong></td></tr>`).join("")}</tbody></table>`;
     }).join("");
     detailTables += `<div class="card"><h3>Known Developments</h3><div class="card-sub">Pipeline stage counts</div>${devTables}</div>`;
   }
