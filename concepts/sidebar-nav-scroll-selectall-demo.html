@@ -2942,6 +2942,21 @@ function getFocusedSet(regionName) {
 // replaces it — so cache the parsed result keyed by that object reference. A fresh sync
 // assigns a brand-new `data` object (see syncRegion), which naturally invalidates this.
 const REGION_PARSE_CACHE = new Map();
+// Benchmark View only: some cards carry a region-specific unit word in their own literal
+// title (e.g. "Sqft Research Coverage" for Canada/UK vs "SQM Research Coverage" for
+// Australia/New Zealand — same table, same parser, just a different sheet-driven unit
+// label per region). Outside Benchmark View each region still shows its own literal title
+// unchanged (the "exact replica" convention used throughout this project), but inside
+// Benchmark View an exact-string title match made these look like two unrelated tables —
+// the picker listed both, and picking one always showed an empty "No data" cell for every
+// region using the other wording, so Sqft-labeled and SQM-labeled regions could never be
+// compared side by side under one entry. This maps both literal titles to one canonical
+// label used only for benchmark grouping/lookup; single-region rendering is untouched.
+function benchmarkCanonicalTitle(title) {
+  if (/^(Sqft|SQM)\s+Research Coverage$/i.test(title)) return "Sqft/SQM Research Coverage";
+  return title;
+}
+
 function getRegionParsed(region) {
   if (!region.data) return null;
   const cached = REGION_PARSE_CACHE.get(region.data);
@@ -3326,7 +3341,7 @@ function renderFullscreenOverlay() {
     activeRegions.forEach((r) => {
       const p = getRegionParsed(r);
       if (!p) return;
-      p.titles.forEach((t) => { if (!seen.has(t)) { seen.add(t); tableTitles.push(t); } });
+      p.titles.forEach((t) => { const ct = benchmarkCanonicalTitle(t); if (!seen.has(ct)) { seen.add(ct); tableTitles.push(ct); } });
     });
   } else {
     tableTitles = parsed ? parsed.titles : [];
@@ -3374,7 +3389,11 @@ function renderFullscreenOverlay() {
       tableTitles.filter((t) => benchmarkTableSet.has(t)).forEach((title) => {
         activeRegions.forEach((r) => {
           const p = getRegionParsed(r);
-          const idx = p ? p.titles.indexOf(title) : -1;
+          // title is already canonicalized (it came from tableTitles above); match it
+          // against each region's own literal titles through the same canonicalization
+          // rather than an exact string match, so e.g. a region's literal "SQM Research
+          // Coverage" h3 is found under the shared "Sqft/SQM Research Coverage" entry.
+          const idx = p ? p.titles.findIndex((t) => benchmarkCanonicalTitle(t) === title) : -1;
           const card = idx >= 0 ? p.cards[idx] : null;
           const tag = `<span class="mp-bm-region-tag" style="background:${accentFor(r.name)}">${r.name}</span>`;
           if (card) {
@@ -3485,7 +3504,7 @@ document.getElementById("mpFsMenuSelectAll").addEventListener("click", () => {
     activeRegions.forEach((r) => {
       const p = getRegionParsed(r);
       if (!p) return;
-      p.titles.forEach((t) => { if (!seen.has(t)) { seen.add(t); benchmarkTableSet.add(t); } });
+      p.titles.forEach((t) => { const ct = benchmarkCanonicalTitle(t); if (!seen.has(ct)) { seen.add(ct); benchmarkTableSet.add(ct); } });
     });
   } else {
     const region = REGIONS.find((r) => r.name === selectedRegion);
