@@ -2164,10 +2164,23 @@ async function syncRegion(region) {
         fetchExtraTab(cfg, extra.owners),
         fetchExtraTab(cfg, extra.developments)
       ]);
-      data.sourceCoverage = sqftGrid ? parseSourceCoverage(sqftGrid, extra.sqftLabel, cfg.key) : null;
-      data.storeProfile = profileGrid ? parseStoreProfile(profileGrid, cfg.key) : null;
-      data.owners = ownersGrid ? parseOwnersContacts(ownersGrid, cfg.key) : null;
-      data.developments = devGrid ? parseDevelopments(devGrid, cfg.key) : null;
+      // fetchExtraTab returns null both when a region genuinely has no data for that tab
+      // AND when the fetch itself failed (network hiccup, Apps Script timeout/cold-start,
+      // or a rate limit — these 4 extra-tab requests all fire concurrently against the same
+      // endpoint, so a transient failure on one is common). Unlike the main grid fetch
+      // above (protected by gridLooksSane, which throws and leaves region.data untouched
+      // on a bad response), a null here used to overwrite whatever this field held from
+      // the previous successful sync — silently wiping a section like Known Developments
+      // or Sqft/SQM Research Coverage on the next periodic refresh even though nothing
+      // about the underlying sheet data actually changed. Falling back to the region's own
+      // last-known-good value on a null response applies the exact same "a failed fetch
+      // must never regress good data" rule the main grid already gets — a truly-empty
+      // region still correctly shows nothing, since region.data is undefined on first load.
+      const prev = region.data || {};
+      data.sourceCoverage = sqftGrid ? parseSourceCoverage(sqftGrid, extra.sqftLabel, cfg.key) : (prev.sourceCoverage || null);
+      data.storeProfile = profileGrid ? parseStoreProfile(profileGrid, cfg.key) : (prev.storeProfile || null);
+      data.owners = ownersGrid ? parseOwnersContacts(ownersGrid, cfg.key) : (prev.owners || null);
+      data.developments = devGrid ? parseDevelopments(devGrid, cfg.key) : (prev.developments || null);
     }
     region.data = data;
     region.status = "loaded";
