@@ -3339,6 +3339,16 @@ function layoutFullscreenGrid(grid, items) {
     if (!isSingle) {
       ensureScrollableTables(el, 280);
       capOversizedCardBodies(el, 340);
+    } else {
+      // Some cards (e.g. the Facility Type x Operator Type NRSF table) already come from their
+      // own render function pre-wrapped in a `.scroll-table` container with its own max-height —
+      // that wrapper isn't created here, so skipping ensureScrollableTables above never touches
+      // it. Lift that pre-existing cap too, for the same reason: a single selected table should
+      // show its own full natural height with no inner scrollbar, full stop.
+      el.querySelectorAll(".scroll-table").forEach((wrap) => {
+        wrap.style.maxHeight = "none";
+        wrap.style.overflowY = "visible";
+      });
     }
     const natural = el.scrollWidth || el.getBoundingClientRect().width;
     return { el, natural };
