@@ -15,6 +15,42 @@
     } catch (e) { document.documentElement.setAttribute("data-theme", "light"); }
   })();
 </script>
+<script>
+  // Display-scale compensation: this page's CSS is written in fixed px throughout, which is
+  // normal for a dashboard, but it means how big those pixels actually look on screen depends
+  // entirely on whatever display scaling the OS/browser is applying. Windows and macOS commonly
+  // apply scaling automatically on higher-resolution screens (125%-150%, or 2x/"Retina"), so the
+  // same CSS renders at a comfortable physical size there -- but Ubuntu commonly defaults to
+  // 100% scaling on the very same class of screen, with no scaling applied at all, so identical
+  // pixel values render visibly smaller even though nothing about the page's own layout is wrong
+  // (confirmed via a live screenshot: cards, sidebar, and tables were all correctly positioned,
+  // just uniformly undersized).
+  //
+  // window.devicePixelRatio already reports whatever display scaling is actually in effect, on
+  // ANY OS alike -- a system with no scaling turned on reports 1 regardless of which OS it's
+  // running (this is the actual, OS-agnostic condition to react to, not "is this Ubuntu"), and a
+  // system that already has scaling on (any OS) reports something greater than 1, in which case
+  // this leaves the page untouched since it's already rendering at a comparable physical size.
+  // Applied via the `zoom` CSS property (non-standard, but supported by every Chromium/WebKit
+  // browser this dashboard is used in), which rescales the ENTIRE rendered page uniformly --
+  // fonts, spacing, borders, and vw/vh-based sizing like the Full Screen popup's 98vw/98vh panel
+  // all included -- exactly as if someone pressed Ctrl/Cmd "+" themselves, rather than a partial
+  // fix that only touches font-size and leaves paddings/borders/table columns undersized.
+  //
+  // Applied as early as possible (before paint, same as the theme script above) to avoid a
+  // flash of small-then-big layout, and re-checked on resize/orientation change in case the
+  // window moves to a different-DPI monitor mid-session.
+  (function () {
+    function applyDisplayScaleCompensation() {
+      try {
+        var dpr = window.devicePixelRatio || 1;
+        document.documentElement.style.zoom = dpr <= 1 ? "1.15" : "";
+      } catch (e) {}
+    }
+    applyDisplayScaleCompensation();
+    window.addEventListener("resize", applyDisplayScaleCompensation);
+  })();
+</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <style>
   .viz-root {
