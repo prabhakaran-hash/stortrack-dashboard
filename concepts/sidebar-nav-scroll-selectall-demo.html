@@ -693,6 +693,13 @@
      happens via the single consolidated dropdown above (.sb-region-picker), so this is a
      flat list, not a per-region accordion. */
   .sb-sections, .sb-sections-top { list-style:none; margin:0; padding:0 4px; display:flex; flex-direction:column; gap:2px; }
+  /* "Data vintage" footer note (sidebar, below the section list) — the per-region sheet's own
+     "Last Updated Date", read from the same summary tab already used for everything else on
+     this page. Deliberately quiet/muted: it's useful context, not something that needs to
+     compete visually with the clickable section list above it. flex:none so it never gets
+     squeezed by the scroll-list's flex:1 1 auto in Analyst View (see #sidebarSections above). */
+  .sb-vintage-note { flex:none; margin-top:10px; padding-top:10px; border-top:1px solid var(--border); font-size:11.5px; color:var(--text-muted); display:flex; align-items:center; gap:6px; }
+  .sb-vintage-note svg { flex:none; opacity:.75; }
   .sb-section-btn {
     display:block; width:100%; text-align:left; font:inherit; font-size:13px; font-weight:600;
     color:#c7d2e6; background:transparent; border:none; border-radius:9px;
@@ -1294,6 +1301,29 @@ function startsWithMatch(grid, prefix) {
   const hits = findCells(grid, (v) => v.toLowerCase().indexOf(prefix.toLowerCase()) === 0);
   return hits[0] || null;
 }
+// "Data vintage" (sidebar footer, per region): every region's sheet carries its own
+// "Last Updated Date" cell — the date a person last edited that sheet, distinct from
+// the app's own sync timestamp. Deliberately reads the SAME summary tab already used
+// for everything else on this page (not a separate per-sub-table date), since different
+// tabs within one region's sheet can be edited at different times and picking just one
+// canonical source keeps this single, unambiguous, and consistent with the rest of the
+// per-region data already shown.
+function firstNonEmptyRightOf(grid, r, c, maxSpan) {
+  maxSpan = maxSpan || 8;
+  for (let i = 1; i <= maxSpan; i++) { const v = cell(grid, r, c + i); if (v) return v; }
+  return null;
+}
+function parseDataVintage(grid) {
+  const hit = startsWithMatch(grid, "Last Updated Date");
+  if (!hit) return null;
+  const raw = firstNonEmptyRightOf(grid, hit.r, hit.c);
+  if (!raw) return null;
+  const parsed = new Date(raw);
+  if (!isNaN(parsed.getTime())) {
+    return parsed.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  }
+  return raw; // fall back to showing the sheet's raw text verbatim if it isn't a parseable date
+}
 
 // ---------------------------------------------------------------------------------------
 // ANCHOR POSITION MEMORY — every table above is located by searching for known header
@@ -1708,7 +1738,7 @@ function parseCanada(grid, regionKey) {
     facilityDetail.rows.forEach((r) => { facilityType[r.category] = (facilityType[r.category] || 0) + (r.values[totalIdx] || 0); });
   }
   return { totalStores, pricing, operatorType, operatorStores, operatorPricingRows,
-    regionSplit, regionPriceSplit, facilityType, pricingHistory: parsePricingHistory(grid, regionKey), facilityDetail, facilityOperatorNrsf: null, facilityOperatorNrsfTable: null, units: parseUnitsSummary(grid, regionKey), sqftTotal: null, regionLabel: rb ? rb.label : null };
+    regionSplit, regionPriceSplit, facilityType, pricingHistory: parsePricingHistory(grid, regionKey), facilityDetail, facilityOperatorNrsf: null, facilityOperatorNrsfTable: null, units: parseUnitsSummary(grid, regionKey), sqftTotal: null, regionLabel: rb ? rb.label : null, dataVintage: parseDataVintage(grid) };
 }
 
 const UK_REGIONS = ["England", "Northern Ireland", "Scotland", "Wales"];
@@ -1741,7 +1771,7 @@ function parseUK(grid, regionKey) {
     facilityOperatorNrsf.forEach((d) => { facilityType[d.facility] = (facilityType[d.facility] || 0) + (d.stores || 0); });
     sqftTotal = facilityOperatorNrsf.reduce((s, d) => s + (d.nrsf || 0), 0);
   }
-  return { totalStores, pricing, operatorType, operatorStores, operatorPricingRows, regionSplit, regionPriceSplit, facilityType, facilityOperatorNrsf, facilityOperatorNrsfTable: nrsfTable, pricingHistory: parsePricingHistory(grid, regionKey), facilityDetail: null, units: parseUnitsSummary(grid, regionKey), sqftTotal, regionLabel: rb ? rb.label : null };
+  return { totalStores, pricing, operatorType, operatorStores, operatorPricingRows, regionSplit, regionPriceSplit, facilityType, facilityOperatorNrsf, facilityOperatorNrsfTable: nrsfTable, pricingHistory: parsePricingHistory(grid, regionKey), facilityDetail: null, units: parseUnitsSummary(grid, regionKey), sqftTotal, regionLabel: rb ? rb.label : null, dataVintage: parseDataVintage(grid) };
 }
 
 const AU_STATES = ["Australian Capital Territory", "New South Wales", "Northern Territory", "Queensland", "South Australia", "Tasmania", "Victoria", "Western Australia"];
@@ -1754,7 +1784,7 @@ function parseAustralia(grid, regionKey) {
   const rb = parseRegionBlocks(grid, regionKey);
   const regionSplit = buildRegionSplit(rb);
   const regionPriceSplit = buildRegionPriceSplit(rb);
-  return { totalStores, pricing, operatorType, operatorStores, operatorPricingRows, regionSplit, regionPriceSplit, facilityType: null, pricingHistory: parsePricingHistory(grid, regionKey), facilityDetail: null, facilityOperatorNrsf: null, facilityOperatorNrsfTable: null, units: parseUnitsSummary(grid, regionKey), sqftTotal: null, regionLabel: rb ? rb.label : null };
+  return { totalStores, pricing, operatorType, operatorStores, operatorPricingRows, regionSplit, regionPriceSplit, facilityType: null, pricingHistory: parsePricingHistory(grid, regionKey), facilityDetail: null, facilityOperatorNrsf: null, facilityOperatorNrsfTable: null, units: parseUnitsSummary(grid, regionKey), sqftTotal: null, regionLabel: rb ? rb.label : null, dataVintage: parseDataVintage(grid) };
 }
 
 function parseNewZealand(grid, regionKey) {
@@ -1763,7 +1793,7 @@ function parseNewZealand(grid, regionKey) {
   const operatorType = mergeOperatorBlocks(operatorStores, operatorPricingRows);
   const totalStores = operatorStores.reduce((s, o) => s + (o.stores || 0), 0);
   const pricing = { yes: operatorPricingRows.reduce((s, o) => s + (o.yes || 0), 0), no: operatorPricingRows.reduce((s, o) => s + (o.no || 0), 0) };
-  return { totalStores, pricing, operatorType, operatorStores, operatorPricingRows, regionSplit: null, facilityType: null, pricingHistory: parsePricingHistory(grid, regionKey), facilityDetail: null, facilityOperatorNrsf: null, facilityOperatorNrsfTable: null, units: parseUnitsSummary(grid, regionKey), sqftTotal: null, regionLabel: null };
+  return { totalStores, pricing, operatorType, operatorStores, operatorPricingRows, regionSplit: null, facilityType: null, pricingHistory: parsePricingHistory(grid, regionKey), facilityDetail: null, facilityOperatorNrsf: null, facilityOperatorNrsfTable: null, units: parseUnitsSummary(grid, regionKey), sqftTotal: null, regionLabel: null, dataVintage: parseDataVintage(grid) };
 }
 
 function parseSourceCoverage(grid, unitLabel, regionKey) {
@@ -3086,7 +3116,11 @@ function renderSidebar() {
       }).join("")}</ul>`
     : `<div class="sb-sections-empty">${r.status === "error" && !r.data ? "Sync failed — no sections available" : "Loading sections…"}</div>`;
 
-  box.innerHTML = toggleBar + `<div class="sb-scroll-list">${listHtml}</div>`;
+  const vintageHtml = (r.data && r.data.dataVintage)
+    ? `<div class="sb-vintage-note"><svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M8 2v4M16 2v4M3.5 9h17M5 5h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z" stroke="currentColor" stroke-width="1.6"/></svg>Data vintage: ${r.data.dataVintage}</div>`
+    : "";
+
+  box.innerHTML = toggleBar + `<div class="sb-scroll-list">${listHtml}</div>` + vintageHtml;
 
   document.getElementById("multiSelectToggle")?.addEventListener("click", () => {
     multiSelectMode = !multiSelectMode;
