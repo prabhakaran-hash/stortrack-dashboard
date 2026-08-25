@@ -2645,9 +2645,9 @@ function renderRegionBlock(region) {
     <div class="kpi-tile" style="--kpi-accent:${KPI_STORES_COLOR}"><div class="label">Total Stores</div><div class="value">${fmtNum(storeTotal)}</div><div class="sub">${region.lastSynced ? "synced " + region.lastSynced.toLocaleTimeString() : "—"}</div></div>
     <div class="kpi-tile" style="--kpi-accent:${YES_COLOR}"><div class="label">Price Available — Yes</div><div class="value">${fmtNum(yesTotal)}</div><div class="sub">${pct(yesTotal, yesTotal+noTotal)}% of stores</div></div>
     <div class="kpi-tile" style="--kpi-accent:${NO_COLOR}"><div class="label">Price Available — No</div><div class="value">${fmtNum(noTotal)}</div><div class="sub">${pct(noTotal, yesTotal+noTotal)}% of stores</div></div>
-    <div class="kpi-tile" style="--kpi-accent:${KPI_COVERAGE_COLOR}"><div class="label">${d.sqftTotal ? "Total NRSF" : "Units Coverage"}</div>
-      <div class="value">${d.sqftTotal ? fmtCompact(d.sqftTotal) : fmtNum((d.units.actual||0) + (d.units.estimated||0))}</div>
-      <div class="sub">${d.sqftTotal ? fmtNum(d.sqftTotal) + " sq ft" : "actual + estimated unit counts"}</div></div>
+    <div class="kpi-tile" style="--kpi-accent:${KPI_COVERAGE_COLOR}"><div class="label">Units Coverage</div>
+      <div class="value">${fmtNum((d.units.actual||0) + (d.units.estimated||0))}</div>
+      <div class="sub">actual + estimated unit counts</div></div>
   </div>`;
 
   // Each chart mirrors its OWN sheet block independently (see parseOperatorBlocks) — never a
