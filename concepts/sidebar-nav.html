@@ -28,23 +28,36 @@
   //
   // window.devicePixelRatio already reports whatever display scaling is actually in effect, on
   // ANY OS alike -- a system with no scaling turned on reports 1 regardless of which OS it's
-  // running (this is the actual, OS-agnostic condition to react to, not "is this Ubuntu"), and a
-  // system that already has scaling on (any OS) reports something greater than 1, in which case
-  // this leaves the page untouched since it's already rendering at a comparable physical size.
+  // running (this is the actual, OS-agnostic condition to react to, not "is this Ubuntu").
   // Applied via the `zoom` CSS property (non-standard, but supported by every Chromium/WebKit
   // browser this dashboard is used in), which rescales the ENTIRE rendered page uniformly --
   // fonts, spacing, borders, and vw/vh-based sizing like the Full Screen popup's 98vw/98vh panel
   // all included -- exactly as if someone pressed Ctrl/Cmd "+" themselves, rather than a partial
   // fix that only touches font-size and leaves paddings/borders/table columns undersized.
   //
+  // v2 (2026-08-25): the first version only compensated when dpr<=1, by a flat +15%, treating
+  // "any dpr above 1" as "already fine." In practice this dashboard has mostly been viewed on
+  // Windows/Mac machines auto-scaled to around 150% (dpr ~1.5) -- that's the physical size
+  // everyone is used to -- and a flat +15% on an unscaled (dpr 1) Ubuntu machine only closes
+  // about a third of that gap, so it still looked visibly smaller side-by-side (confirmed via
+  // a real Ubuntu screenshot next to one at dpr 1.5). Fixed by scaling relative to that same
+  // TARGET_DPR instead of a flat bump: an unscaled display (dpr 1) now gets a full 1.5x zoom to
+  // match; a partially-scaled display (dpr 1.25, common on Windows at 125%) gets a smaller
+  // top-up (1.2x); a display already at or above the target (dpr >= 1.5, including 2x/Retina)
+  // gets left alone (zoom clamped to a 1x floor -- never shrinks anything). This also means a
+  // dpr-1.5 display's own physical result is completely unchanged from before, since target/dpr
+  // = 1.5/1.5 = 1 -- no regression for the displays this was already verified correct on.
+  //
   // Applied as early as possible (before paint, same as the theme script above) to avoid a
   // flash of small-then-big layout, and re-checked on resize/orientation change in case the
   // window moves to a different-DPI monitor mid-session.
   (function () {
+    var TARGET_DPR = 1.5;
     function applyDisplayScaleCompensation() {
       try {
         var dpr = window.devicePixelRatio || 1;
-        document.documentElement.style.zoom = dpr <= 1 ? "1.15" : "";
+        var z = Math.max(1, TARGET_DPR / dpr);
+        document.documentElement.style.zoom = z === 1 ? "" : z.toFixed(2);
       } catch (e) {}
     }
     applyDisplayScaleCompensation();
