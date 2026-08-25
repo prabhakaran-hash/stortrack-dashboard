@@ -2933,18 +2933,31 @@ if (d.developments && d.developments.length) {
    duplicating any of the parsing/rendering logic above. -------------------------------- */
 
 // Which regions currently have their sidebar accordion expanded (starts with just the
-// selected region open), and which section title(s) are currently focused per region.
-// focusedSectionByRegion holds a Set per region rather than a single string so the same
-// state naturally supports both modes: single-select keeps that Set at size ≤ 1 (the
-// original one-at-a-time behaviour, untouched), while "Analyst View" (multiSelectMode)
-// lets it grow past 1 so several sections can be viewed stacked together at once.
+// selected region open), and which section title(s) are currently focused. focusedSectionSet
+// holds a Set of TITLES rather than a single string so the same state naturally supports both
+// modes: single-select keeps that Set at size ≤ 1 (the original one-at-a-time behaviour,
+// untouched), while "Analyst View" (multiSelectMode) lets it grow past 1 so several sections
+// can be viewed stacked together at once.
+//
+// This set is intentionally ONE shared Set, not one-per-region (it used to be keyed by region
+// name — focusedSectionByRegion[regionName] — so each region remembered only its own picks and
+// switching to a region you hadn't touched yet always landed back on the "Pick a section"
+// empty state). Per user request: "if a desired summary is selected for a region, and if i
+// toggle between region, the tool bar must hold or pop up must hold same table, it should not
+// reset." A single shared Set of titles is what makes that literal: selecting "Known
+// Developments" for Australia and then switching to New Zealand keeps "Known Developments"
+// selected there too (New Zealand's own card for that title, since getRegionParsed always
+// looks up the title within whichever region is currently selected) — the existing "That
+// section isn't available for {region} right now" fallback (renderMainPanel) already handles
+// a region that genuinely doesn't have the selected title, so no new empty-state handling was
+// needed for that case. getFocusedSet(regionName) keeps its parameter (every call site still
+// passes one) purely so no call site needs touching; the argument is simply unused now.
 let expandedRegions = new Set([selectedRegion]);
-let focusedSectionByRegion = {};
+let focusedSectionSet = new Set();
 let lastSingleTitleByRegion = {};
 let multiSelectMode = false;
 function getFocusedSet(regionName) {
-  if (!focusedSectionByRegion[regionName]) focusedSectionByRegion[regionName] = new Set();
-  return focusedSectionByRegion[regionName];
+  return focusedSectionSet;
 }
 
 // Parsing renderRegionBlock(region)'s HTML is a little work (a DOMParser pass), and the
@@ -2998,13 +3011,21 @@ function renderSidebar() {
   const parsed = getRegionParsed(r);
   const titles = parsed ? parsed.titles : [];
   const selected = getFocusedSet(r.name);
+  // selected is now a single Set shared across every region (see focusedSectionSet above), so
+  // it can hold titles that don't exist in THIS region (picked while a different region was
+  // active). The "N selected" count and the checklist below both need to read as "selected
+  // within what you're looking at right now" rather than the raw (possibly larger) global
+  // size, or the number would look wrong against a checklist where fewer boxes are visibly
+  // ticked. visibleSelectedCount is exactly that intersection; the underlying Set itself is
+  // left untouched so those other-region picks still carry over once you switch back to them.
+  const visibleSelectedCount = titles.filter((t) => selected.has(t)).length;
 
   const toggleBar = `<div class="sb-multiselect-bar">
     <button type="button" class="sb-multiselect-toggle${multiSelectMode ? " on" : ""}" id="multiSelectToggle" aria-pressed="${multiSelectMode}">
       <span class="sb-ms-track"><span class="sb-ms-thumb"></span></span>
       <span class="sb-ms-label">Analyst View</span>
     </button>
-    ${multiSelectMode ? `<div class="sb-ms-meta"><span>${selected.size ? `${selected.size} selected` : ""}</span><div class="sb-ms-actions"><button type="button" id="msSelectAll" class="sb-ms-clear">Select all</button>${selected.size ? `<button type="button" id="msClearAll" class="sb-ms-clear">Clear all</button>` : ""}</div></div>` : ""}
+    ${multiSelectMode ? `<div class="sb-ms-meta"><span>${visibleSelectedCount ? `${visibleSelectedCount} selected` : ""}</span><div class="sb-ms-actions"><button type="button" id="msSelectAll" class="sb-ms-clear">Select all</button>${visibleSelectedCount ? `<button type="button" id="msClearAll" class="sb-ms-clear">Clear all</button>` : ""}</div></div>` : ""}
   </div>`;
 
   const listHtml = titles.length
@@ -3034,7 +3055,12 @@ function renderSidebar() {
     render();
   });
   document.getElementById("msClearAll")?.addEventListener("click", () => {
-    getFocusedSet(selectedRegion).clear();
+    // Only drop titles that actually belong to the region being looked at right now — the
+    // whole point of the shared Set is that a pick made in another region survives a region
+    // switch, so "Clear all" here must not silently wipe those out too just because they're
+    // sitting in the same underlying Set.
+    const sel = getFocusedSet(selectedRegion);
+    titles.forEach((t) => sel.delete(t));
     render();
   });
   document.getElementById("msSelectAll")?.addEventListener("click", () => {
@@ -3079,7 +3105,12 @@ function renderMainPanel() {
     // Compare mode: every ticked section gets its own card, stacked, each with a small "×"
     // to drop just that one — this is the only branch that differs from the original
     // one-section-at-a-time behaviour below.
-    if (!selected.size) {
+    // selected is the single Set shared across every region, so it can hold titles picked
+    // while a different region was active that this region simply doesn't have — check for
+    // at least one title this region can actually show (not just a non-empty Set overall),
+    // or this would render an empty stack instead of the friendly "tick something" message.
+    const hasAnyVisible = [...selected].some((t) => parsed.titles.includes(t));
+    if (!hasAnyVisible) {
       focusedHtml = `<div class="card empty mp-empty-state">Compare mode is on — tick as many sections as you like from the sidebar to view them together.</div>`;
     } else {
       hasSelection = true;
@@ -3424,7 +3455,11 @@ function renderFullscreenOverlay() {
   // same "fit-compact" treatment Benchmark View already uses behind its own toggle.
   grid.classList.add("fit-compact");
   grid.style.gridTemplateColumns = "";
-  if (!selected.size) {
+  // Same reasoning as renderMainPanel's compare-stack check above: selected is the one Set
+  // shared across every region, so a non-empty Set doesn't guarantee this particular region
+  // has anything to show for it — check against tableTitles (this region's own titles) too.
+  const hasAnyVisible = tableTitles.some((t) => selected.has(t));
+  if (!hasAnyVisible) {
     grid.innerHTML = `<div class="card empty mp-empty-state">Pick one or more tables from the dropdown above (or from the sidebar) to view them here.</div>`;
   } else {
     // Same small "×" the main panel's single-table and compare views already have — lets you
