@@ -69,8 +69,8 @@
     background: linear-gradient(160deg, rgba(13,50,46,0.11), rgba(13,50,46,0.02) 55%);
   }
   #themeToggle { display:flex; align-items:center; justify-content:center; width:34px; height:34px; padding:0; border-radius:50%; cursor:pointer; }
-  #themeToggle svg { display:block; transition: transform .35s ease; }
-  #themeToggle[aria-pressed="true"] svg { transform: rotate(180deg); }
+  #themeToggle svg, #mpFsThemeToggle svg { display:block; transition: transform .35s ease; }
+  #themeToggle[aria-pressed="true"] svg, #mpFsThemeToggle[aria-pressed="true"] svg { transform: rotate(180deg); }
   * { box-sizing: border-box; }
   html, body { margin:0; padding:0; background: #071614; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; transition: background .2s ease; }
   /* The page's own (outer) scrollbar — the strip running the full window height on the right
@@ -1160,6 +1160,16 @@
               <polyline points="20 10 14 10 14 4"></polyline>
               <line x1="14" y1="10" x2="21" y2="3"></line>
               <line x1="3" y1="21" x2="10" y2="14"></line>
+            </svg>
+          </button>
+          <!-- Popup-local theme toggle: same dark/light switch as the main header's #themeToggle
+               (same icon, same shared applyTheme() logic below), added so a theme switch doesn't
+               require backing out of Full Screen / Benchmark View first. Sits in the same
+               .mp-fs-toggle visual family as the Fit-to-screen button beside it. -->
+          <button type="button" id="mpFsThemeToggle" class="mp-fs-toggle" aria-label="Toggle dark/light theme" title="Switch between dark and light theme" aria-pressed="false">
+            <svg viewBox="0 0 20 20" width="16" height="16">
+              <circle cx="10" cy="10" r="8.5" fill="#fff" stroke="rgba(120,140,170,0.55)" stroke-width="1"/>
+              <path d="M10 1.5a8.5 8.5 0 000 17z" fill="#151c2e"/>
             </svg>
           </button>
           <button type="button" id="mpFsClose" class="mp-fs-close" aria-label="Close full screen">×</button>
@@ -3544,13 +3554,27 @@ document.getElementById("refreshNow").addEventListener("click", () => {
 // of the wrong theme; this just keeps the button and any later toggle in sync with it. -----
 function saveTheme(t) { try { localStorage.setItem("stortrack_theme", t); } catch (e) {} }
 const themeToggleBtn = document.getElementById("themeToggle");
-themeToggleBtn.setAttribute("aria-pressed", String(document.documentElement.getAttribute("data-theme") === "light"));
-themeToggleBtn.addEventListener("click", () => {
-  const next = document.documentElement.getAttribute("data-theme") === "light" ? "dark" : "light";
+// Full Screen / Benchmark View popup gets its own theme toggle (mpFsThemeToggle) so switching
+// dark/light doesn't require closing the popup first — both buttons drive the exact same
+// html[data-theme] attribute every other style in the app already keys off (including the
+// popup's own html[data-theme="light"] rules), so the popup re-themes live and immediately,
+// with no popup-specific theme state of its own. applyTheme() is the single place that flips
+// the attribute, persists it, and keeps BOTH buttons' pressed/icon state in sync, regardless
+// of which one was clicked.
+const mpFsThemeToggleBtn = document.getElementById("mpFsThemeToggle");
+function applyTheme(next) {
   document.documentElement.setAttribute("data-theme", next);
-  themeToggleBtn.setAttribute("aria-pressed", String(next === "light"));
+  const pressed = String(next === "light");
+  themeToggleBtn.setAttribute("aria-pressed", pressed);
+  mpFsThemeToggleBtn.setAttribute("aria-pressed", pressed);
   saveTheme(next);
-});
+}
+applyTheme(document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark");
+function toggleTheme() {
+  applyTheme(document.documentElement.getAttribute("data-theme") === "light" ? "dark" : "light");
+}
+themeToggleBtn.addEventListener("click", toggleTheme);
+mpFsThemeToggleBtn.addEventListener("click", toggleTheme);
 
 // --- Custom glass dropdowns (region picker + refresh interval) --------------------------
 // Native <select> popups render with the OS's own list styling — on this dark UI that came
