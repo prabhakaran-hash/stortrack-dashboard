@@ -2141,24 +2141,39 @@ async function fetchGrid(cfg) {
   return parsed.data;
 }
 
-async function fetchExtraTab(cfg, tabName) {
+async function fetchExtraTab(cfg, tabName, attempt) {
+  attempt = attempt || 1;
   if (!APPS_SCRIPT_URL || !tabName) return null;
   try {
     const res = await fetchWithTimeout(`${APPS_SCRIPT_URL}?region=${cfg.key}&tab=${encodeURIComponent(tabName)}&_ts=${Date.now()}`, { cache: "no-store" });
-    if (!res.ok) return null;
+    if (!res.ok) throw new Error("HTTP " + res.status);
     const json = await res.json();
-    if (json.error) return null;
+    if (json.error) throw new Error(json.error);
     // Same truncated-cold-start protection as the main grid fetch (see gridLooksSane) —
-    // a bad extra-tab grid returns null here, same as any other fetch failure, so the
+    // a bad extra-tab grid is treated the same as any other fetch failure below, so the
     // caller's existing "null → skip this section, don't render it broken" fallback
     // handles it rather than rendering a partially-parsed sqft/profile/owners/developments
     // section as if it were good live data. Uses relaxed thresholds (not the 5-row
     // default): these tabs can be legitimately tiny — a header row + a single data row
     // for a region with only one section — so only reject a response that's missing
     // even that minimum shape (still catches a cut-off-after-the-header response).
-    if (!gridLooksSane(json.grid, { minRows: 2, minNonEmpty: 2, minWidth: 2 })) return null;
+    if (!gridLooksSane(json.grid, { minRows: 2, minNonEmpty: 2, minWidth: 2 })) throw new Error("Extra-tab response looked truncated/incomplete");
     return json.grid;
-  } catch (err) { return null; }
+  } catch (err) {
+    // One quick retry before giving up. syncRegion fires up to 16 of these concurrently
+    // across all 4 regions on every sync — including the very first load and every hard
+    // refresh — which is exactly the kind of burst that trips a transient Apps Script
+    // cold-start/timeout/rate-limit hiccup on one or two of them. The periodic-refresh
+    // fallback (region.data's last-known-good value, see syncRegion) has nothing to fall
+    // back to on a genuinely fresh load, so a single failed attempt here used to show a
+    // section as flat-out missing until the next successful sync caught up — this retry
+    // catches the common transient case before it ever reaches that fallback.
+    if (attempt < 2) {
+      await new Promise((r) => setTimeout(r, 600));
+      return fetchExtraTab(cfg, tabName, attempt + 1);
+    }
+    return null;
+  }
 }
 
 let anyCorsError = false;
