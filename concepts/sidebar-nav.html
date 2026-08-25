@@ -485,6 +485,15 @@
   .diverge-no .diverge-track { display:flex; justify-content:flex-end; }
   .diverge-fill { height:100%; border-radius:4px; transition:width .4s ease; }
   .diverge-value { flex:none; font-size:11.5px; font-weight:600; color: var(--text-secondary); white-space:nowrap; }
+  /* Per-row total (e.g. "New South Wales · 900") sits under the row's center label, and the
+     Grand Total strip below the whole list mirrors the table view's own "Grand Total" row
+     (same navy-filled treatment as table.data-table tr.total-row) so the chart and table
+     views of the same data always agree on the total, never just the table. */
+  .diverge-row-total { display:block; font-size:10.5px; font-weight:500; color: var(--text-muted); margin-top:1px; }
+  .diverge-grand-total { display:flex; align-items:center; justify-content:center; gap:8px; flex-wrap:wrap; margin-top:14px; padding:9px 14px; border-radius:8px; background: var(--navy); color:#fff; font-size:12px; font-weight:700; }
+  .diverge-grand-total .dgt-label { font-weight:700; }
+  .diverge-grand-total .dgt-sep { opacity:.45; font-weight:400; }
+  .diverge-grand-total .dgt-figure { font-weight:400; opacity:.92; }
 
   .donut-wrap { display:flex; align-items:center; gap:16px; flex-wrap:wrap; justify-content:center; }
   .donut-center-value { font-size:18px; font-weight:700; fill: var(--text-primary); }
@@ -2418,17 +2427,35 @@ function stackedYesNoList(items) {
 // label column. Chosen (option C) specifically for the "Pricing Yes/No by
 // Region/State/Province" card; the separate "Pricing Yes/No by Operator Type" card still
 // uses stackedYesNoList above until/unless that table gets its own design pass.
+//
+// Finalized 2026-08-25: this is the approved design for that card (confirmed against the
+// sibling "<Region> — Pricing Yes/No breakdown" table further down the page), with one gap
+// closed — the chart previously had no total anywhere, while the table view right below it
+// already ends in a "Grand Total" row. Two additions close that gap without changing the
+// diverging-bar reading (No left / Yes right) at all: each row now also shows its own
+// available+not-available total under the state/province/region name, and the whole list
+// ends in a Grand Total strip that sums the very same `items` this function is already
+// given — so it can never drift out of sync with the per-row numbers above it, and it will
+// always match the table view's own Grand Total for the same region/data, since both are
+// computed from the same regionPriceSplit rows. This is generic per-region-label (`i.label`
+// is whatever regionLabel the region uses — Province/Region/State), so it already covers
+// every region with a regionSplit (Canada, UK, Australia) with no per-region special-casing.
 function divergingYesNoList(items) {
   const max = Math.max(1, ...items.map((i) => Math.max(i.yes || 0, i.no || 0)));
-  return `<div class="diverge-list">${items.map((i) => {
+  const grandYes = items.reduce((sum, i) => sum + (i.yes || 0), 0);
+  const grandNo = items.reduce((sum, i) => sum + (i.no || 0), 0);
+  const rows = items.map((i) => {
+    const rowTotal = (i.yes || 0) + (i.no || 0);
     const yesW = ((i.yes || 0) / max * 100).toFixed(1);
     const noW = ((i.no || 0) / max * 100).toFixed(1);
     return `<div class="diverge-row">
       <div class="diverge-no"><div class="diverge-track"><div class="diverge-fill" style="width:${noW}%;background:${NO_COLOR}"></div></div><span class="diverge-value">${fmtNum(i.no)}</span></div>
-      <div class="diverge-label">${i.label}</div>
+      <div class="diverge-label">${i.label}<span class="diverge-row-total">${fmtNum(rowTotal)} total</span></div>
       <div class="diverge-yes"><span class="diverge-value">${fmtNum(i.yes)}</span><div class="diverge-track"><div class="diverge-fill" style="width:${yesW}%;background:${YES_COLOR}"></div></div></div>
     </div>`;
-  }).join("")}</div>`;
+  }).join("");
+  return `<div class="diverge-list">${rows}</div>
+    <div class="diverge-grand-total"><span class="dgt-label">Grand Total</span><span class="dgt-sep">·</span><span class="dgt-figure">${fmtNum(grandNo)} not available</span><span class="dgt-sep">·</span><span class="dgt-figure">${fmtNum(grandYes)} available</span><span class="dgt-sep">·</span><span class="dgt-figure">${fmtNum(grandYes + grandNo)} stores</span></div>`;
 }
 // Renders a {columns, rows} table (from parseFacilityDetail / parseFacilityOperatorNrsf /
 // parsePricingHistory) exactly as the sheet has it right now: the header cells shown are the
