@@ -2428,18 +2428,19 @@ function stackedYesNoList(items) {
 // Region/State/Province" card; the separate "Pricing Yes/No by Operator Type" card still
 // uses stackedYesNoList above until/unless that table gets its own design pass.
 //
-// Finalized 2026-08-25: this is the approved design for that card (confirmed against the
-// sibling "<Region> — Pricing Yes/No breakdown" table further down the page), with one gap
-// closed — the chart previously had no total anywhere, while the table view right below it
-// already ends in a "Grand Total" row. Two additions close that gap without changing the
-// diverging-bar reading (No left / Yes right) at all: each row now also shows its own
-// available+not-available total under the state/province/region name, and the whole list
-// ends in a Grand Total strip that sums the very same `items` this function is already
-// given — so it can never drift out of sync with the per-row numbers above it, and it will
-// always match the table view's own Grand Total for the same region/data, since both are
-// computed from the same regionPriceSplit rows. This is generic per-region-label (`i.label`
-// is whatever regionLabel the region uses — Province/Region/State), so it already covers
-// every region with a regionSplit (Canada, UK, Australia) with no per-region special-casing.
+// Finalized 2026-08-25: this is the approved design for that card. It originally had no
+// total anywhere, while the sibling "<Region> — Pricing Yes/No breakdown" literal table
+// further down the page (Block B) already ended in a "Grand Total" row — so a Grand Total
+// was added here too (see below). Once this chart carried its own total, that sibling table
+// became a redundant second copy of the exact same numbers and was removed the same day (at
+// the user's request) — this chart is now the only place "<Region> — Pricing Yes/No" is
+// shown. Two additions close the total gap without changing the diverging-bar reading (No
+// left / Yes right) at all: each row now also shows its own available+not-available total
+// under the state/province/region name, and the whole list ends in a Grand Total strip that
+// sums the very same `items` this function is already given — so it can never drift out of
+// sync with the per-row numbers above it. This is generic per-region-label (`i.label` is
+// whatever regionLabel the region uses — Province/Region/State), so it already covers every
+// region with a regionSplit (Canada, UK, Australia) with no per-region special-casing.
 function divergingYesNoList(items) {
   const max = Math.max(1, ...items.map((i) => Math.max(i.yes || 0, i.no || 0)));
   const grandYes = items.reduce((sum, i) => sum + (i.yes || 0), 0);
@@ -2758,7 +2759,6 @@ function renderRegionBlock(region) {
     // though Block B's own row for it was untouched).
     const priceRows = (d.regionPriceSplit && d.regionPriceSplit.length) ? d.regionPriceSplit : regionSplitNorm.map((s) => ({label: s.label, columns: ["Price - No","Price - Yes"], values: [s.priceNo, s.priceYes], total: s.total}));
     const priceKeys = priceRows[0].columns;
-    const priceGrandTotal = priceRows.reduce((sum,s)=>sum+(s.total||0),0);
     const priceNoIdx = priceKeys.findIndex((k) => /no/i.test(k));
     const priceYesIdx = priceKeys.findIndex((k) => /yes/i.test(k));
     const pricingBar = divergingYesNoList(priceRows.map((s) => ({label: s.label, yes: priceYesIdx >= 0 ? s.values[priceYesIdx] : null, no: priceNoIdx >= 0 ? s.values[priceNoIdx] : null})));
@@ -2772,13 +2772,15 @@ function renderRegionBlock(region) {
         <table class="data-table"><thead><tr><th>${rl}</th>${regionKeys.map((k)=>`<th class="num">${k}</th>`).join("")}<th class="num">Grand Total</th></tr></thead>
         <tbody>${(() => { const maxRowTotal = Math.max(1, ...regionSplitNorm.map((s) => s.total || 0)); return regionSplitNorm.map((s) => `<tr><td><div class="inline-bar-track"><div class="inline-bar-fill" style="width:${((s.total||0)/maxRowTotal*100).toFixed(1)}%;background:${accent}"></div></div>${s.label}</td>${s.values.map((v)=>`<td class="num">${fmtNum(v)}</td>`).join("")}<td class="num"><strong>${fmtNum(s.total)}</strong></td></tr>`).join(""); })()}
         <tr class="total-row"><td>Grand Total</td>${regionKeys.map((k,i)=>`<td class="num">${fmtNum(regionSplitNorm.reduce((sum,s)=>sum+(s.values[i]||0),0))}</td>`).join("")}<td class="num"><strong>${fmtNum(storeTotal)}</strong></td></tr>
-        </tbody></table></div></div>
-      <div class="chart-row" style="grid-template-columns:1fr;"><div class="card">
-        <h3>${rl} — Pricing Yes/No breakdown</h3><div class="card-sub">Sheet order, as sorted in the source</div>
-        <table class="data-table"><thead><tr><th>${rl}</th>${priceKeys.map((k)=>`<th class="num">${k}</th>`).join("")}<th class="num">Grand Total</th></tr></thead>
-        <tbody>${priceRows.map((s) => `<tr><td>${s.label}</td>${s.values.map((v)=>`<td class="num">${fmtNum(v)}</td>`).join("")}<td class="num"><strong>${fmtNum(s.total)}</strong></td></tr>`).join("")}
-        <tr class="total-row"><td>Total</td>${priceKeys.map((k,i)=>`<td class="num">${fmtNum(priceRows.reduce((sum,s)=>sum+(s.values[i]||0),0))}</td>`).join("")}<td class="num"><strong>${fmtNum(priceGrandTotal)}</strong></td></tr>
         </tbody></table></div></div>`;
+    // The "<Region> — Pricing Yes/No breakdown" literal table (Block B) that used to render
+    // here, right below this comment, was removed 2026-08-25 at the user's request: its only
+    // job was showing the same per-region Yes/No counts and a Grand Total that the
+    // "Pricing Yes/No by ${rl}" diverging chart above now already shows (per-row totals plus
+    // its own Grand Total strip, added the same day), so the table was a redundant second
+    // copy of identical numbers. `priceRows`/`priceKeys`/`priceNoIdx`/`priceYesIdx` above are
+    // NOT dead code from this removal — they're still what builds `pricingBar` (the diverging
+    // chart itself), so they stay exactly as they were.
   } else {
     regionCharts = "";
   }
