@@ -3822,6 +3822,14 @@ document.getElementById("hardRefreshBtn").addEventListener("click", (e) => {
   closeGlassSelect(document.getElementById("refreshControlWrap"));
   playHardRefreshWave(e.currentTarget);
   try { localStorage.removeItem("stortrack_pos_cache_v1"); POS_CACHE = {}; } catch (e2) {}
+  // Also clear the "already synced this tab session" flag so the reload below actually
+  // performs a fresh live sync instead of just redisplaying whatever was cached from
+  // this tab's earlier sync (see SESSION_SYNCED_KEY / alreadySyncedThisSession at the
+  // bootstrap below) — otherwise "Hard refresh" reloads the page but silently keeps
+  // showing stale data, which defeats the point of a button literally described as
+  // "reloads everything fresh." "Refresh now" was never affected by this since it calls
+  // syncAll() directly, bypassing the once-per-session flag entirely.
+  try { sessionStorage.removeItem(SESSION_SYNCED_KEY); } catch (e3) {}
   setTimeout(() => {
     const url = new URL(location.href);
     url.searchParams.set("_hr", Date.now());
