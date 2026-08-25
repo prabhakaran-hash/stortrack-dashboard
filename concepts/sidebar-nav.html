@@ -3321,14 +3321,27 @@ function layoutFullscreenGrid(grid, items) {
   const probe = document.createElement("div");
   probe.style.cssText = "position:absolute; visibility:hidden; left:-99999px; top:0;";
   document.body.appendChild(probe);
+  // When exactly one table is showing (the single-table Full Screen view — every card in this
+  // popup gets here that way), a tall/vertical table shouldn't be squeezed into the same small
+  // fixed cap used to keep the multi-table masonry packing sane. Instead cap it against the
+  // popup's own available height (minus ~3 lines of breathing room) so it displays as fully as
+  // the popup allows. This only ever LOWERS the ceiling a table is allowed to reach — a short/
+  // horizontal table's natural height is already well under either cap, so it renders exactly
+  // as before either way; nothing here ever stretches a card taller than its own content.
+  const wrapEl = grid.parentElement;
+  const singleCapPx = items.length === 1 && wrapEl && wrapEl.clientHeight
+    ? Math.max(300, wrapEl.clientHeight - 60)
+    : null;
+  const tableCapPx = singleCapPx || 280;
+  const bodyCapPx = singleCapPx || 340;
   const measured = items.map((el) => {
     el.style.width = "fit-content";
     probe.appendChild(el);
     // The probe is off-screen (visibility:hidden) but still attached to the document, so it
     // has real layout — height caps need that to read an accurate scrollHeight, unlike a
     // fully detached node (which always reports 0).
-    ensureScrollableTables(el, 280);
-    capOversizedCardBodies(el, 340);
+    ensureScrollableTables(el, tableCapPx);
+    capOversizedCardBodies(el, bodyCapPx);
     const natural = el.scrollWidth || el.getBoundingClientRect().width;
     return { el, natural };
   });
