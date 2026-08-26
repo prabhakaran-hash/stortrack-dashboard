@@ -1123,9 +1123,9 @@
   .authgate-denied.authgate-show { display: block; }
 </style>
 </head>
-<body>
+<body class="auth-locked">
 
-<div id="authGateOverlay">
+<div id="authGateOverlay" class="authgate-hidden">
   <div class="authgate-card">
     <h2>Stortrack Dashboard</h2>
     <p>Sign in with your company Google account to view live self-storage data.</p>
@@ -1140,6 +1140,22 @@
     <div class="authgate-denied" id="authGateDenied">This account isn't on the approved list yet. Contact your admin to be added.</div>
   </div>
 </div>
+<script>
+/* Runs immediately after the gate markup, before the dashboard below is even parsed —
+   settles the sign-in/no-sign-in decision before first paint so there's no flash either
+   way: a returning signed-in visitor never sees the gate blink on screen, and a fresh
+   visitor never sees an instant of unblurred dashboard before the gate appears. */
+(function () {
+  var hasToken = false;
+  try { hasToken = !!sessionStorage.getItem("stortrack_id_token"); } catch (e) {}
+  var overlay = document.getElementById("authGateOverlay");
+  if (hasToken) {
+    document.body.classList.remove("auth-locked");
+  } else if (overlay) {
+    overlay.classList.remove("authgate-hidden");
+  }
+})();
+</script>
 
 <div class="viz-root">
 
