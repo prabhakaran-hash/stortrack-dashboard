@@ -1091,13 +1091,22 @@
     .cb-launcher { right:16px; bottom:16px; }
   }
 
-  /* ---- Company sign-in gate ---- */
+  /* ---- Company sign-in gate ----
+     The overlay itself is fully opaque (not translucent) so there is zero chance of numbers
+     showing through it. On top of that, body.auth-locked additionally blurs and darkens the
+     real dashboard content underneath — belt-and-suspenders, so even a stray re-render behind
+     the overlay (e.g. a background refresh tick) can't leave anything legible. */
   #authGateOverlay {
     position: fixed; inset: 0; z-index: 9999;
     display: flex; align-items: center; justify-content: center;
-    background: rgba(10, 17, 32, 0.92);
+    background: #0a1120;
   }
   #authGateOverlay.authgate-hidden { display: none; }
+  body.auth-locked .viz-root {
+    filter: blur(18px) brightness(0.4) saturate(0.7);
+    pointer-events: none;
+    user-select: none;
+  }
   .authgate-card {
     background: #111a2e; border: 1px solid rgba(255,255,255,0.08);
     border-radius: 12px; padding: 36px 40px; width: 340px; text-align: center;
@@ -1330,10 +1339,12 @@ function showAuthGate(denied) {
   const deniedNote = document.getElementById("authGateDenied");
   if (overlay) overlay.classList.remove("authgate-hidden");
   if (deniedNote) deniedNote.classList.toggle("authgate-show", !!denied);
+  document.body.classList.add("auth-locked");
 }
 function hideAuthGate() {
   const overlay = document.getElementById("authGateOverlay");
   if (overlay) overlay.classList.add("authgate-hidden");
+  document.body.classList.remove("auth-locked");
 }
 function handleAccessDenied() {
   AUTH_TOKEN = null;
