@@ -65,6 +65,7 @@
   })();
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   .viz-root {
     color-scheme: dark;
@@ -711,19 +712,6 @@
   html[data-theme="light"] .sidebar.glass:hover {
     background: linear-gradient(160deg, rgba(13,50,46,0.15), rgba(13,50,46,0.06) 60%), linear-gradient(0deg, #e3ece8, #e3ece8);
   }
-  /* Toggling "Analyst View" replaces #sidebarSections' whole innerHTML in one go (the toggle
-     bar's meta line and Select all/Clear all appearing, every section button gaining/losing
-     its checkbox, the scroll-cap kicking in) — a plain render() swaps all of that in a single
-     frame, which read as an abrupt "pop" rather than a toggle. This is a lightweight crossfade
-     bolted onto that same swap, not a rewrite of it: multiSelectToggle's click handler (below)
-     fades #sidebarSections out, lets the already-scheduled render() replace its innerHTML while
-     invisible, then fades the new content back in. The element itself is never removed/recreated
-     (render() only replaces its innerHTML), so this opacity transition on the container survives
-     the content swap untouched — no per-item animation needed for the checkboxes/meta line to
-     feel like they eased in rather than appeared. A small upward drift on fade-in (translateY)
-     is layered on for the same reason a fade alone can look a little flat. */
-  #sidebarSections { transition: opacity .16s ease, transform .16s ease; }
-  #sidebarSections.sb-sections-fading { opacity: 0; transform: translateY(3px); }
   /* Section list for the currently-selected region only — the region switch itself now
      happens via the single consolidated dropdown above (.sb-region-picker), so this is a
      flat list, not a per-region accordion. */
@@ -792,14 +780,6 @@
 
   .main-panel { flex:1; min-width:0; }
   .mp-empty-state { min-height:160px; font-size:14px; }
-  /* Same crossfade treatment as #sidebarSections above, applied to the main content area:
-     toggling Analyst View doesn't just change the sidebar checklist, it also swaps the main
-     panel between a single focused card and the stacked Compare view (or the "tick a section"
-     empty state), which is an even bigger visual jump than the sidebar's own change. Reuses
-     the identical class name/mechanism so multiSelectToggle's click handler can drive both
-     with the same two lines instead of two separate fade implementations. */
-  #mainPanelBody { transition: opacity .16s ease, transform .16s ease; }
-  #mainPanelBody.sb-sections-fading { opacity: 0; transform: translateY(3px); }
   /* Fullscreen toggle: only rendered as part of the actual table-viewing area, and only once
      something is actually selected — no button shows over the top KPI/region cards, and none
      shows on the "pick a section" empty state. Sits in a small toolbar row directly above
@@ -1110,9 +1090,48 @@
     .cb-panel { right:12px; left:12px; width:auto; bottom:80px; }
     .cb-launcher { right:16px; bottom:16px; }
   }
+
+  /* ---- Company sign-in gate ---- */
+  #authGateOverlay {
+    position: fixed; inset: 0; z-index: 9999;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(10, 17, 32, 0.92);
+  }
+  #authGateOverlay.authgate-hidden { display: none; }
+  .authgate-card {
+    background: #111a2e; border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px; padding: 36px 40px; width: 340px; text-align: center;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  }
+  .authgate-card h2 { font-size: 17px; margin: 0 0 6px; color: #f2f5fb; }
+  .authgate-card p { font-size: 13px; color: #a9b3c9; margin: 0 0 20px; line-height: 1.5; }
+  .authgate-btn-wrap { display: flex; justify-content: center; }
+  .authgate-denied {
+    display: none; margin-top: 16px; font-size: 12px; color: #ef4444;
+    background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3);
+    border-radius: 6px; padding: 8px 10px; text-align: left;
+  }
+  .authgate-denied.authgate-show { display: block; }
 </style>
 </head>
 <body>
+
+<div id="authGateOverlay">
+  <div class="authgate-card">
+    <h2>Stortrack Dashboard</h2>
+    <p>Sign in with your company Google account to view live self-storage data.</p>
+    <div id="g_id_onload"
+         data-client_id="863404922493-8rg0b3crdhk7r67rg4hsaohl5d03v6iq.apps.googleusercontent.com"
+         data-callback="handleCredentialResponse"
+         data-auto_prompt="false">
+    </div>
+    <div class="authgate-btn-wrap">
+      <div class="g_id_signin" data-type="standard" data-theme="outline" data-size="large" data-text="signin_with"></div>
+    </div>
+    <div class="authgate-denied" id="authGateDenied">This account isn't on the approved list yet. Contact your admin to be added.</div>
+  </div>
+</div>
+
 <div class="viz-root">
 
   <header class="top">
@@ -1293,6 +1312,46 @@
 </div>
 
 <script>
+/* =====================================================================================
+   COMPANY SIGN-IN GATE — Google Identity Services. The data endpoint (see fetchGrid /
+   fetchExtraTab below) stays reachable without a Google-enforced login on the URL itself
+   (that broke background sync previously, since a static page can't pass Google login on
+   an anonymous fetch). Instead, the signed-in user's Google ID token is attached to each
+   data request, and the Apps Script backend verifies it and checks the AccessList sheet
+   before returning any data. This function is called automatically by the Google Identity
+   Services library (see the data-callback attribute on the #g_id_onload div) once someone
+   signs in.
+   ===================================================================================== */
+let AUTH_TOKEN = null;
+try { AUTH_TOKEN = sessionStorage.getItem("stortrack_id_token"); } catch (e) {}
+
+function showAuthGate(denied) {
+  const overlay = document.getElementById("authGateOverlay");
+  const deniedNote = document.getElementById("authGateDenied");
+  if (overlay) overlay.classList.remove("authgate-hidden");
+  if (deniedNote) deniedNote.classList.toggle("authgate-show", !!denied);
+}
+function hideAuthGate() {
+  const overlay = document.getElementById("authGateOverlay");
+  if (overlay) overlay.classList.add("authgate-hidden");
+}
+function handleAccessDenied() {
+  AUTH_TOKEN = null;
+  try { sessionStorage.removeItem("stortrack_id_token"); } catch (e) {}
+  showAuthGate(true);
+}
+function handleCredentialResponse(response) {
+  AUTH_TOKEN = response.credential;
+  try { sessionStorage.setItem("stortrack_id_token", AUTH_TOKEN); } catch (e) {}
+  hideAuthGate();
+  if (typeof syncAll === "function") syncAll();
+}
+if (AUTH_TOKEN) {
+  hideAuthGate();
+} else {
+  showAuthGate(false);
+}
+
 /* =====================================================================================
    PARSERS — label-anchored, not fixed-column. Verified against real exports of the
    Canada / UK / Australia / New Zealand "Regional Summary" tabs before shipping.
@@ -2199,9 +2258,11 @@ async function fetchWithTimeout(url, opts) {
 async function fetchGrid(cfg) {
   // Preferred path: your private Apps Script endpoint (sheet stays unshared).
   if (APPS_SCRIPT_URL) {
-    const res = await fetchWithTimeout(`${APPS_SCRIPT_URL}?region=${cfg.key}&_ts=${Date.now()}`, { cache: "no-store" });
+    const tokenParam = AUTH_TOKEN ? `&token=${encodeURIComponent(AUTH_TOKEN)}` : "";
+    const res = await fetchWithTimeout(`${APPS_SCRIPT_URL}?region=${cfg.key}&_ts=${Date.now()}${tokenParam}`, { cache: "no-store" });
     if (!res.ok) throw new Error("HTTP " + res.status);
     const json = await res.json();
+    if (json.error === "ACCESS_DENIED") { handleAccessDenied(); throw new Error(json.error); }
     if (json.error) throw new Error(json.error);
     return json.grid;
   }
@@ -2218,9 +2279,11 @@ async function fetchExtraTab(cfg, tabName, attempt) {
   attempt = attempt || 1;
   if (!APPS_SCRIPT_URL || !tabName) return null;
   try {
-    const res = await fetchWithTimeout(`${APPS_SCRIPT_URL}?region=${cfg.key}&tab=${encodeURIComponent(tabName)}&_ts=${Date.now()}`, { cache: "no-store" });
+    const tokenParam = AUTH_TOKEN ? `&token=${encodeURIComponent(AUTH_TOKEN)}` : "";
+    const res = await fetchWithTimeout(`${APPS_SCRIPT_URL}?region=${cfg.key}&tab=${encodeURIComponent(tabName)}&_ts=${Date.now()}${tokenParam}`, { cache: "no-store" });
     if (!res.ok) throw new Error("HTTP " + res.status);
     const json = await res.json();
+    if (json.error === "ACCESS_DENIED") { handleAccessDenied(); throw new Error(json.error); }
     if (json.error) throw new Error(json.error);
     // Same truncated-cold-start protection as the main grid fetch (see gridLooksSane) —
     // a bad extra-tab grid is treated the same as any other fetch failure below, so the
@@ -3186,45 +3249,21 @@ function renderSidebar() {
   box.innerHTML = toggleBar + `<div class="sb-scroll-list">${listHtml}</div>` + vintageHtml;
 
   document.getElementById("multiSelectToggle")?.addEventListener("click", () => {
-    // Toggling Analyst View swaps a lot at once — the sidebar list gaining/losing checkboxes
-    // and its Select all/Clear all meta line, plus the main panel switching between a single
-    // focused card and the stacked Compare view. Doing that swap inside a plain render() is
-    // correct but instantaneous, which read as an abrupt "pop" rather than a toggle. Fade both
-    // containers out first, do the actual state change + render() while they're invisible (so
-    // there's nothing to visually jump on), then fade the freshly-rendered content back in on
-    // the next frame. Neither container is removed/recreated by render() — only their innerHTML
-    // is replaced — so the same two DOM nodes carry the CSS transition across the swap.
-    const sidebarBox = document.getElementById("sidebarSections");
-    const mainBox = document.getElementById("mainPanelBody");
-    sidebarBox?.classList.add("sb-sections-fading");
-    mainBox?.classList.add("sb-sections-fading");
-    setTimeout(() => {
-      multiSelectMode = !multiSelectMode;
-      if (!multiSelectMode) {
-        // Dropping back to single-select: keep whichever section was clicked most recently
-        // for this region (if any), drop the rest, so the original one-at-a-time view comes
-        // back exactly as it was rather than showing a stack of leftover picks. If someone
-        // built their whole selection through the multi-select checkboxes (never actually
-        // clicking a section while in single mode), lastSingleTitleByRegion stays empty —
-        // fall back to whatever's still ticked so switching off compare mode never surprises
-        // them with a blank panel when they clearly had something selected.
-        const sel = getFocusedSet(selectedRegion);
-        const keep = lastSingleTitleByRegion[selectedRegion] || [...sel][0] || null;
-        sel.clear();
-        if (keep) sel.add(keep);
-      }
-      render();
-      // render() rebuilt #sidebarSections'/#mainPanelBody's innerHTML but the container
-      // elements themselves are the same nodes, so the "fading" class (and its opacity:0)
-      // is still applied to the NEW content. Drop it on the next frame so the browser has
-      // committed the new (invisible) DOM first and the removal actually transitions in,
-      // rather than the fade-in racing the fade-out class being added and removed in the
-      // same frame (which some browsers coalesce into no transition at all).
-      requestAnimationFrame(() => {
-        document.getElementById("sidebarSections")?.classList.remove("sb-sections-fading");
-        document.getElementById("mainPanelBody")?.classList.remove("sb-sections-fading");
-      });
-    }, 130);
+    multiSelectMode = !multiSelectMode;
+    if (!multiSelectMode) {
+      // Dropping back to single-select: keep whichever section was clicked most recently
+      // for this region (if any), drop the rest, so the original one-at-a-time view comes
+      // back exactly as it was rather than showing a stack of leftover picks. If someone
+      // built their whole selection through the multi-select checkboxes (never actually
+      // clicking a section while in single mode), lastSingleTitleByRegion stays empty —
+      // fall back to whatever's still ticked so switching off compare mode never surprises
+      // them with a blank panel when they clearly had something selected.
+      const sel = getFocusedSet(selectedRegion);
+      const keep = lastSingleTitleByRegion[selectedRegion] || [...sel][0] || null;
+      sel.clear();
+      if (keep) sel.add(keep);
+    }
+    render();
   });
   document.getElementById("msClearAll")?.addEventListener("click", () => {
     // Only drop titles that actually belong to the region being looked at right now — the
