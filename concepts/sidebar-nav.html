@@ -65,6 +65,7 @@
   })();
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   .viz-root {
     color-scheme: dark;
@@ -1089,9 +1090,57 @@
     .cb-panel { right:12px; left:12px; width:auto; bottom:80px; }
     .cb-launcher { right:16px; bottom:16px; }
   }
+
+  /* ---- Company sign-in gate ----
+     The overlay itself is fully opaque (not translucent) so there is zero chance of numbers
+     showing through it. On top of that, body.auth-locked additionally blurs and darkens the
+     real dashboard content underneath — belt-and-suspenders, so even a stray re-render behind
+     the overlay (e.g. a background refresh tick) can't leave anything legible. */
+  #authGateOverlay {
+    position: fixed; inset: 0; z-index: 9999;
+    display: flex; align-items: center; justify-content: center;
+    background: #0a1120;
+  }
+  #authGateOverlay.authgate-hidden { display: none; }
+  body.auth-locked .viz-root {
+    filter: blur(18px) brightness(0.4) saturate(0.7);
+    pointer-events: none;
+    user-select: none;
+  }
+  .authgate-card {
+    background: #111a2e; border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px; padding: 36px 40px; width: 340px; text-align: center;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  }
+  .authgate-card h2 { font-size: 17px; margin: 0 0 6px; color: #f2f5fb; }
+  .authgate-card p { font-size: 13px; color: #a9b3c9; margin: 0 0 20px; line-height: 1.5; }
+  .authgate-btn-wrap { display: flex; justify-content: center; }
+  .authgate-denied {
+    display: none; margin-top: 16px; font-size: 12px; color: #ef4444;
+    background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3);
+    border-radius: 6px; padding: 8px 10px; text-align: left;
+  }
+  .authgate-denied.authgate-show { display: block; }
 </style>
 </head>
 <body>
+
+<div id="authGateOverlay">
+  <div class="authgate-card">
+    <h2>Stortrack Dashboard</h2>
+    <p>Sign in with your company Google account to view live self-storage data.</p>
+    <div id="g_id_onload"
+         data-client_id="863404922493-8rg0b3crdhk7r67rg4hsaohl5d03v6iq.apps.googleusercontent.com"
+         data-callback="handleCredentialResponse"
+         data-auto_prompt="false">
+    </div>
+    <div class="authgate-btn-wrap">
+      <div class="g_id_signin" data-type="standard" data-theme="outline" data-size="large" data-text="signin_with"></div>
+    </div>
+    <div class="authgate-denied" id="authGateDenied">This account isn't on the approved list yet. Contact your admin to be added.</div>
+  </div>
+</div>
+
 <div class="viz-root">
 
   <header class="top">
@@ -1272,6 +1321,53 @@
 </div>
 
 <script>
+/* =====================================================================================
+   COMPANY SIGN-IN GATE — Google Identity Services. The data endpoint (see fetchGrid /
+   fetchExtraTab below) stays reachable without a Google-enforced login on the URL itself
+   (that broke background sync previously, since a static page can't pass Google login on
+   an anonymous fetch). Instead, the signed-in user's Google ID token is attached to each
+   data request, and the Apps Script backend verifies it and checks the AccessList sheet
+   before returning any data. This function is called automatically by the Google Identity
+   Services library (see the data-callback attribute on the #g_id_onload div) once someone
+   signs in.
+   ===================================================================================== */
+let AUTH_TOKEN = null;
+try { AUTH_TOKEN = sessionStorage.getItem("stortrack_id_token"); } catch (e) {}
+
+function showAuthGate(denied) {
+  const overlay = document.getElementById("authGateOverlay");
+  const deniedNote = document.getElementById("authGateDenied");
+  if (overlay) overlay.classList.remove("authgate-hidden");
+  if (deniedNote) deniedNote.classList.toggle("authgate-show", !!denied);
+  document.body.classList.add("auth-locked");
+}
+function hideAuthGate() {
+  const overlay = document.getElementById("authGateOverlay");
+  if (overlay) overlay.classList.add("authgate-hidden");
+  document.body.classList.remove("auth-locked");
+}
+function handleAccessDenied() {
+  // Only show the red "not on the approved list" note when a real sign-in was attempted
+  // (AUTH_TOKEN was set going into this request). If there was no token at all, this is
+  // just the normal not-signed-in-yet state on first load — show the plain gate, not a
+  // denial message, since nobody has actually been rejected yet.
+  const wasSignedIn = !!AUTH_TOKEN;
+  AUTH_TOKEN = null;
+  try { sessionStorage.removeItem("stortrack_id_token"); } catch (e) {}
+  showAuthGate(wasSignedIn);
+}
+function handleCredentialResponse(response) {
+  AUTH_TOKEN = response.credential;
+  try { sessionStorage.setItem("stortrack_id_token", AUTH_TOKEN); } catch (e) {}
+  hideAuthGate();
+  if (typeof syncAll === "function") syncAll();
+}
+if (AUTH_TOKEN) {
+  hideAuthGate();
+} else {
+  showAuthGate(false);
+}
+
 /* =====================================================================================
    PARSERS — label-anchored, not fixed-column. Verified against real exports of the
    Canada / UK / Australia / New Zealand "Regional Summary" tabs before shipping.
@@ -2178,9 +2274,11 @@ async function fetchWithTimeout(url, opts) {
 async function fetchGrid(cfg) {
   // Preferred path: your private Apps Script endpoint (sheet stays unshared).
   if (APPS_SCRIPT_URL) {
-    const res = await fetchWithTimeout(`${APPS_SCRIPT_URL}?region=${cfg.key}&_ts=${Date.now()}`, { cache: "no-store" });
+    const tokenParam = AUTH_TOKEN ? `&token=${encodeURIComponent(AUTH_TOKEN)}` : "";
+    const res = await fetchWithTimeout(`${APPS_SCRIPT_URL}?region=${cfg.key}&_ts=${Date.now()}${tokenParam}`, { cache: "no-store" });
     if (!res.ok) throw new Error("HTTP " + res.status);
     const json = await res.json();
+    if (json.error === "ACCESS_DENIED") { handleAccessDenied(); throw new Error(json.error); }
     if (json.error) throw new Error(json.error);
     return json.grid;
   }
@@ -2197,9 +2295,11 @@ async function fetchExtraTab(cfg, tabName, attempt) {
   attempt = attempt || 1;
   if (!APPS_SCRIPT_URL || !tabName) return null;
   try {
-    const res = await fetchWithTimeout(`${APPS_SCRIPT_URL}?region=${cfg.key}&tab=${encodeURIComponent(tabName)}&_ts=${Date.now()}`, { cache: "no-store" });
+    const tokenParam = AUTH_TOKEN ? `&token=${encodeURIComponent(AUTH_TOKEN)}` : "";
+    const res = await fetchWithTimeout(`${APPS_SCRIPT_URL}?region=${cfg.key}&tab=${encodeURIComponent(tabName)}&_ts=${Date.now()}${tokenParam}`, { cache: "no-store" });
     if (!res.ok) throw new Error("HTTP " + res.status);
     const json = await res.json();
+    if (json.error === "ACCESS_DENIED") { handleAccessDenied(); throw new Error(json.error); }
     if (json.error) throw new Error(json.error);
     // Same truncated-cold-start protection as the main grid fetch (see gridLooksSane) —
     // a bad extra-tab grid is treated the same as any other fetch failure below, so the
