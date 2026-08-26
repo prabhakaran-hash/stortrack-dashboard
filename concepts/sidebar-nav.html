@@ -1123,9 +1123,9 @@
   .authgate-denied.authgate-show { display: block; }
 </style>
 </head>
-<body>
+<body class="auth-locked">
 
-<div id="authGateOverlay">
+<div id="authGateOverlay" class="authgate-hidden">
   <div class="authgate-card">
     <h2>Stortrack Dashboard</h2>
     <p>Sign in with your company Google account to view live self-storage data.</p>
@@ -1140,6 +1140,22 @@
     <div class="authgate-denied" id="authGateDenied">This account isn't on the approved list yet. Contact your admin to be added.</div>
   </div>
 </div>
+<script>
+/* Runs immediately after the gate markup, before the dashboard below is even parsed —
+   settles the sign-in/no-sign-in decision before first paint so there's no flash either
+   way: a returning signed-in visitor never sees the gate blink on screen, and a fresh
+   visitor never sees an instant of unblurred dashboard before the gate appears. */
+(function () {
+  var hasToken = false;
+  try { hasToken = !!sessionStorage.getItem("stortrack_id_token"); } catch (e) {}
+  var overlay = document.getElementById("authGateOverlay");
+  if (hasToken) {
+    document.body.classList.remove("auth-locked");
+  } else if (overlay) {
+    overlay.classList.remove("authgate-hidden");
+  }
+})();
+</script>
 
 <div class="viz-root">
 
@@ -1333,6 +1349,13 @@
    ===================================================================================== */
 let AUTH_TOKEN = null;
 try { AUTH_TOKEN = sessionStorage.getItem("stortrack_id_token"); } catch (e) {}
+// Becomes true after the first successful, authorized data fetch this page-load. Once true,
+// a single background/extra-tab request coming back ACCESS_DENIED with reason "invalid_token"
+// is treated as a transient hiccup (Apps Script's own live token-verification call to Google
+// occasionally fails under the ~16 concurrent requests a full sync fires — see fetchExtraTab's
+// retry comment) rather than a real logout. Without this, one flaky background request used to
+// forcibly sign out an otherwise-perfectly-signed-in user, producing a sign-in/sign-out loop.
+let hasLoadedDataThisSession = false;
 
 function showAuthGate(denied) {
   const overlay = document.getElementById("authGateOverlay");
@@ -1346,15 +1369,23 @@ function hideAuthGate() {
   if (overlay) overlay.classList.add("authgate-hidden");
   document.body.classList.remove("auth-locked");
 }
-function handleAccessDenied() {
-  // Only show the red "not on the approved list" note when a real sign-in was attempted
-  // (AUTH_TOKEN was set going into this request). If there was no token at all, this is
-  // just the normal not-signed-in-yet state on first load — show the plain gate, not a
-  // denial message, since nobody has actually been rejected yet.
-  const wasSignedIn = !!AUTH_TOKEN;
+function handleAccessDenied(reason) {
+  // "not_on_list" is a definitive result — the backend actually checked the signed-in email
+  // against the AccessList sheet and it isn't there. Always honor that one.
+  const isRealDenial = reason === "not_on_list";
+  if (!isRealDenial && hasLoadedDataThisSession) {
+    // We already have a working, authorized session — a lone "invalid_token" from one
+    // concurrent background request is almost certainly transient. Ignore it and let that
+    // one request's own retry/fallback logic handle it, instead of tearing down the session.
+    console.warn("Stortrack auth: ignoring transient access check (" + reason + ") — session already live.");
+    return;
+  }
+  // Only show the red "not on the approved list" note for a real denial. If there was no
+  // token at all (or the very first check ever failed), this is just the normal
+  // not-signed-in-yet state — show the plain gate, not a denial message.
   AUTH_TOKEN = null;
   try { sessionStorage.removeItem("stortrack_id_token"); } catch (e) {}
-  showAuthGate(wasSignedIn);
+  showAuthGate(isRealDenial);
 }
 function handleCredentialResponse(response) {
   AUTH_TOKEN = response.credential;
@@ -2278,8 +2309,9 @@ async function fetchGrid(cfg) {
     const res = await fetchWithTimeout(`${APPS_SCRIPT_URL}?region=${cfg.key}&_ts=${Date.now()}${tokenParam}`, { cache: "no-store" });
     if (!res.ok) throw new Error("HTTP " + res.status);
     const json = await res.json();
-    if (json.error === "ACCESS_DENIED") { handleAccessDenied(); throw new Error(json.error); }
+    if (json.error === "ACCESS_DENIED") { handleAccessDenied(json.reason); throw new Error(json.error); }
     if (json.error) throw new Error(json.error);
+    hasLoadedDataThisSession = true;
     return json.grid;
   }
   // Fallback path: Google's public CSV export (needs "anyone with the link").
@@ -2299,7 +2331,7 @@ async function fetchExtraTab(cfg, tabName, attempt) {
     const res = await fetchWithTimeout(`${APPS_SCRIPT_URL}?region=${cfg.key}&tab=${encodeURIComponent(tabName)}&_ts=${Date.now()}${tokenParam}`, { cache: "no-store" });
     if (!res.ok) throw new Error("HTTP " + res.status);
     const json = await res.json();
-    if (json.error === "ACCESS_DENIED") { handleAccessDenied(); throw new Error(json.error); }
+    if (json.error === "ACCESS_DENIED") { handleAccessDenied(json.reason); throw new Error(json.error); }
     if (json.error) throw new Error(json.error);
     // Same truncated-cold-start protection as the main grid fetch (see gridLooksSane) —
     // a bad extra-tab grid is treated the same as any other fetch failure below, so the
