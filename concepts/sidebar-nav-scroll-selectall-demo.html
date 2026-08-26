@@ -1347,9 +1347,14 @@ function hideAuthGate() {
   document.body.classList.remove("auth-locked");
 }
 function handleAccessDenied() {
+  // Only show the red "not on the approved list" note when a real sign-in was attempted
+  // (AUTH_TOKEN was set going into this request). If there was no token at all, this is
+  // just the normal not-signed-in-yet state on first load — show the plain gate, not a
+  // denial message, since nobody has actually been rejected yet.
+  const wasSignedIn = !!AUTH_TOKEN;
   AUTH_TOKEN = null;
   try { sessionStorage.removeItem("stortrack_id_token"); } catch (e) {}
-  showAuthGate(true);
+  showAuthGate(wasSignedIn);
 }
 function handleCredentialResponse(response) {
   AUTH_TOKEN = response.credential;
