@@ -4520,20 +4520,16 @@ document.getElementById("cbForm").addEventListener("submit", (e) => {
 render();
 if (!alreadySyncedThisSession) {
   try { sessionStorage.setItem(SESSION_SYNCED_KEY, "1"); } catch (e) {}
-  syncAll();
 } else {
-  // This tab session already completed a real, backend-confirmed sync earlier — that's
-  // exactly what alreadySyncedThisSession means, and it's tracked in sessionStorage
-  // specifically so it survives an ordinary browser refresh (not just in-app navigation
-  // like Store List and back), which is what makes it possible to skip a redundant sync
-  // here at all. But skipping the sync also means fetchGrid()/syncAll() — the ONLY places
-  // that ever call hideAuthGate() — never run on this load. A signed-in visitor with a
-  // token already verified earlier in this same tab session was therefore left staring at
-  // a permanently blurred gate on every subsequent refresh, forever, with no backend call
-  // ever happening to unlock it. Since this exact token already passed a real access check
-  // earlier in this session, unlock immediately here too, consistent with why the sync
-  // itself is being skipped in the first place.
-  if (AUTH_TOKEN) hideAuthGate();
+  // This tab session already completed a real, backend-confirmed sync earlier, so show
+  // that cached snapshot's own last-synced label immediately (avoids a "Cached"-looking
+  // flash while the real re-check below runs) — but this branch must NEVER unlock the
+  // gate or count as an access check by itself. It used to also call hideAuthGate() here
+  // directly, trusting that an earlier successful check in this tab session was still
+  // good enough — but that let a since-revoked account keep getting in with nothing more
+  // than an ordinary refresh, since skipping the check meant nothing ever re-verified
+  // their access. Every load now re-verifies for real via syncAll() below, no exceptions;
+  // this branch only ever affects the label text shown while that runs.
   const mostRecent = REGIONS.reduce((acc, r) => (r.lastSynced && (!acc || r.lastSynced > acc) ? r.lastSynced : acc), null);
   document.getElementById("syncDot").className = "dot live";
   document.getElementById("syncText").textContent = mostRecent
@@ -4543,6 +4539,11 @@ if (!alreadySyncedThisSession) {
     ? " Last synced " + mostRecent.toLocaleTimeString() + "."
     : "");
 }
+// Always re-verify with the backend on every load — an already-signed-in tab is not proof
+// access hasn't been revoked since the last check. This is the one and only place a fresh
+// page load ever triggers the real access check; the "once per session" behavior above now
+// only controls the label shown while it runs, never whether it runs.
+syncAll();
 
 // Safety net for the "opened the dashboard after a long halt, some headers/data looked
 // missing until a manual refresh" report: the once-per-session auto-sync above is by
