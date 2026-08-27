@@ -4522,6 +4522,18 @@ if (!alreadySyncedThisSession) {
   try { sessionStorage.setItem(SESSION_SYNCED_KEY, "1"); } catch (e) {}
   syncAll();
 } else {
+  // This tab session already completed a real, backend-confirmed sync earlier — that's
+  // exactly what alreadySyncedThisSession means, and it's tracked in sessionStorage
+  // specifically so it survives an ordinary browser refresh (not just in-app navigation
+  // like Store List and back), which is what makes it possible to skip a redundant sync
+  // here at all. But skipping the sync also means fetchGrid()/syncAll() — the ONLY places
+  // that ever call hideAuthGate() — never run on this load. A signed-in visitor with a
+  // token already verified earlier in this same tab session was therefore left staring at
+  // a permanently blurred gate on every subsequent refresh, forever, with no backend call
+  // ever happening to unlock it. Since this exact token already passed a real access check
+  // earlier in this session, unlock immediately here too, consistent with why the sync
+  // itself is being skipped in the first place.
+  if (AUTH_TOKEN) hideAuthGate();
   const mostRecent = REGIONS.reduce((acc, r) => (r.lastSynced && (!acc || r.lastSynced > acc) ? r.lastSynced : acc), null);
   document.getElementById("syncDot").className = "dot live";
   document.getElementById("syncText").textContent = mostRecent
