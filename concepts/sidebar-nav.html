@@ -1142,17 +1142,19 @@
 </div>
 <script>
 /* Runs immediately after the gate markup, before the dashboard below is even parsed —
-   settles the sign-in/no-sign-in decision before first paint so there's no flash either
-   way: a returning signed-in visitor never sees the gate blink on screen, and a fresh
-   visitor never sees an instant of unblurred dashboard before the gate appears. */
+   settles the "definitely not signed in" case before first paint, so a fresh visitor
+   never sees an instant of unblurred dashboard before the gate appears.
+   Deliberately does NOT do the reverse (unlock early just because a saved token exists):
+   a saved token isn't proof of current access — it could be expired, or that person
+   could have been removed from the approved list since their last visit. The screen
+   stays locked either way until the real backend check (further down the page) confirms
+   live, authorized data — that's the only thing that's allowed to unlock it. */
 (function () {
   var hasToken = false;
   try { hasToken = !!sessionStorage.getItem("stortrack_id_token"); } catch (e) {}
-  var overlay = document.getElementById("authGateOverlay");
-  if (hasToken) {
-    document.body.classList.remove("auth-locked");
-  } else if (overlay) {
-    overlay.classList.remove("authgate-hidden");
+  if (!hasToken) {
+    var overlay = document.getElementById("authGateOverlay");
+    if (overlay) overlay.classList.remove("authgate-hidden");
   }
 })();
 </script>
@@ -1388,13 +1390,20 @@ function handleAccessDenied(reason) {
   showAuthGate(isRealDenial);
 }
 function handleCredentialResponse(response) {
+  // Do NOT hide the gate here. Google succeeding just proves this is a real Google
+  // account — it says nothing about whether that account is actually on our approved
+  // AccessList. The gate stays up (and the dashboard stays blurred) until the backend
+  // confirms real, authorized data — see the hideAuthGate() call in fetchGrid() below.
+  // Without this, an unapproved Google account could briefly see real data every time,
+  // for as long as the first request round-trip takes, before getting logged back out.
   AUTH_TOKEN = response.credential;
   try { sessionStorage.setItem("stortrack_id_token", AUTH_TOKEN); } catch (e) {}
-  hideAuthGate();
   if (typeof syncAll === "function") syncAll();
 }
 if (AUTH_TOKEN) {
-  hideAuthGate();
+  // Same reasoning as above: a token saved from an earlier visit isn't proof of current
+  // access (it could have expired, or the person could have been removed from the
+  // AccessList since). Keep the gate up until a live request confirms access again.
 } else {
   showAuthGate(false);
 }
@@ -2311,7 +2320,12 @@ async function fetchGrid(cfg) {
     const json = await res.json();
     if (json.error === "ACCESS_DENIED") { handleAccessDenied(json.reason); throw new Error(json.error); }
     if (json.error) throw new Error(json.error);
+    // This is the one and only place the gate is allowed to come down: real, authorized
+    // data just came back from the backend for this exact signed-in account. Calling it
+    // here (instead of the moment Google sign-in succeeds) closes the gap where an
+    // unapproved account could otherwise see a flash of real data before being caught.
     hasLoadedDataThisSession = true;
+    hideAuthGate();
     return json.grid;
   }
   // Fallback path: Google's public CSV export (needs "anyone with the link").
