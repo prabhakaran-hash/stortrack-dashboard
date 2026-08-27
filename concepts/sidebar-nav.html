@@ -1358,6 +1358,14 @@ try { AUTH_TOKEN = sessionStorage.getItem("stortrack_id_token"); } catch (e) {}
 // retry comment) rather than a real logout. Without this, one flaky background request used to
 // forcibly sign out an otherwise-perfectly-signed-in user, producing a sign-in/sign-out loop.
 let hasLoadedDataThisSession = false;
+// Becomes true the moment ANY fetchGrid() request gets back a real response from the
+// backend that isn't ACCESS_DENIED — even if that response is otherwise malformed, or the
+// request never fully succeeds. This is intentionally weaker than hasLoadedDataThisSession:
+// it exists so that a genuinely signed-in, approved visitor whose first sync hits a
+// network hiccup or a bad/truncated response (not a denial) isn't left staring at a
+// permanently blurred, locked screen with nothing to click — see the fallback at the end
+// of syncAll() below, which uses this to unlock in that specific situation.
+let tokenConfirmedNotDenied = false;
 
 function showAuthGate(denied) {
   const overlay = document.getElementById("authGateOverlay");
@@ -2319,6 +2327,9 @@ async function fetchGrid(cfg) {
     if (!res.ok) throw new Error("HTTP " + res.status);
     const json = await res.json();
     if (json.error === "ACCESS_DENIED") { handleAccessDenied(json.reason); throw new Error(json.error); }
+    // We heard back from the backend for this exact token and it was NOT rejected as
+    // unauthorized — regardless of whatever else this response does or doesn't contain.
+    tokenConfirmedNotDenied = true;
     if (json.error) throw new Error(json.error);
     // This is the one and only place the gate is allowed to come down: real, authorized
     // data just came back from the backend for this exact signed-in account. Calling it
@@ -2492,6 +2503,17 @@ async function syncAll() {
   else { dot.className = "dot error"; text.textContent = "Sync failed — check sheet sharing"; consecutiveFailures++; }
   document.getElementById("corsWarning").style.display = anyCorsError ? "block" : "none";
   document.getElementById("footNote").textContent = "Sources: live Google Sheets (\"Regional Summary\" tab). Last synced " + new Date().toLocaleTimeString() + ".";
+  // Safety net: if we have a signed-in token, nothing about this sync attempt was ever
+  // flagged as an actual access denial, but the gate is still up (e.g. every region hit a
+  // network hiccup, timeout, or a malformed response on this particular sync — no clean
+  // authorized data ever came back to trigger the normal hideAuthGate() in fetchGrid()),
+  // unlock anyway rather than leaving an approved, signed-in visitor stuck staring at a
+  // permanently blurred screen with nothing to click. They'll see the page's own normal
+  // "sync failed / partially synced" state instead, which recovers itself on the next
+  // automatic retry — exactly like any other sync hiccup already does for a signed-in user.
+  if (AUTH_TOKEN && !hasLoadedDataThisSession && tokenConfirmedNotDenied) {
+    hideAuthGate();
+  }
   render();
   syncInFlight = false;
 }
