@@ -1396,19 +1396,27 @@ function handleAccessDenied(reason) {
   // against the AccessList sheet and it isn't there. Always honor that one.
   const isRealDenial = reason === "not_on_list";
   if (isRealDenial) sawExplicitDenial = true;
-  if (!isRealDenial && hasLoadedDataThisSession) {
-    // We already have a working, authorized session — a lone "invalid_token" from one
-    // concurrent background request is almost certainly transient. Ignore it and let that
-    // one request's own retry/fallback logic handle it, instead of tearing down the session.
-    console.warn("Stortrack auth: ignoring transient access check (" + reason + ") — session already live.");
+  if (!isRealDenial) {
+    // Any non-definitive reason (e.g. "invalid_token") is treated as transient noise —
+    // deliberately regardless of hasLoadedDataThisSession. A full page load/refresh can
+    // fire up to ~16 concurrent requests using the same saved token, and one of them
+    // occasionally hits a hiccup verifying it with Google. Previously this branch only
+    // ignored that hiccup once a session had ALREADY loaded data successfully — so on the
+    // very first sync after a refresh (before anything had succeeded yet), a single early
+    // "invalid_token" wiped the saved token and threw the blur gate up. With the token
+    // gone, every other concurrent request that refresh then failed too (nothing left to
+    // send), so nothing could ever recover — a permanent blur for an already-signed-in,
+    // approved visitor. Ignoring every non-definitive reason unconditionally closes that
+    // gap; only a real "not_on_list" verdict below is ever allowed to clear the token or
+    // lock the screen.
+    console.warn("Stortrack auth: ignoring transient access check (" + reason + ").");
     return;
   }
-  // Only show the red "not on the approved list" note for a real denial. If there was no
-  // token at all (or the very first check ever failed), this is just the normal
-  // not-signed-in-yet state — show the plain gate, not a denial message.
+  // Only a real denial reaches here. Clear the token and show the "not on the approved
+  // list" note.
   AUTH_TOKEN = null;
   try { sessionStorage.removeItem("stortrack_id_token"); } catch (e) {}
-  showAuthGate(isRealDenial);
+  showAuthGate(true);
 }
 function handleCredentialResponse(response) {
   // Do NOT hide the gate here. Google succeeding just proves this is a real Google
