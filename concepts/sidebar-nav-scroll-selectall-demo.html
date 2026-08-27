@@ -1366,6 +1366,18 @@ let hasLoadedDataThisSession = false;
 // permanently blurred, locked screen with nothing to click — see the fallback at the end
 // of syncAll() below, which uses this to unlock in that specific situation.
 let tokenConfirmedNotDenied = false;
+// True only once the backend has explicitly said "not_on_list" for the current sign-in —
+// a real, definitive denial. This is deliberately separate from tokenConfirmedNotDenied:
+// that flag needs an actual successful response to flip true, so if EVERY region request
+// this sync fails before ever getting a response back at all (a total network outage, or
+// Apps Script briefly rejecting all ~16 concurrent calls on a plain refresh with an
+// existing token), tokenConfirmedNotDenied never becomes true either — and a genuinely
+// signed-in, approved visitor was left staring at a permanently blurred screen with no
+// error, no retry, and no way out. sawExplicitDenial only flips on a real "not_on_list"
+// verdict, so the syncAll() safety net below can safely unlock on "no denial happened"
+// instead of requiring "a full success happened" — while still re-locking immediately the
+// moment a real denial does come back, from handleAccessDenied above.
+let sawExplicitDenial = false;
 
 function showAuthGate(denied) {
   const overlay = document.getElementById("authGateOverlay");
@@ -1383,6 +1395,7 @@ function handleAccessDenied(reason) {
   // "not_on_list" is a definitive result — the backend actually checked the signed-in email
   // against the AccessList sheet and it isn't there. Always honor that one.
   const isRealDenial = reason === "not_on_list";
+  if (isRealDenial) sawExplicitDenial = true;
   if (!isRealDenial && hasLoadedDataThisSession) {
     // We already have a working, authorized session — a lone "invalid_token" from one
     // concurrent background request is almost certainly transient. Ignore it and let that
@@ -2503,15 +2516,20 @@ async function syncAll() {
   else { dot.className = "dot error"; text.textContent = "Sync failed — check sheet sharing"; consecutiveFailures++; }
   document.getElementById("corsWarning").style.display = anyCorsError ? "block" : "none";
   document.getElementById("footNote").textContent = "Sources: live Google Sheets (\"Regional Summary\" tab). Last synced " + new Date().toLocaleTimeString() + ".";
-  // Safety net: if we have a signed-in token, nothing about this sync attempt was ever
-  // flagged as an actual access denial, but the gate is still up (e.g. every region hit a
-  // network hiccup, timeout, or a malformed response on this particular sync — no clean
-  // authorized data ever came back to trigger the normal hideAuthGate() in fetchGrid()),
-  // unlock anyway rather than leaving an approved, signed-in visitor stuck staring at a
-  // permanently blurred screen with nothing to click. They'll see the page's own normal
-  // "sync failed / partially synced" state instead, which recovers itself on the next
-  // automatic retry — exactly like any other sync hiccup already does for a signed-in user.
-  if (AUTH_TOKEN && !hasLoadedDataThisSession && tokenConfirmedNotDenied) {
+  // Safety net: if we have a signed-in token and nothing about this sync attempt was ever
+  // flagged as an actual, explicit access denial, unlock — regardless of whether any
+  // individual request actually got a clean response back. This covers two cases: a
+  // partial hiccup (some regions failed, tokenConfirmedNotDenied got set by whichever
+  // region *did* get a real response), and a total one (EVERY region request failed before
+  // ever getting a response at all — a network outage, or Apps Script briefly rejecting a
+  // burst of ~16 concurrent calls on a plain refresh with an existing token — in which case
+  // tokenConfirmedNotDenied never got set either, since nothing ever came back). Either way,
+  // an approved, signed-in visitor should never be left staring at a permanently blurred
+  // screen with no error and nothing to click. They'll see the page's own normal "sync
+  // failed / partially synced" state instead, which recovers itself on the next automatic
+  // retry — exactly like any other sync hiccup already does. The moment a real denial DOES
+  // come back (now or on a later retry), handleAccessDenied() re-locks immediately.
+  if (AUTH_TOKEN && !hasLoadedDataThisSession && !sawExplicitDenial) {
     hideAuthGate();
   }
   render();
