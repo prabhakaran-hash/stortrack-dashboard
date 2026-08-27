@@ -4377,6 +4377,21 @@ function cbAnswer(rawText) {
    only has to place them once. Pointer Events cover mouse, touch, and pen with one code path. */
 function cbClampNum(val, min, max) { return Math.min(Math.max(val, min), max); }
 
+// The display-scale compensation script (elsewhere on this page) sets a non-standard CSS
+// `zoom` on <html> to make the dashboard the right physical size on low/unscaled-DPI screens.
+// Under that zoom, two coordinate spaces diverge: PHYSICAL/rendered values (getBoundingClientRect,
+// pointer clientX/clientY, visualViewport.width/height) vs LOGICAL/pre-zoom values (offsetWidth/
+// offsetHeight, window.innerWidth/innerHeight, and any value written into el.style.left/top —
+// the browser re-multiplies a style.left/top value by the zoom factor again at render time).
+// Mixing the two produces a position error that scales with zoom and grows with distance from
+// the origin — this is what sent the chat panel off to the right when opened via a real click.
+// Everything below does its math in PHYSICAL space and converts to LOGICAL only at the final
+// style.left/top write.
+function cbZoomFactor() {
+  const z = parseFloat(document.documentElement.style.zoom);
+  return (z && isFinite(z) && z > 0) ? z : 1;
+}
+
 function cbLoadPos(key) {
   try {
     const raw = localStorage.getItem(key);
@@ -4392,13 +4407,22 @@ function cbSavePos(key, left, top) {
 }
 
 function cbApplyPos(el, left, top) {
-  const w = el.offsetWidth, h = el.offsetHeight;
-  const maxLeft = Math.max(0, window.innerWidth - w);
-  const maxTop = Math.max(0, window.innerHeight - h);
+  // `left`/`top` are PHYSICAL (rendered) coordinates — callers derive them from
+  // getBoundingClientRect() or pointer clientX/clientY. Clamp in that same physical space
+  // (visualViewport, falling back to innerWidth/innerHeight when no zoom compensation is
+  // active so the two are equivalent), then divide by the zoom factor only at the very end,
+  // since style.left/top is read back in LOGICAL space and gets zoom-multiplied again on render.
+  const rect = el.getBoundingClientRect();
+  const w = rect.width || el.offsetWidth, h = rect.height || el.offsetHeight;
+  const vw = (window.visualViewport && window.visualViewport.width) || window.innerWidth;
+  const vh = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
+  const maxLeft = Math.max(0, vw - w);
+  const maxTop = Math.max(0, vh - h);
   const clampedLeft = cbClampNum(left, 0, maxLeft);
   const clampedTop = cbClampNum(top, 0, maxTop);
-  el.style.left = clampedLeft + "px";
-  el.style.top = clampedTop + "px";
+  const z = cbZoomFactor();
+  el.style.left = (clampedLeft / z) + "px";
+  el.style.top = (clampedTop / z) + "px";
   el.style.right = "auto";
   el.style.bottom = "auto";
   return { left: clampedLeft, top: clampedTop };
@@ -4453,9 +4477,16 @@ function cbMakeDraggable(el, handle, storageKey) {
   // falling back to the default corner anchor self-heals anyone already carrying a bad value.
   const saved = cbLoadPos(storageKey);
   if (saved) {
-    const w = el.offsetWidth || 78, h = el.offsetHeight || 78;
-    const onScreen = (saved.left + w) > 0 && saved.left < window.innerWidth &&
-                      (saved.top + h) > 0 && saved.top < window.innerHeight;
+    // saved.left/top are PHYSICAL (they were captured from getBoundingClientRect() when the
+    // user last dragged this element) — compare against physical element/viewport bounds too,
+    // not the logical offsetWidth/innerWidth, or a perfectly on-screen saved position under
+    // zoom compensation can be misjudged as off-screen (or vice versa) and wrongly discarded/kept.
+    const selfRect = el.getBoundingClientRect();
+    const w = selfRect.width || el.offsetWidth || 78, h = selfRect.height || el.offsetHeight || 78;
+    const vw = (window.visualViewport && window.visualViewport.width) || window.innerWidth;
+    const vh = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
+    const onScreen = (saved.left + w) > 0 && saved.left < vw &&
+                      (saved.top + h) > 0 && saved.top < vh;
     if (onScreen) {
       cbApplyPos(el, saved.left, saved.top);
     } else {
@@ -4477,7 +4508,11 @@ function cbPositionPanelNearLauncher() {
   const launcher = document.getElementById("cbLauncher");
   const panel = document.getElementById("cbPanel");
   const lRect = launcher.getBoundingClientRect();
-  const pw = panel.offsetWidth || 348, ph = panel.offsetHeight || 468;
+  // Measure the panel physically too (getBoundingClientRect), not via offsetWidth/offsetHeight
+  // (logical/pre-zoom) — mixing that logical size with the physical lRect math below is what
+  // sent the opened panel off to the right under zoom compensation.
+  const pRect = panel.getBoundingClientRect();
+  const pw = pRect.width || panel.offsetWidth || 348, ph = pRect.height || panel.offsetHeight || 468;
   let left = lRect.right - pw;
   let top = lRect.top - ph - 12;
   if (top < 8) top = lRect.bottom + 12; // not enough room above the launcher — drop it below instead
