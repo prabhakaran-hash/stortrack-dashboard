@@ -820,15 +820,22 @@
      take the whole viewport. Unfilled grid slots render as empty cards, same as index.html's
      own emptyCard() placeholders, so "select 1 of 2 slots" visibly leaves the other one blank
      rather than collapsing the layout. */
-  /* "Huge" popup: nearly fills the viewport (98vw/98vh, tiny outer padding) rather than sitting
-     in a comparatively small centered card — the actual data grid is the point, so the chrome
-     around it should take as little room as possible. */
+  /* "Huge" popup: nearly fills the viewport, tiny outer padding, rather than sitting in a
+     comparatively small centered card — the actual data grid is the point, so the chrome
+     around it should take as little room as possible.
+     Sized with % (98%) against .mp-fs-overlay, NOT vw/vh directly, on purpose: the display-scale
+     "zoom" compensation script up top applies non-standard CSS `zoom` to <html>, and in this
+     browser vw/vh units resolve against the pre-zoom window size and then get zoom-multiplied
+     again on top when rendered — a compounding mismatch that made this panel render taller than
+     the actual screen (overflowing off both the top and bottom) whenever zoom was active. Plain
+     percentage sizing against .mp-fs-overlay (which is position:fixed;inset:0 and always exactly
+     matches the real viewport, zoom or not) doesn't have that bug — confirmed empirically. */
   .mp-fs-overlay { position:fixed; inset:0; z-index:300; display:flex; align-items:center; justify-content:center; padding:10px; }
   .mp-fs-overlay[hidden] { display:none; }
   .mp-fs-backdrop { position:absolute; inset:0; background:rgba(4,10,9,0.72); backdrop-filter: blur(3px); }
   html[data-theme="light"] .mp-fs-backdrop { background:rgba(20,30,28,0.45); }
   .mp-fs-panel {
-    position:relative; width:min(1800px, 98vw); height:98vh; display:flex; flex-direction:column;
+    position:relative; width:min(1800px, 98%); height:98%; display:flex; flex-direction:column;
     background: var(--surface-0, #0d1a17); border:1px solid var(--border); border-radius:16px;
     box-shadow: 0 24px 60px rgba(0,0,0,0.5); overflow:hidden;
   }
@@ -1028,7 +1035,11 @@
   .cb-launcher svg { display:block; pointer-events:none; }
   .cb-panel {
     position: fixed; right: 22px; bottom: 86px; z-index: 200;
-    width: 348px; max-width: calc(100vw - 32px); height: 468px; max-height: calc(100vh - 130px);
+    /* max-width/height use % (of the viewport, since this is itself position:fixed), not
+       vw/vh — see the long comment on .mp-fs-panel above for why: under the display-scale zoom
+       compensation script, vw/vh render at the wrong size on some screens, while % on a
+       position:fixed element always matches the true viewport correctly. */
+    width: 348px; max-width: calc(100% - 32px); height: 468px; max-height: calc(100% - 130px);
     display:flex; flex-direction:column;
     /* Deliberately near-opaque (not a translucent 10%→82% ramp): on the light theme, the
        dashboard behind this panel is mostly white cards, and a low-opacity corner let that
