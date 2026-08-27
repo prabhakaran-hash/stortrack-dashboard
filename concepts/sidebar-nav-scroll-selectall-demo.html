@@ -1102,7 +1102,20 @@
     background: #0a1120;
   }
   #authGateOverlay.authgate-hidden { display: none; }
-  body.auth-locked .viz-root {
+  body.auth-locked .blur-target {
+    /* Applied to .blur-target (a wrapper around header + .wrap only), not .viz-root itself.
+       filter on an ancestor creates a new containing block for any position:fixed descendant,
+       which used to silently reposition the chat launcher/panel, the full-screen table overlay,
+       and the sidebar-dropdown scrim relative to .viz-root's own (often taller-than-viewport)
+       box instead of the real screen the instant the gate locked even once — invisible on most
+       displays since .viz-root's height is usually close to the viewport's, but badly wrong on
+       displays where the display-scale "zoom" compensation below makes that gap large (seen on
+       Ubuntu/low-DPI screens). Those elements now live outside .blur-target as plain siblings of
+       it, so they're never subject to this filter and stay correctly viewport-relative. The
+       opaque #authGateOverlay (further outside still) remains the actual thing blocking
+       interaction while locked; this filter is purely the visual dim/blur of the content behind
+       it, so nothing here weakens the lock itself.
+    */
     filter: blur(18px) brightness(0.4) saturate(0.7);
     pointer-events: none;
     user-select: none;
@@ -1161,6 +1174,21 @@
 
 <div class="viz-root">
 
+  <!-- blur-target wraps only the content that should visually blur/dim while the auth gate is
+       locked (see body.auth-locked .blur-target below). It deliberately does NOT wrap
+       #sbDropdownScrim, #mpFsOverlay, or the chat launcher/panel: those are all position:fixed,
+       and CSS filter on an ancestor creates a new containing block for fixed descendants —
+       meaning while this used to be applied directly to .viz-root, any position:fixed element
+       nested inside it would stop being positioned relative to the real viewport and instead be
+       positioned relative to .viz-root's own (often much taller, scrollable) box the instant the
+       gate locked even once. That's what was silently moving the chat launcher and the full
+       screen table view far outside the visible screen on Ubuntu/low-DPI displays, where the
+       display-scale "zoom" compensation below makes .viz-root's rendered height diverge from the
+       viewport height far more than usual. Keeping every position:fixed element as a direct,
+       never-filtered child of .viz-root (siblings of this wrapper, not descendants of it) avoids
+       the whole bug class regardless of zoom or scroll height. -->
+  <div class="blur-target">
+
   <header class="top">
     <div class="header-inner">
       <div class="brand">
@@ -1212,7 +1240,6 @@
     ping me with what you're seeing and we'll fix the sync without making the sheet more public than it already is.
   </div>
 
-  <div id="sbDropdownScrim" aria-hidden="true"></div>
   <div class="dash-shell">
     <aside class="sidebar glass" id="sidebarNav">
       <div class="region-picker sb-region-picker">
@@ -1235,6 +1262,13 @@
     </main>
   </div>
 
+
+  <footer class="foot" id="footNote">Sources: live Google Sheets, polled client-side.</footer>
+  </div>
+
+  </div><!-- /.blur-target -->
+
+  <div id="sbDropdownScrim" aria-hidden="true"></div>
   <div class="mp-fs-overlay" id="mpFsOverlay" hidden>
     <div class="mp-fs-backdrop" id="mpFsBackdrop"></div>
     <div class="mp-fs-panel" role="dialog" aria-modal="true" aria-label="Full screen table view" id="mpFsPanel">
@@ -1309,9 +1343,6 @@
       </div>
       <div class="mp-fs-grid-wrap"><div class="mp-fs-grid" id="mpFsGrid"></div></div>
     </div>
-  </div>
-
-  <footer class="foot" id="footNote">Sources: live Google Sheets, polled client-side.</footer>
   </div>
 
   <button class="cb-launcher" id="cbLauncher" aria-label="Open Dashboard Assistant" title="Dashboard Assistant">
