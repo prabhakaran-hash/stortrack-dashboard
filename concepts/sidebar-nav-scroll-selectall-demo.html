@@ -4425,9 +4425,26 @@ function cbMakeDraggable(el, handle, storageKey) {
   handle.addEventListener("pointerup", endDrag);
   handle.addEventListener("pointercancel", endDrag);
 
-  // Restore a previously-saved position immediately, if the user has moved this before.
+  // Restore a previously-saved position immediately, if the user has moved this before —
+  // but only if it still lands (at least partly) on today's actual screen. A saved position
+  // can go stale and end up entirely off-screen through no fault of dragging itself — e.g. a
+  // now-fixed bug that once mis-measured position while the page was blurred/zoomed baked a
+  // wildly wrong left/top into localStorage for anyone who hit it. Since that saved value is
+  // trusted and reapplied on every future load with no further validation, a bad one used to
+  // stay bad forever, even after the underlying cause was fixed — this is what made the chat
+  // icon disappear "permanently" for some users. Discarding an off-screen saved position and
+  // falling back to the default corner anchor self-heals anyone already carrying a bad value.
   const saved = cbLoadPos(storageKey);
-  if (saved) cbApplyPos(el, saved.left, saved.top);
+  if (saved) {
+    const w = el.offsetWidth || 78, h = el.offsetHeight || 78;
+    const onScreen = (saved.left + w) > 0 && saved.left < window.innerWidth &&
+                      (saved.top + h) > 0 && saved.top < window.innerHeight;
+    if (onScreen) {
+      cbApplyPos(el, saved.left, saved.top);
+    } else {
+      try { localStorage.removeItem(storageKey); } catch (e) {}
+    }
+  }
 
   // Keep it on-screen across window resizes / orientation changes.
   window.addEventListener("resize", () => {
