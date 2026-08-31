@@ -4431,10 +4431,24 @@ function cbBreakdown(region, type, opts) {
   return cbFallback();
 }
 
+// Undocumented on purpose: typing "demo" into the chat bot hands back the walkthrough video
+// link. Not listed in the starter chips or cbHelpMessage() -- it's meant for whoever is
+// running a live demo to pull up, not a discoverable feature for every visitor. The link
+// itself points at a Google Drive file shared restricted to the stortrack.com domain (not
+// "anyone with the link"), so even someone who stumbles onto this trigger still has to be a
+// signed-in, approved Stortrack account to actually open it -- this chat reply is just a
+// convenient pointer to it, not an access grant of its own.
+const CB_DEMO_VIDEO_URL = "https://drive.google.com/file/d/1S8Vnli1riT54owaenkXxOJxPzOURfDGf/view?usp=drive_link";
+function cbIsDemoRequest(textLower) {
+  const phrases = ["demo", "demo video", "show demo", "watch demo", "play demo", "show me a demo", "demo the dashboard", "show the demo"];
+  return phrases.some((w) => textLower === w || textLower.startsWith(w + " ") || textLower.endsWith(" " + w) || textLower.includes(" " + w + " "));
+}
+
 function cbAnswer(rawText) {
   const text = rawText.trim();
   const lower = text.toLowerCase();
   if (!text) return cbFallback();
+  if (cbIsDemoRequest(lower)) return "Here's a walkthrough of the dashboard: " + CB_DEMO_VIDEO_URL;
   if (cbIsGreeting(lower)) return cbHelpMessage();
 
   const mentionedRegions = cbDetectRegions(lower);
@@ -4632,9 +4646,12 @@ function cbEscapeHtml(s) {
 }
 
 function cbRenderMarkdownish(text) {
-  // Minimal, safe formatting: escape first, then re-enable **bold** and line breaks only.
+  // Minimal, safe formatting: escape first, then re-enable **bold**, bare https:// links, and
+  // line breaks only. The escape happens BEFORE the URL regex runs, so this only ever turns
+  // already-escaped, already-safe text into an anchor tag -- it can't be used to inject markup.
   return cbEscapeHtml(text)
     .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/(https:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>')
     .replace(/\n/g, "<br>");
 }
 
