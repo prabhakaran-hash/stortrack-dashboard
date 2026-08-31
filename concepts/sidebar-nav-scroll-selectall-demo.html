@@ -2713,8 +2713,7 @@ function renderRegionPicker() {
   menu.innerHTML = REGIONS.map((r) => `<button type="button" class="gs-option${r.name === selectedRegion ? " selected" : ""}" role="option" aria-selected="${r.name === selectedRegion}" data-value="${r.name}">${r.name}</button>`).join("");
   menu.querySelectorAll(".gs-option").forEach((btn) => {
     btn.onclick = () => {
-      selectedRegion = btn.dataset.value;
-      saveSelectedRegion(selectedRegion);
+      switchSelectedRegion(btn.dataset.value);
       closeGlassSelect(document.getElementById("regionSelectWrap"));
       render();
     };
@@ -2743,7 +2742,7 @@ function renderRegionStrip() {
     </div>`;
   }).join("");
   document.querySelectorAll(".region-card").forEach((card) => {
-    card.addEventListener("click", (e) => { if (e.target.closest(".rc-store-list-btn")) return; selectedRegion = card.dataset.region; saveSelectedRegion(selectedRegion); render(); });
+    card.addEventListener("click", (e) => { if (e.target.closest(".rc-store-list-btn")) return; switchSelectedRegion(card.dataset.region); render(); });
   });
 }
 
@@ -3462,6 +3461,31 @@ function getFocusedSet(regionName) {
   return focusedSectionSet;
 }
 
+// Switching regions (from any of the region pickers) while every one of the OUTGOING
+// region's own sections was selected -- i.e. "Select all" was used, or every section just
+// happens to be ticked -- carries that "everything" intent to the new region too, by adding
+// the new region's own titles into the same shared Set. Without this, "Select all" on
+// Canada (whose region-specific titles read "...by Province") left Australia/UK/New
+// Zealand landing on a partial subset after switching, since their own titles read "...by
+// State"/"...by Region" -- different literal strings the shared Set never had. A genuine
+// partial pick (e.g. just "Known Developments" ticked) is untouched and still carries over
+// unchanged across regions exactly as before -- this only fires when EVERY title the
+// outgoing region has was already selected.
+function switchSelectedRegion(newName) {
+  if (newName === selectedRegion) return;
+  const outgoing = REGIONS.find((r) => r.name === selectedRegion);
+  const sel = getFocusedSet(selectedRegion);
+  const outgoingParsed = outgoing ? getRegionParsed(outgoing) : null;
+  const wasFullySelected = !!(outgoingParsed && outgoingParsed.titles.length && outgoingParsed.titles.every((t) => sel.has(t)));
+  selectedRegion = newName;
+  if (wasFullySelected) {
+    const incoming = REGIONS.find((r) => r.name === newName);
+    const incomingParsed = incoming ? getRegionParsed(incoming) : null;
+    if (incomingParsed) incomingParsed.titles.forEach((t) => sel.add(t));
+  }
+  saveSelectedRegion(selectedRegion);
+}
+
 // Parsing renderRegionBlock(region)'s HTML is a little work (a DOMParser pass), and the
 // region's underlying data object (region.data) only changes when a sync actually
 // replaces it — so cache the parsed result keyed by that object reference. A fresh sync
@@ -3870,8 +3894,7 @@ function renderFullscreenOverlay() {
   regionMenu.innerHTML = REGIONS.map((r) => `<button type="button" class="gs-option${r.name === selectedRegion ? " selected" : ""}" role="option" aria-selected="${r.name === selectedRegion}" data-value="${r.name}">${r.name}</button>`).join("");
   regionMenu.querySelectorAll(".gs-option").forEach((btn) => {
     btn.onclick = () => {
-      selectedRegion = btn.dataset.value;
-      saveSelectedRegion(selectedRegion);
+      switchSelectedRegion(btn.dataset.value);
       closeGlassSelect(document.getElementById("mpFsRegionSelectWrap"));
       render();
     };
