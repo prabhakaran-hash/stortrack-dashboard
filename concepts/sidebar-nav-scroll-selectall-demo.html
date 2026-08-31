@@ -1076,7 +1076,11 @@
     cursor:pointer; padding:2px 6px; border-radius:6px;
   }
   .cb-close:hover { background: rgba(255,255,255,0.14); color: #eafff2; }
-  .cb-messages { flex:1; overflow-y:auto; padding:14px 16px; display:flex; flex-direction:column; gap:10px; }
+  .cb-messages { flex:1; overflow-y:auto; padding:14px 16px; display:flex; flex-direction:column; gap:10px; scrollbar-width: thin; scrollbar-color: #5c6b63 rgba(255,255,255,0.06); }
+  .cb-messages::-webkit-scrollbar { width: 10px; }
+  .cb-messages::-webkit-scrollbar-track { background: rgba(255,255,255,0.06); }
+  .cb-messages::-webkit-scrollbar-thumb { background: #5c6b63; border-radius: 0; }
+  .cb-messages::-webkit-scrollbar-thumb:hover { background: #71847a; }
   .cb-msg { max-width:88%; font-size:13px; line-height:1.55; padding:9px 12px; border-radius:12px; }
   /* Bumped from 0.12 to a near-opaque 0.22 for the same reason as the panel background above:
      at low opacity, a bright (light-theme) backdrop showed through each bubble/chip unevenly
