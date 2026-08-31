@@ -4511,7 +4511,7 @@ function cbAnswer(rawText) {
   const text = rawText.trim();
   const lower = text.toLowerCase();
   if (!text) return cbFallback();
-  if (cbIsDemoRequest(lower)) return "Here's a walkthrough of the dashboard: " + CB_DEMO_VIDEO_URL;
+  if (cbIsDemoRequest(lower)) return "Here's a walkthrough of the dashboard: [Dashboard Demo](" + CB_DEMO_VIDEO_URL + ")";
   if (cbIsGreeting(lower)) return cbHelpMessage();
 
   const mentionedRegions = cbDetectRegions(lower);
@@ -4709,13 +4709,23 @@ function cbEscapeHtml(s) {
 }
 
 function cbRenderMarkdownish(text) {
-  // Minimal, safe formatting: escape first, then re-enable **bold**, bare https:// links, and
-  // line breaks only. The escape happens BEFORE the URL regex runs, so this only ever turns
-  // already-escaped, already-safe text into an anchor tag -- it can't be used to inject markup.
-  return cbEscapeHtml(text)
+  // Minimal, safe formatting: escape first, then re-enable **bold**, [label](url) links, bare
+  // https:// links, and line breaks only. The escape happens BEFORE either link regex runs, so
+  // this only ever turns already-escaped, already-safe text into an anchor tag -- it can't be
+  // used to inject markup. [label](url) links are pulled out into placeholder tokens BEFORE the
+  // bare-URL pass runs, and restored after -- otherwise the bare-URL regex would also match the
+  // URL text sitting inside the href it just built, mangling the tag (confirmed while testing
+  // the "demo" reply's new labeled link).
+  const placeholders = [];
+  let out = cbEscapeHtml(text)
     .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\[([^\]]+)\]\((https:\/\/[^\s)<]+)\)/g, (_, label, url) => {
+      placeholders.push(`<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`);
+      return `\x00LINK${placeholders.length - 1}\x00`;
+    })
     .replace(/(https:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>')
     .replace(/\n/g, "<br>");
+  return out.replace(/\x00LINK(\d+)\x00/g, (_, i) => placeholders[Number(i)]);
 }
 
 function cbAppendMessage(role, text) {
