@@ -1438,6 +1438,20 @@ let tokenConfirmedNotDenied = false;
 // instead of requiring "a full success happened" — while still re-locking immediately the
 // moment a real denial does come back, from handleAccessDenied above.
 let sawExplicitDenial = false;
+// Counts consecutive full syncAll() cycles that ended with NOTHING loaded despite an
+// existing saved token (see the bottom of syncAll() below). handleAccessDenied() above is
+// deliberately permissive about a single "invalid_token" response — that's usually just one
+// flaky tokeninfo call under load, not a real problem, and treating it as one used to cause a
+// false-logout loop. But that same permissiveness has a gap: a token that has genuinely
+// EXPIRED (Google ID tokens are only valid for about an hour) also comes back as
+// "invalid_token" every single time, forever — and since that's always ignored, an already
+// -signed-in visitor whose token expired mid-session was stuck silently re-trying the same
+// dead token indefinitely, with the page just showing a stale cached snapshot and no error,
+// no prompt, and no path to recovery except knowing to manually sign out and back in. A
+// handful of consecutive fully-failed cycles despite holding a token is the signal that
+// distinguishes "genuinely expired" from "one blip" — see the escalation at the bottom of
+// syncAll().
+let noSuccessSyncCycles = 0;
 
 function showAuthGate(denied) {
   const overlay = document.getElementById("authGateOverlay");
@@ -2627,25 +2641,48 @@ async function syncAll() {
   const allOk = REGIONS.every((r) => r.status === "loaded");
   const dot = document.getElementById("syncDot");
   const text = document.getElementById("syncText");
-  if (allOk) { dot.className = "dot live"; text.textContent = "Live — synced " + new Date().toLocaleTimeString(); consecutiveFailures = 0; }
-  else if (REGIONS.some((r) => r.status === "loaded")) { dot.className = "dot error"; text.textContent = "Partially synced — some regions failed"; consecutiveFailures++; }
-  else { dot.className = "dot error"; text.textContent = "Sync failed — check sheet sharing"; consecutiveFailures++; }
+  if (allOk) { dot.className = "dot live"; text.textContent = "Live — synced " + new Date().toLocaleTimeString(); consecutiveFailures = 0; noSuccessSyncCycles = 0; }
+  else if (REGIONS.some((r) => r.status === "loaded")) { dot.className = "dot error"; text.textContent = "Partially synced — some regions failed"; consecutiveFailures++; noSuccessSyncCycles = 0; /* at least one region proved the token still works */ }
+  else {
+    dot.className = "dot error"; text.textContent = "Sync failed — retrying automatically"; consecutiveFailures++;
+    // Only count this toward the expired-token escalation below when we actually have a
+    // token that was never explicitly denied -- a complete failure with no token at all is
+    // just "not signed in yet", not evidence of anything expired.
+    if (AUTH_TOKEN && !sawExplicitDenial) noSuccessSyncCycles++;
+  }
   document.getElementById("corsWarning").style.display = anyCorsError ? "block" : "none";
   document.getElementById("footNote").textContent = "Sources: live Google Sheets (\"Regional Summary\" tab). Last synced " + new Date().toLocaleTimeString() + ".";
-  // Safety net: if we have a signed-in token and nothing about this sync attempt was ever
-  // flagged as an actual, explicit access denial, unlock — regardless of whether any
-  // individual request actually got a clean response back. This covers two cases: a
-  // partial hiccup (some regions failed, tokenConfirmedNotDenied got set by whichever
-  // region *did* get a real response), and a total one (EVERY region request failed before
-  // ever getting a response at all — a network outage, or Apps Script briefly rejecting a
-  // burst of ~16 concurrent calls on a plain refresh with an existing token — in which case
-  // tokenConfirmedNotDenied never got set either, since nothing ever came back). Either way,
-  // an approved, signed-in visitor should never be left staring at a permanently blurred
-  // screen with no error and nothing to click. They'll see the page's own normal "sync
-  // failed / partially synced" state instead, which recovers itself on the next automatic
-  // retry — exactly like any other sync hiccup already does. The moment a real denial DOES
-  // come back (now or on a later retry), handleAccessDenied() re-locks immediately.
-  if (AUTH_TOKEN && !hasLoadedDataThisSession && !sawExplicitDenial) {
+  // A handful of consecutive FULL-cycle failures (every region, every retry) despite holding
+  // a token that was never explicitly denied is the signature of a token that has genuinely
+  // EXPIRED mid-session (Google ID tokens last about an hour), not a transient hiccup -- a
+  // real blip normally clears within a cycle or two, since even a bad one still lets at
+  // least a few of the ~16 concurrent requests through. Without this, a visitor whose token
+  // expired while the tab stayed open was stuck silently re-trying the same dead token
+  // forever: the page just showed a stale cached snapshot with no error and nothing to
+  // click, and neither a manual refresh nor waiting for the next auto-retry could ever fix
+  // it, because both just resend the same expired token. Forcing a fresh sign-in here (NOT
+  // a "denied" state -- see showAuthGate(false)) gets a new, valid token on the next sign-in
+  // and clears the problem for good. Three straight full misses is conservative enough to
+  // avoid false-triggering on an ordinary rough patch of network.
+  if (noSuccessSyncCycles >= 3) {
+    noSuccessSyncCycles = 0;
+    AUTH_TOKEN = null;
+    try { sessionStorage.removeItem("stortrack_id_token"); } catch (e) {}
+    showAuthGate(false);
+  } else if (AUTH_TOKEN && !hasLoadedDataThisSession && !sawExplicitDenial) {
+    // Safety net: if we have a signed-in token and nothing about this sync attempt was ever
+    // flagged as an actual, explicit access denial, unlock — regardless of whether any
+    // individual request actually got a clean response back. This covers two cases: a
+    // partial hiccup (some regions failed, tokenConfirmedNotDenied got set by whichever
+    // region *did* get a real response), and a total one (EVERY region request failed before
+    // ever getting a response at all — a network outage, or Apps Script briefly rejecting a
+    // burst of ~16 concurrent calls on a plain refresh with an existing token — in which case
+    // tokenConfirmedNotDenied never got set either, since nothing ever came back). Either way,
+    // an approved, signed-in visitor should never be left staring at a permanently blurred
+    // screen with no error and nothing to click. They'll see the page's own normal "sync
+    // failed / partially synced" state instead, which recovers itself on the next automatic
+    // retry — exactly like any other sync hiccup already does. The moment a real denial DOES
+    // come back (now or on a later retry), handleAccessDenied() re-locks immediately.
     hideAuthGate();
   }
   render();
