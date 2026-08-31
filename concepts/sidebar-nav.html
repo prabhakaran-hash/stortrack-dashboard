@@ -2713,8 +2713,7 @@ function renderRegionPicker() {
   menu.innerHTML = REGIONS.map((r) => `<button type="button" class="gs-option${r.name === selectedRegion ? " selected" : ""}" role="option" aria-selected="${r.name === selectedRegion}" data-value="${r.name}">${r.name}</button>`).join("");
   menu.querySelectorAll(".gs-option").forEach((btn) => {
     btn.onclick = () => {
-      selectedRegion = btn.dataset.value;
-      saveSelectedRegion(selectedRegion);
+      switchSelectedRegion(btn.dataset.value);
       closeGlassSelect(document.getElementById("regionSelectWrap"));
       render();
     };
@@ -2743,7 +2742,7 @@ function renderRegionStrip() {
     </div>`;
   }).join("");
   document.querySelectorAll(".region-card").forEach((card) => {
-    card.addEventListener("click", (e) => { if (e.target.closest(".rc-store-list-btn")) return; selectedRegion = card.dataset.region; saveSelectedRegion(selectedRegion); render(); });
+    card.addEventListener("click", (e) => { if (e.target.closest(".rc-store-list-btn")) return; switchSelectedRegion(card.dataset.region); render(); });
   });
 }
 
@@ -2875,6 +2874,12 @@ function facilityOperatorNrsfStriped(nt) {
   });
   const stripeColor = {};
   groups.forEach((g, i) => { stripeColor[g.key] = PALETTE_HEX[i % PALETTE_HEX.length]; });
+  // Display-only reorder: within each Facility Type group, sort the Operator Type rows by
+  // Store Count largest-first. The Facility Type groups themselves keep the sheet's own
+  // order (never reordered), and the Total row (below) is untouched either way — only the
+  // operator rows inside each group move.
+  const storeCountIdx = (() => { const i = cols.findIndex((c) => /store\s*count/i.test(c || "")); return i >= 0 ? i : 0; })();
+  groups.forEach((grp) => { grp.rows.sort((a, b) => (b.values[storeCountIdx] || 0) - (a.values[storeCountIdx] || 0)); });
   const bodyRows = groups.map((grp) => grp.rows.map((row, i) => {
     const groupCell = i === 0
       ? `<td class="fac-nrsf-grpcell" rowspan="${grp.rows.length}" style="border-left:4px solid ${stripeColor[grp.key]}">${grp.key || "—"}</td>`
@@ -3071,8 +3076,13 @@ function renderRegionBlock(region) {
   // this split existed and is otherwise unused for rendering.
   const opStoresRows = d.operatorStores || (d.operatorType || []).map((o) => ({ label: o.label, stores: o.stores }));
   const opPricingRows = d.operatorPricingRows || (d.operatorType || []).map((o) => ({ label: o.label, yes: o.yes, no: o.no }));
-  const operatorBar = barList(opStoresRows.map((o) => ({label: o.label, value: o.stores})), () => accent);
-  const operatorPricing = stackedYesNoList(opPricingRows.map((o) => ({label: o.label, yes: o.yes, no: o.no})));
+  // Display-only reorder, largest first -- the underlying rows/values are untouched, this
+  // only changes the order these two charts draw their bars in (per the user's request that
+  // every ranked view across the dashboard reads largest-to-smallest).
+  const opStoresRowsSorted = [...opStoresRows].sort((a, b) => (b.stores || 0) - (a.stores || 0));
+  const opPricingRowsSorted = [...opPricingRows].sort((a, b) => ((b.yes || 0) + (b.no || 0)) - ((a.yes || 0) + (a.no || 0)));
+  const operatorBar = barList(opStoresRowsSorted.map((o) => ({label: o.label, value: o.stores})), () => accent);
+  const operatorPricing = stackedYesNoList(opPricingRowsSorted.map((o) => ({label: o.label, yes: o.yes, no: o.no})));
 
   let regionCharts = "";
   if (d.regionSplit && d.regionSplit.length) {
@@ -3086,6 +3096,11 @@ function renderRegionBlock(region) {
       const cols = Object.keys(s).filter((k) => !REGION_SPLIT_RESERVED.includes(k));
       return { label: s.label, columns: cols, values: cols.map((k) => s[k]), total: s.total, priceNo: s.priceNo, priceYes: s.priceYes };
     });
+    // Display-only reorder, largest first -- this same sorted array feeds both the "Stores
+    // by <Region/State/Province>" chart below AND the "<Region> -- Operator Type breakdown"
+    // table further down, so the two stay in the same row order as each other. Grand Total
+    // math (a reduce() over the array) is unaffected by row order.
+    regionSplitNorm.sort((a, b) => (b.total || 0) - (a.total || 0));
     const regionKeys = regionSplitNorm[0].columns;
     const rl = d.regionLabel || "Region";
     const storeBar = barList(regionSplitNorm.map((s) => ({label: s.label, value: s.total})), () => accent);
@@ -3104,7 +3119,16 @@ function renderRegionBlock(region) {
     const priceKeys = priceRows[0].columns;
     const priceNoIdx = priceKeys.findIndex((k) => /no/i.test(k));
     const priceYesIdx = priceKeys.findIndex((k) => /yes/i.test(k));
-    const pricingBar = divergingYesNoList(priceRows.map((s) => ({label: s.label, yes: priceYesIdx >= 0 ? s.values[priceYesIdx] : null, no: priceNoIdx >= 0 ? s.values[priceNoIdx] : null})));
+    // Display-only reorder, largest first, by this block's OWN total (yes+no) -- kept
+    // independent from regionSplitNorm's sort above, same as the rest of this block is kept
+    // independent, so a mismatch between the two sheets never bleeds from one chart into
+    // the other.
+    const priceRowsSorted = [...priceRows].sort((a, b) => {
+      const bTotal = (priceYesIdx >= 0 ? (b.values[priceYesIdx] || 0) : 0) + (priceNoIdx >= 0 ? (b.values[priceNoIdx] || 0) : 0);
+      const aTotal = (priceYesIdx >= 0 ? (a.values[priceYesIdx] || 0) : 0) + (priceNoIdx >= 0 ? (a.values[priceNoIdx] || 0) : 0);
+      return bTotal - aTotal;
+    });
+    const pricingBar = divergingYesNoList(priceRowsSorted.map((s) => ({label: s.label, yes: priceYesIdx >= 0 ? s.values[priceYesIdx] : null, no: priceNoIdx >= 0 ? s.values[priceNoIdx] : null})));
     regionCharts = `<div class="chart-row">
       <div class="card"><h3>Stores by ${rl}</h3><div class="card-sub">Store count</div>${storeBar}</div>
       <div class="card"><h3>Pricing Yes/No by ${rl}</h3><div class="card-sub">Actual counts, not just a percentage</div>
@@ -3130,7 +3154,14 @@ function renderRegionBlock(region) {
 
   let facilitySection = "";
   if (d.facilityType && Object.keys(d.facilityType).length) {
-    const entries = Object.entries(d.facilityType).map(([label,value],i) => ({label, value, color: PALETTE_HEX[i % 4]}));
+    // Color is assigned by each category's original (sheet) position BEFORE the display
+    // sort below, so a category's color stays fixed to that category across refreshes even
+    // though its rank -- and therefore its position in the ring/legend -- can change as
+    // counts change. (Per the "color follows the entity, never its rank" rule: only the
+    // draw/legend ORDER is sorted largest-first, never which color a category gets.)
+    const entries = Object.entries(d.facilityType)
+      .map(([label,value],i) => ({label, value, color: PALETTE_HEX[i % 4]}))
+      .sort((a, b) => (b.value || 0) - (a.value || 0));
     facilitySection = `<div class="card"><h3>Facility Type Mix</h3><div class="card-sub">Store count share</div><div class="donut-wrap">${donutSVG(entries, storeTotal, "stores", 150)}</div></div>`;
   } else {
     facilitySection = "";
@@ -3141,11 +3172,16 @@ function renderRegionBlock(region) {
   // position (actual/estimated/not-available), not by matching the label text, since the live
   // text no longer reliably starts with "Actual"/"Estimated".
   const unitsChartColors = ["var(--series-3)", "var(--series-1)", "var(--text-muted)"];
+  // Color is attached to each item by its fixed original meaning (Actual/Estimated/Not
+  // available) BEFORE the display sort below, so "Estimated" can never inherit "Actual"'s
+  // color just because it happens to have the larger count this refresh -- only the bar
+  // ORDER is sorted largest-first, per the user's request that this chart be sorted too
+  // "if possible".
   const unitsChart = barList([
-    {label:d.units.actualLabel || "Actual (from website)", value:d.units.actual},
-    {label:d.units.estimatedLabel || "Estimated", value:d.units.estimated},
-    {label:d.units.notAvailableLabel || "Not available", value:d.units.notAvailable}
-  ], (i, idx) => unitsChartColors[idx] || "var(--text-muted)");
+    {label:d.units.actualLabel || "Actual (from website)", value:d.units.actual, color: unitsChartColors[0]},
+    {label:d.units.estimatedLabel || "Estimated", value:d.units.estimated, color: unitsChartColors[1]},
+    {label:d.units.notAvailableLabel || "Not available", value:d.units.notAvailable, color: unitsChartColors[2]}
+  ].sort((a, b) => (b.value || 0) - (a.value || 0)), (i) => i.color || "var(--text-muted)");
   const unitsNote = (d.units.totalStoresInUnitsTab != null && d.units.totalStoresInUnitsTab !== storeTotal)
     ? `<div class="foot-note">Note: the sheet's "Units Summary" section totals ${fmtNum(d.units.totalStoresInUnitsTab)} stores — this differs from the ${fmtNum(storeTotal)} total elsewhere on the tab. Shown as reported.</div>` : "";
 
@@ -3264,9 +3300,8 @@ function renderRegionBlock(region) {
     const pctIdx = findHistoryCol(sp.attrColumns, /%|pct|percent/i);
     if (countIdx >= 0 && pctIdx >= 0) {
       // Group attributes by the sheet's own group label (preserving first-seen group
-      // order), then sort each group's rows weakest-population-first — a display-only
-      // reorder so the fields most in need of research attention surface first within
-      // their category, never touching the underlying data or grouping itself.
+      // order), then sort each group's rows most-populated-first (largest to smallest) —
+      // a display-only reorder, never touching the underlying data or grouping itself.
       const groupOrder = [];
       const byGroup = {};
       sp.attributes.forEach((a) => {
@@ -3275,7 +3310,7 @@ function renderRegionBlock(region) {
         byGroup[g].push(a);
       });
       const bands = groupOrder.map((g, gi) => {
-        const rows = [...byGroup[g]].sort((a, b) => (a.values[pctIdx] || 0) - (b.values[pctIdx] || 0));
+        const rows = [...byGroup[g]].sort((a, b) => (b.values[pctIdx] || 0) - (a.values[pctIdx] || 0));
         const color = ATTR_GROUP_PALETTE[gi % ATTR_GROUP_PALETTE.length];
         const rowsHtml = rows.map((a) => {
           const count = a.values[countIdx], pct = a.values[pctIdx];
@@ -3293,7 +3328,7 @@ function renderRegionBlock(region) {
         }).join("");
         return `<div class="attrpop-band"><div class="attrpop-head">${g}</div>${rowsHtml}</div>`;
       }).join("");
-      detailTables += `<div class="card"><h3>Attribute Population</h3><div class="card-sub">How many stores have each field researched — weakest first within each category</div>
+      detailTables += `<div class="card"><h3>Attribute Population</h3><div class="card-sub">How many stores have each field researched — most-populated first within each category</div>
         <div class="attrpop-wrap">${bands}</div></div>`;
     } else {
       // A region whose sheet doesn't have the expected Count/% columns (a genuinely
@@ -3424,6 +3459,31 @@ let lastSingleTitleByRegion = {};
 let multiSelectMode = false;
 function getFocusedSet(regionName) {
   return focusedSectionSet;
+}
+
+// Switching regions (from any of the region pickers) while every one of the OUTGOING
+// region's own sections was selected -- i.e. "Select all" was used, or every section just
+// happens to be ticked -- carries that "everything" intent to the new region too, by adding
+// the new region's own titles into the same shared Set. Without this, "Select all" on
+// Canada (whose region-specific titles read "...by Province") left Australia/UK/New
+// Zealand landing on a partial subset after switching, since their own titles read "...by
+// State"/"...by Region" -- different literal strings the shared Set never had. A genuine
+// partial pick (e.g. just "Known Developments" ticked) is untouched and still carries over
+// unchanged across regions exactly as before -- this only fires when EVERY title the
+// outgoing region has was already selected.
+function switchSelectedRegion(newName) {
+  if (newName === selectedRegion) return;
+  const outgoing = REGIONS.find((r) => r.name === selectedRegion);
+  const sel = getFocusedSet(selectedRegion);
+  const outgoingParsed = outgoing ? getRegionParsed(outgoing) : null;
+  const wasFullySelected = !!(outgoingParsed && outgoingParsed.titles.length && outgoingParsed.titles.every((t) => sel.has(t)));
+  selectedRegion = newName;
+  if (wasFullySelected) {
+    const incoming = REGIONS.find((r) => r.name === newName);
+    const incomingParsed = incoming ? getRegionParsed(incoming) : null;
+    if (incomingParsed) incomingParsed.titles.forEach((t) => sel.add(t));
+  }
+  saveSelectedRegion(selectedRegion);
 }
 
 // Parsing renderRegionBlock(region)'s HTML is a little work (a DOMParser pass), and the
@@ -3834,8 +3894,7 @@ function renderFullscreenOverlay() {
   regionMenu.innerHTML = REGIONS.map((r) => `<button type="button" class="gs-option${r.name === selectedRegion ? " selected" : ""}" role="option" aria-selected="${r.name === selectedRegion}" data-value="${r.name}">${r.name}</button>`).join("");
   regionMenu.querySelectorAll(".gs-option").forEach((btn) => {
     btn.onclick = () => {
-      selectedRegion = btn.dataset.value;
-      saveSelectedRegion(selectedRegion);
+      switchSelectedRegion(btn.dataset.value);
       closeGlassSelect(document.getElementById("mpFsRegionSelectWrap"));
       render();
     };
