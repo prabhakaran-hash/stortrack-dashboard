@@ -1087,6 +1087,12 @@
      instead of reading as a flat, uniform surface. */
   .cb-msg.bot { align-self:flex-start; background: rgba(255,255,255,0.22); color: #eafff2; border-bottom-left-radius:4px; }
   .cb-msg.user { align-self:flex-end; background: var(--accent); color:#fff; border-bottom-right-radius:4px; }
+  /* Override the browser's default purple visited-link color, which had very low contrast
+     against these dark, glossy bubbles. Uses the app's own existing highlight accent
+     (--brand-lime, already used for other active/highlight states) instead of an ad hoc color,
+     bold + underlined for visibility even for a colorblind reader. */
+  .cb-msg a, .cb-msg a:visited { color: var(--brand-lime, #98f387); font-weight:700; text-decoration:underline; }
+  .cb-msg a:hover { color: #ffffff; }
   .cb-chips { display:flex; flex-wrap:wrap; gap:6px; padding:0 16px 10px; flex:none; }
   .cb-chip {
     font: inherit; font-size:11.5px; font-weight:600; color: rgba(234,255,242,0.78);
