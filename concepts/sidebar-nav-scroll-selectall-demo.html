@@ -2532,6 +2532,14 @@ async function fetchExtraTab(cfg, tabName, attempt) {
   }
 }
 
+// Thin wrapper around fetchExtraTab that waits a short, fixed delay before firing --
+// purely to spread out the request burst against Apps Script's own concurrency ceiling
+// (see the staggering comment in syncRegion above). Never touches what's requested, how
+// it's parsed, or the existing retry-once-on-failure behavior inside fetchExtraTab itself.
+function staggeredFetchExtraTab(cfg, tabName, delayMs) {
+  return new Promise((resolve) => setTimeout(resolve, delayMs)).then(() => fetchExtraTab(cfg, tabName));
+}
+
 let anyCorsError = false;
 
 // Guards against committing a genuinely broken sync as if it were good "Live" data.
@@ -2575,11 +2583,15 @@ async function syncRegion(region) {
     const data = cfg.parser(grid, cfg.key);
     const extra = EXTRA_TABS[region.name];
     if (extra) {
+      // Staggered by a few hundred ms each (never delayed by more than a third of a second
+      // total) instead of firing all 4 in the exact same instant -- purely to spread out the
+      // request burst against Apps Script's own concurrency ceiling; nothing about which data
+      // gets fetched, parsed, or how failures are handled below changes.
       const [sqftGrid, profileGrid, ownersGrid, devGrid] = await Promise.all([
         fetchExtraTab(cfg, extra.sqft),
-        fetchExtraTab(cfg, extra.profile),
-        fetchExtraTab(cfg, extra.owners),
-        fetchExtraTab(cfg, extra.developments)
+        staggeredFetchExtraTab(cfg, extra.profile, 120),
+        staggeredFetchExtraTab(cfg, extra.owners, 240),
+        staggeredFetchExtraTab(cfg, extra.developments, 360)
       ]);
       // fetchExtraTab returns null both when a region genuinely has no data for that tab
       // AND when the fetch itself failed (network hiccup, Apps Script timeout/cold-start,
@@ -2622,6 +2634,27 @@ async function syncRegion(region) {
 
 let consecutiveFailures = 0;
 let syncInFlight = false;
+// A genuine short-interval auto-retry for a region that didn't fully sync -- the "Sync
+// failed -- retrying automatically" banner text already claimed this happened, but until
+// now the only thing on a timer was the user's own Refresh interval (1 hour by default),
+// so a region that missed its first attempt could sit on a stale cached snapshot for up to
+// an hour with nothing actually retrying it sooner. This schedules syncAll() itself again
+// (never a separate/duplicate code path) a short, backing-off delay later, but ONLY while
+// something is still missing, and gives up after a handful of tries so a genuinely offline
+// visitor doesn't get hammered with requests forever -- it simply falls back to the normal
+// hourly cadence at that point, same as before this existed.
+let quickRetryTimer = null;
+let quickRetryAttempts = 0;
+const QUICK_RETRY_MAX_ATTEMPTS = 6;
+function scheduleQuickRetryIfNeeded() {
+  if (quickRetryTimer) { clearTimeout(quickRetryTimer); quickRetryTimer = null; }
+  const allOk = REGIONS.every((r) => r.status === "loaded");
+  if (allOk) { quickRetryAttempts = 0; return; }
+  if (quickRetryAttempts >= QUICK_RETRY_MAX_ATTEMPTS) return;
+  quickRetryAttempts++;
+  const delayMs = Math.min(8000 * quickRetryAttempts, 30000); // 8s, 16s, 24s, then capped at 30s
+  quickRetryTimer = setTimeout(() => { syncAll(); }, delayMs);
+}
 
 async function syncAll() {
   if (syncInFlight) return; // guards against overlapping calls (e.g. the visibility-based
@@ -2639,7 +2672,14 @@ async function syncAll() {
     // (an Apps Script cold start can take several seconds) finally caught up. This is
     // what actually made sync *feel* slow even though the network calls were already
     // parallel. Now each card flips to "Live" as soon as its own data is in.
-    await Promise.all(REGIONS.map(async (region) => {
+    // Staggered by a third of a second per region (0ms, 350ms, 700ms, 1050ms) instead of
+    // all 4 regions' first requests firing in the same instant -- still fully parallel,
+    // still finishes in a couple of seconds, just spreads the request burst against Apps
+    // Script's own concurrency ceiling instead of piling every region's requests (and, in
+    // turn, all ~20 region+extra-tab requests) onto it at once. Never changes what's
+    // fetched, how it's parsed, or a region's own retry/fallback behavior.
+    await Promise.all(REGIONS.map(async (region, idx) => {
+      if (idx > 0) await new Promise((r) => setTimeout(r, idx * 350));
       await syncRegion(region);
       saveLiveCache();
       render();
@@ -2697,6 +2737,7 @@ async function syncAll() {
   }
   render();
   syncInFlight = false;
+  scheduleQuickRetryIfNeeded();
 }
 
 /* ------------------------------ Region strip + dropdown ------------------------------ */
@@ -4136,6 +4177,10 @@ function render() {
 // comment below).
 document.getElementById("refreshNow").addEventListener("click", () => {
   consecutiveFailures = 0;
+  // A manual refresh gets its own fresh set of quick auto-retries, and cancels any one
+  // already pending so it doesn't fire redundantly right on top of this click's own result.
+  quickRetryAttempts = 0;
+  if (quickRetryTimer) { clearTimeout(quickRetryTimer); quickRetryTimer = null; }
   syncAll();
   closeGlassSelect(document.getElementById("refreshControlWrap"));
 });
