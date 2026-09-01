@@ -2847,7 +2847,7 @@ function divergingYesNoList(items) {
     </div>`;
   }).join("");
   return `<div class="diverge-list">${rows}</div>
-    <div class="diverge-grand-total"><span class="dgt-label">Grand Total</span><span class="dgt-sep">·</span><span class="dgt-figure">${fmtNum(grandNo)} not available</span><span class="dgt-sep">·</span><span class="dgt-figure">${fmtNum(grandYes)} available</span><span class="dgt-sep">·</span><span class="dgt-figure">${fmtNum(grandYes + grandNo)} stores</span></div>`;
+    <div class="diverge-grand-total"><span class="dgt-label">Grand Total</span><span class="dgt-sep">·</span><span class="dgt-figure">${fmtNum(grandYes)} available</span><span class="dgt-sep">·</span><span class="dgt-figure">${fmtNum(grandNo)} not available</span><span class="dgt-sep">·</span><span class="dgt-figure">${fmtNum(grandYes + grandNo)} stores</span></div>`;
 }
 // Renders a {columns, rows} table (from parseFacilityDetail / parseFacilityOperatorNrsf /
 // parsePricingHistory) exactly as the sheet has it right now: the header cells shown are the
