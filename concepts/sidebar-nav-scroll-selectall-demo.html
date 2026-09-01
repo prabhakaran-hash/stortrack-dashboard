@@ -2622,7 +2622,15 @@ async function syncRegion(region) {
     // one blip is normal (see the big comment on REGIONS above) and clears itself on the
     // next automatic retry, same as the transient-token noise handleAccessDenied() already
     // ignores. A second consecutive miss on the same region is a real, sustained problem.
-    if (region.consecutiveErrors >= 2) anyCorsError = true;
+    // EXCEPT when the failure is ACCESS_DENIED (an expired/invalid token) -- that case is
+    // already handled by its own dedicated escalation path (noSuccessSyncCycles, further
+    // down in syncAll) which puts up the real sign-in screen once it's sure. Letting this
+    // generic "Live sync has failed repeatedly" banner also fire in the meantime produced a
+    // confusing couple of cycles where the visitor saw a "network hiccup, retrying" message
+    // right before being asked to sign in again -- when the real, accurate story was simply
+    // "your session expired, please sign in." Excluding ACCESS_DENIED here means an expired
+    // token goes straight to the sign-in screen with no intermediate false-alarm banner.
+    if (region.consecutiveErrors >= 2 && err.message !== "ACCESS_DENIED") anyCorsError = true;
   }
 }
 
